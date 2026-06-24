@@ -3,6 +3,7 @@ import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { TRACKING_CONFIG, loadTrackingConfig } from '../config/tracking.config';
 import { OrdersModule } from '../orders/orders.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { GpsHistoryService } from './gps-history.service';
 import { IngestionService } from './ingestion.service';
 import { LastKnownStore } from './last-known.store';
@@ -31,9 +32,14 @@ import { OrderTrackingController } from './order-tracking.controller';
  * in-house `ETA_ESTIMATOR` seam bound to `PostgisEtaEstimator` — NO external maps API) and
  * evaluates geofence (`GeofenceService` → durable `GeofenceEvent` rows + realtime emit). All ETA/
  * geofence tunables come from `TRACKING_CONFIG`.
+ *
+ * Increment 8 — imports `NotificationsModule`: a NEWLY-written geofence crossing is handed to
+ * `NotificationService.dispatchGeofence` (degradation-wrapped) to raise customer alerts. The
+ * dispatch is the last, most-optional step — a notification failure never undoes the geofence write,
+ * the ETA, or `POST /locations:batch`.
  */
 @Module({
-  imports: [OrdersModule, RealtimeModule],
+  imports: [OrdersModule, RealtimeModule, NotificationsModule],
   controllers: [LocationsController, FleetLiveController, OrderTrackingController],
   providers: [
     IngestionService,

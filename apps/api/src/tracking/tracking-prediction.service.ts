@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { GeofenceEventType } from '@blue-bee/shared';
 import { EtaService } from './eta.service';
-import { GeofenceService } from './geofence.service';
+import { GeofenceService, type FiredGeofence } from './geofence.service';
 import type { GeoPoint } from './eta-math';
+import { NotificationService, type GeofenceNotification } from '../notifications/notification.service';
 
 /**
  * The predictive layer (Increment 7) hung off the ingestion advance-hook: recompute the ETA for
@@ -21,16 +23,42 @@ export class TrackingPredictionService {
   constructor(
     private readonly eta: EtaService,
     private readonly geofence: GeofenceService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async onLastKnownAdvance(orgId: string, vehicleId: string, position: GeoPoint): Promise<void> {
     try {
       const active = await this.eta.recomputeForVehicle(orgId, vehicleId, position);
-      if (active) await this.geofence.evaluate(orgId, vehicleId, active);
+      if (!active) return;
+      const fired = await this.geofence.evaluate(orgId, vehicleId, active);
+      // Notifications are the LAST, most-optional step: a geofence crossing that was newly written
+      // raises customer alerts (Increment 8). Wrapped separately so a notification failure cannot
+      // undo the (already-committed) geofence write or ETA — and never reaches the ingest path.
+      if (fired.length > 0) {
+        try {
+          await this.notifications.dispatchGeofence(orgId, fired.map(toNotification));
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`notification dispatch skipped for vehicle ${vehicleId} (org ${orgId}): ${reason}`);
+        }
+      }
     } catch (err) {
       // Any thrown value is tolerated (a non-Error throw must still log meaningfully, not "undefined").
       const reason = err instanceof Error ? err.message : String(err);
       this.logger.warn(`ETA/geofence skipped for vehicle ${vehicleId} (org ${orgId}): ${reason}`);
     }
   }
+}
+
+/** Map a fired geofence event to the notification engine's dispatch input. */
+function toNotification(f: FiredGeofence): GeofenceNotification {
+  return {
+    geofenceEventId: f.geofenceEventId,
+    kind: f.type === GeofenceEventType.ARRIVED ? 'ARRIVED' : 'APPROACHING',
+    orderId: f.orderId,
+    stopId: f.stopId,
+    vehicleId: f.vehicleId,
+    occurredAt: f.occurredAt,
+    etaSeconds: f.etaSeconds,
+  };
 }

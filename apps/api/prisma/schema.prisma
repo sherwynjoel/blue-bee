@@ -255,9 +255,11 @@ enum CommsChannel {
 
 enum NotificationStatus {
   PENDING
+  RETRYING // (Increment 8) a transport attempt failed; a bounded retry is scheduled (scheduled_for)
   SENT
   DELIVERED
   FAILED
+  SUPPRESSED // (Increment 8) deliberately not sent — a user opt-out or (config) a quiet-hours suppression
 }
 
 enum DevicePlatform {
@@ -293,14 +295,16 @@ model User {
   updatedAt     DateTime   @updatedAt @map("updated_at")
   createdBy     String?    @map("created_by") @db.Uuid
 
-  roles         UserRole[]
-  driver        Driver?
-  devices       Device[]
-  notifications Notification[]
-  messagesFrom  Message[]      @relation("MessageFrom")
-  messagesTo    Message[]      @relation("MessageTo")
-  auditLogs     AuditLog[]
-  refreshTokens RefreshToken[]
+  roles            UserRole[]
+  driver           Driver?
+  devices          Device[]
+  deviceTokens     DeviceToken[]
+  notifications    Notification[]
+  notificationPref NotificationPreference?
+  messagesFrom     Message[]               @relation("MessageFrom")
+  messagesTo       Message[]               @relation("MessageTo")
+  auditLogs        AuditLog[]
+  refreshTokens    RefreshToken[]
 
   @@unique([orgId, email])
   @@index([orgId])
@@ -928,21 +932,84 @@ model Message {
 }
 
 model Notification {
-  id        String             @id @default(uuid()) @db.Uuid
-  orgId     String             @map("org_id") @db.Uuid
-  userId    String             @map("user_id") @db.Uuid
-  eventType String             @map("event_type")
-  channel   CommsChannel
-  payload   Json               @default("{}")
-  status    NotificationStatus @default(PENDING)
-  createdAt DateTime           @default(now()) @map("created_at")
-  updatedAt DateTime           @updatedAt @map("updated_at")
-  createdBy String?            @map("created_by") @db.Uuid
+  id                String             @id @default(uuid()) @db.Uuid
+  orgId             String             @map("org_id") @db.Uuid
+  userId            String             @map("user_id") @db.Uuid
+  eventType         String             @map("event_type")
+  channel           CommsChannel
+  payload           Json               @default("{}")
+  status            NotificationStatus @default(PENDING)
+  // ── Outbox (Increment 8, §8.5) ──
+  // The source domain event this notification was raised from (e.g. a GeofenceEvent row), used to
+  // build the dedup key + trace the trigger. source_id is the event-source row id.
+  sourceType        String?            @map("source_type")
+  sourceId          String?            @map("source_id") @db.Uuid
+  // Idempotency: one row per (event source, recipient, channel). The unique dedupe_key + INSERT …
+  // ON CONFLICT DO NOTHING (the Increment-5 pattern) makes a re-fired / replayed / concurrent
+  // trigger append zero duplicates and send exactly once.
+  dedupeKey         String             @unique @map("dedupe_key")
+  urgent            Boolean            @default(false) // bypasses quiet-hours deferral (time-critical alerts)
+  attempts          Int                @default(0) // transport send attempts so far (retry accounting)
+  lastError         String?            @map("last_error") // the final/most-recent transport error (FAILED diagnosis)
+  providerMessageId String?            @map("provider_message_id") // Twilio SID / SendGrid id / Expo ticket
+  // When set, the row is held until this instant (quiet-hours deferral OR retry backoff). NULL = due now.
+  scheduledFor      DateTime?          @map("scheduled_for")
+  sentAt            DateTime?          @map("sent_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  createdBy         String?            @map("created_by") @db.Uuid
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([orgId])
   @@index([userId])
+  // The drain scan picks up due work: PENDING/RETRYING rows whose scheduled_for has passed.
+  @@index([status, scheduledFor])
+}
+
+// (Increment 8, §8.5/§11.2) Push-delivery target a client app registers for a user. The real
+// registration surface the customer/driver app POSTs to (`POST /v1/device-tokens`); the Expo/FCM/APNs
+// transport reads ACTIVE rows for a recipient. A row per push token, globally unique (one physical
+// device = one token; on re-register the owner is reassigned via upsert). Distinct from the legacy
+// `Device` session record (§9.1) — see ARCHITECTURE.md (push-registration reconciliation).
+model DeviceToken {
+  id         String         @id @default(uuid()) @db.Uuid
+  orgId      String         @map("org_id") @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  platform   DevicePlatform
+  token      String         @unique // the Expo push token (globally unique per device)
+  active     Boolean        @default(true) // unregister = deactivate (kept for audit, excluded from sends)
+  lastSeenAt DateTime?      @map("last_seen_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  createdBy  String?        @map("created_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([userId])
+}
+
+// (Increment 8, §8.5) Per-user notification preferences — channel opt-outs + a quiet-hours window.
+// Quiet hours are stored as minutes-from-local-midnight in the user's IANA `timezone`; a window that
+// wraps midnight (e.g. 22:00→07:00) is supported. Absent row ⇒ all channels on, no quiet hours.
+model NotificationPreference {
+  id              String   @id @default(uuid()) @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  pushEnabled     Boolean  @default(true) @map("push_enabled")
+  smsEnabled      Boolean  @default(true) @map("sms_enabled")
+  emailEnabled    Boolean  @default(true) @map("email_enabled")
+  quietHoursStart Int?     @map("quiet_hours_start") // minutes from local midnight [0,1440)
+  quietHoursEnd   Int?     @map("quiet_hours_end") // minutes from local midnight [0,1440)
+  timezone        String   @default("America/Toronto")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdBy       String?  @map("created_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
 }
 
 // Immutable (PRD §8.7/§9.6) — a DB trigger blocks UPDATE/DELETE (injected in migration SQL).

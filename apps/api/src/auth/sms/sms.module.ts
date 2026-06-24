@@ -5,10 +5,16 @@ import { AUTH_CONFIG, type AuthConfig, loadAuthConfig } from '../../config/auth.
 /** Token for the selected SMS transport. */
 export const SMS_TRANSPORT = Symbol('SMS_TRANSPORT');
 
+/** Result of a send — carries the provider message id (Twilio SID) when one exists. */
+export interface SmsSendResult {
+  /** Twilio message SID (real send). Undefined for the console transport (no provider id). */
+  sid?: string;
+}
+
 /** Real, swappable transport contract. Both implementations actually send. */
 export interface SmsTransport {
   readonly name: string;
-  send(to: string, body: string): Promise<void>;
+  send(to: string, body: string): Promise<SmsSendResult>;
 }
 
 /**
@@ -18,8 +24,9 @@ export interface SmsTransport {
 export class ConsoleSmsTransport implements SmsTransport {
   readonly name = 'console';
   private readonly logger = new Logger('ConsoleSmsTransport');
-  async send(to: string, body: string): Promise<void> {
+  async send(to: string, body: string): Promise<SmsSendResult> {
     this.logger.log(`SMS → ${to}: ${body}`);
+    return {};
   }
 }
 
@@ -35,9 +42,10 @@ export class TwilioSmsTransport implements SmsTransport {
   ) {
     this.client = twilio(accountSid, authToken);
   }
-  async send(to: string, body: string): Promise<void> {
-    await this.client.messages.create({ to, from: this.from, body });
-    this.logger.log(`Twilio SMS sent to ${to}`);
+  async send(to: string, body: string): Promise<SmsSendResult> {
+    const message = await this.client.messages.create({ to, from: this.from, body });
+    this.logger.log(`Twilio SMS sent to ${to} (sid ${message.sid})`);
+    return { sid: message.sid };
   }
 }
 

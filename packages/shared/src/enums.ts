@@ -294,12 +294,14 @@ export enum CommsChannel {
   IN_APP = 'IN_APP',
 }
 
-/** [DERIVED] Notification.status (§9.6). */
+/** [DERIVED] Notification.status (§9.6; Increment 8 adds the outbox lifecycle states). */
 export enum NotificationStatus {
   PENDING = 'PENDING',
+  RETRYING = 'RETRYING', // a transport attempt failed; a bounded retry is scheduled
   SENT = 'SENT',
   DELIVERED = 'DELIVERED',
   FAILED = 'FAILED',
+  SUPPRESSED = 'SUPPRESSED', // deliberately not sent — opt-out or (config) quiet-hours
 }
 
 /** [DERIVED] Device.platform (§9.6). */

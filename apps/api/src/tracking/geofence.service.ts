@@ -19,6 +19,22 @@ const WIRE_TYPE: Partial<Record<GeofenceEventType, LiveGeofenceEvent['type']>> =
 };
 
 /**
+ * A geofence event that was NEWLY written this evaluation (one per stop per type). Returned to the
+ * caller so the predictive layer can raise notifications off it (Increment 8) — carries the durable
+ * row id (the notification dedup source) + the ETA/distance for the message templates.
+ */
+export interface FiredGeofence {
+  geofenceEventId: string;
+  type: GeofenceEventType;
+  stopId: string;
+  orderId: string | null;
+  vehicleId: string;
+  occurredAt: Date;
+  etaSeconds: number;
+  distanceMeters: number;
+}
+
+/**
  * Geofence evaluation (PRD §6.4 / §9.5) — runs right after the ETA recompute on a genuine advance,
  * reusing the ETA's already-computed distance + ETA (no extra PostGIS round-trip).
  *
@@ -46,7 +62,7 @@ export class GeofenceService {
     private readonly realtime: RealtimePublisher,
   ) {}
 
-  async evaluate(orgId: string, vehicleId: string, ctx: ActiveStopEta): Promise<void> {
+  async evaluate(orgId: string, vehicleId: string, ctx: ActiveStopEta): Promise<FiredGeofence[]> {
     const g = this.config.geofence;
     const toFire: GeofenceEventType[] = [];
     if (ctx.distanceMeters <= g.approachingRadiusM || ctx.etaSeconds <= g.approachingEtaSec) {
@@ -56,10 +72,11 @@ export class GeofenceService {
       toFire.push(GeofenceEventType.ARRIVED);
     }
 
+    const fired: FiredGeofence[] = [];
     for (const type of toFire) {
       const occurredAt = new Date();
-      const inserted = await this.insertOnce(orgId, ctx.stopId, type, occurredAt);
-      if (!inserted) continue; // already fired for this stop+type — no re-fire, no emit (idempotent)
+      const geofenceEventId = await this.insertOnce(orgId, ctx.stopId, type, occurredAt);
+      if (!geofenceEventId) continue; // already fired for this stop+type — no re-fire, no emit (idempotent)
 
       // Map to the wire type EXPLICITLY (only APPROACHING/ARRIVED are emitted this phase; DEPARTED is
       // modeled but never pushed to `toFire`). An exhaustive map — not a 2-way ternary — so a future
@@ -76,20 +93,36 @@ export class GeofenceService {
       };
       // Customer STOP room (stop-specific) + org fleet room — same scoping as the ETA emit.
       this.realtime.publishGeofence(orgId, ctx.stopId, payload);
+
+      // Hand the newly-written event to the predictive layer to raise notifications (Increment 8).
+      fired.push({
+        geofenceEventId,
+        type,
+        stopId: ctx.stopId,
+        orderId: ctx.orderId,
+        vehicleId,
+        occurredAt,
+        etaSeconds: ctx.etaSeconds,
+        distanceMeters: ctx.distanceMeters,
+      });
     }
+    return fired;
   }
 
   /**
-   * Idempotent insert of one geofence event. Returns true iff a NEW row was written (count === 1);
-   * false on conflict (the type already fired for this stop). `created_by` is NULL — a
-   * system-detected event has no actor. Explicit `org_id`.
+   * Idempotent insert of one geofence event. Returns the new row id iff a NEW row was written;
+   * null on conflict (the type already fired for this stop). `created_by` is NULL — a
+   * system-detected event has no actor. Explicit `org_id`. The RETURNING id (present only on a real
+   * insert, empty on conflict) doubles as the once-per-stop guard AND the notification dedup source.
    */
-  private async insertOnce(orgId: string, stopId: string, type: GeofenceEventType, occurredAt: Date): Promise<boolean> {
-    const count = await this.prisma.$executeRaw(Prisma.sql`
+  private async insertOnce(orgId: string, stopId: string, type: GeofenceEventType, occurredAt: Date): Promise<string | null> {
+    const id = randomUUID();
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       INSERT INTO "GeofenceEvent" ("id", "org_id", "route_stop_id", "type", "occurred_at", "created_at", "updated_at", "created_by")
-      VALUES (${randomUUID()}::uuid, ${orgId}::uuid, ${stopId}::uuid, ${type}::"GeofenceEventType", ${occurredAt}, now(), now(), NULL)
+      VALUES (${id}::uuid, ${orgId}::uuid, ${stopId}::uuid, ${type}::"GeofenceEventType", ${occurredAt}, now(), now(), NULL)
       ON CONFLICT ("route_stop_id", "type") DO NOTHING
+      RETURNING id::text AS "id"
     `);
-    return count === 1;
+    return rows[0]?.id ?? null;
   }
 }

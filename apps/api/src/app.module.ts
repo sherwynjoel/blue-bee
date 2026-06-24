@@ -9,6 +9,7 @@ import { OrdersModule } from './orders/orders.module';
 import { LogisticsModule } from './logistics/logistics.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -18,8 +19,10 @@ import { RealtimeModule } from './realtime/realtime.module';
  * location ingestion + Redis last-known + Timescale history + scoped reads) + realtime
  * (Increment 6 — Socket.IO scoped channels + signed per-vehicle customer token + fleet
  * channel) + server-side ETA + geofence (Increment 7 — in-house ETA range behind the
- * EtaEstimator seam + geofence events on the realtime channels). Notification delivery +
- * the driver app and billing land later.
+ * EtaEstimator seam + geofence events on the realtime channels) + notifications
+ * (Increment 8 — matrix-driven engine + outbox delivering customer alerts across the
+ * SMS/email/push transport seam, plus device-token registration). The driver app and
+ * billing land later.
  */
 @Module({
   imports: [
@@ -30,6 +33,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     AuthModule,
     OrdersModule,
     RealtimeModule,
+    NotificationsModule,
     TrackingModule,
     LogisticsModule,
     HealthModule,

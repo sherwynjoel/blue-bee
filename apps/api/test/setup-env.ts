@@ -19,3 +19,18 @@ process.env.SMS_TRANSPORT = 'console';
 // Tests issue many OTPs from one IP; raise the per-IP cap so it doesn't gate the suite
 // (per-phone cooldown is still exercised by the rate-limit test).
 process.env.OTP_RATE_PER_IP = '100000';
+
+// ── Notifications (Increment 8) ── real-but-local transports (console email/push; no SENDGRID/EXPO
+// creds ⇒ no external calls), deterministic retry: tiny backoff + 2 attempts so the retry e2e
+// exhausts/recovers without timers, and NO background drain scan (drained explicitly in specs).
+process.env.PUSH_TRANSPORT = 'console';
+process.env.NOTIF_MAX_ATTEMPTS = '2';
+process.env.NOTIF_RETRY_BACKOFF_MS = '1';
+process.env.NOTIF_RETRY_SCAN_MS = '0';
+process.env.NOTIF_SEND_TIMEOUT_MS = '4000';
+// Disable the background send kick so specs drive the drain explicitly (deterministic, no races).
+process.env.NOTIF_KICK_ON_DISPATCH = 'false';
+// Test-env ONLY: mark just `geofence.approaching` urgent so a single ping exercises BOTH the
+// urgent-bypass (approaching) and the quiet-hours-defer (arrived) paths. Production keeps both
+// geofence alerts urgent (the config default).
+process.env.NOTIF_URGENT_EVENT_TYPES = 'geofence.approaching';

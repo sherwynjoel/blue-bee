@@ -25,7 +25,7 @@ Entity groups:
 Every row carries `id (uuid)`, `org_id`, `created_at`, `updated_at`, `created_by`.
 
 ## Real-time tracking path (PRD §6.2)
-Driver app emits **batched GPS pings** (adaptive duty cycle; faster near a stop, paused off-shift; offline queue) → **stateless ingestion** → **Redis geo** (last-known) + **Timescale** (history) → **Socket.IO** channels → customer (one vehicle, **token-scoped**) and owner + console (all org vehicles). Server recomputes **ETA per ping cluster** (in-house behind the `EtaEstimator` seam — Increment 7; a Google Routes / Mapbox adapter slots in later per §11.2, see the reconciliation note below); **geofence** events → durable `GeofenceEvent` rows + realtime events (the notification service, a later increment, consumes those). The customer channel is scoped by a short-lived signed token to one vehicle for the active stop only. Degrade gracefully: if the live channel drops, fall back to polling last-known + the status timeline.
+Driver app emits **batched GPS pings** (adaptive duty cycle; faster near a stop, paused off-shift; offline queue) → **stateless ingestion** → **Redis geo** (last-known) + **Timescale** (history) → **Socket.IO** channels → customer (one vehicle, **token-scoped**) and owner + console (all org vehicles). Server recomputes **ETA per ping cluster** (in-house behind the `EtaEstimator` seam — Increment 7; a Google Routes / Mapbox adapter slots in later per §11.2, see the reconciliation note below); **geofence** events → durable `GeofenceEvent` rows + realtime events (the notification engine, Increment 8, consumes those → customer push/SMS/email). The customer channel is scoped by a short-lived signed token to one vehicle for the active stop only. Degrade gracefully: if the live channel drops, fall back to polling last-known + the status timeline.
 
 ## Phase-1 data slice (specialty MVP)
 Implement now: Organization/User/Role, Account/Site, Order/OrderLine/Item/Tag/Inspection/Photo/Quote/CustodyEvent, Vehicle/Driver/Shift/Route/RouteStop/GpsPing/GeofenceEvent/ProofOfDelivery, Invoice/Payment/Claim, Message/Notification/AuditLog/Device. Defer linen/resident/production tables to Phase 2 (you may model them but leave them unused).
@@ -118,6 +118,54 @@ how Increment 4's sequencer is in-house behind the `RouteOptimizer` seam. A mana
 can replace `PostgisEtaEstimator` later without touching any caller. **No notification delivery** this
 increment (also a swappable seam, §10.2) — the durable `GeofenceEvent` row + the realtime event ARE
 the triggers the notifications increment will consume; there is intentionally **no stub sender**.
+
+## Notifications (Increment 8 — matrix-driven engine + outbox + transport seam)
+The durable `GeofenceEvent` rows from Increment 7 become **real customer alerts** (PRD §8.5/§17.2/§6.4
+US-T2 — "truck ~5 min away" + "arrived"). A NEWLY-written geofence crossing is handed (degradation-
+wrapped) to `NotificationService.dispatchGeofence`, which runs this pipeline per **(recipient × channel)**:
+
+- **Recipient resolution** (`NotificationRecipientsService`) — the **inverse of the Increment-6 read
+  scope**: the owning customers of an order are users holding a CUSTOMER-role grant (`RESIDENTIAL_CUSTOMER`/
+  `ACCOUNT_ADMIN`/`ACCOUNT_STAFF`) scoped to the order's **account** (or its **site**). Server-internal →
+  **explicit `org_id`** on every query; never a cross-account or cross-org recipient.
+- **The §17.2 event→channel matrix** is **config** (`NOTIF_MATRIX_*`), not scattered `if`s — adding a row
+  (booking/quote/picked-up/delivered/invoice…) is data. The two geofence alerts default to **Push+SMS+Email**.
+- **Preferences + quiet hours** (`NotificationPreference`, pure `notification-policy`/`quiet-hours`): channel
+  opt-outs → `SUPPRESSED`; non-urgent events inside a recipient's quiet-hours window are **deferred**
+  (`scheduled_for` = window end, DST-correct) or suppressed per `NOTIF_QUIET_HOURS_POLICY`; **urgent** events
+  (`NOTIF_URGENT_EVENT_TYPES`, the geofence alerts by default) **bypass** quiet hours.
+- **Outbox + idempotency** — one `Notification` row per **(event source × recipient × channel)**, keyed by a
+  unique `dedupe_key` + `INSERT … ON CONFLICT DO NOTHING` (the Increment-5 pattern, the second line of
+  defense behind the once-per-stop `GeofenceEvent`). Lifecycle `PENDING → SENT | RETRYING | FAILED |
+  SUPPRESSED` with `attempts`/`last_error`/`provider_message_id`/`sent_at`/`scheduled_for`.
+- **Delivery is OFF the request thread.** Dispatch only **enqueues** (fast, bounded, awaited); a
+  `NotificationProcessor` drain (kicked in the background on enqueue, and run by the prod
+  `NOTIF_RETRY_SCAN_MS` scan) does the sending — so a transport call can never add latency to
+  `POST /locations:batch`. Each row is **atomically claimed** (a conditional `updateMany` that leases
+  `scheduled_for` forward) before sending, so concurrent drains across instances **never double-send**.
+  Bounded retry with linear backoff; a per-attempt timeout bounds a hung provider; per-channel isolation
+  (SMS failing never blocks email/push). `attemptSend` **never throws**.
+- **Three real transports behind `NOTIFICATION_TRANSPORTS`** — **SMS** reuses the Increment-2 `SMS_TRANSPORT`
+  (Twilio; no second client), **Email** = a real SendGrid v3 call (`SENDGRID_SANDBOX`), **Push** = a real
+  Expo Push call (`PUSH_TRANSPORT=expo`). Each has a **real local "console" fallback** (the Increment-2
+  pattern — logs + returns a synthetic id, **not a mock**) selected when no provider creds, so the engine
+  runs end-to-end without external accounts. MessageBird/SES/native FCM-APNs are the documented swap-ins.
+- **Device registration** — `POST/DELETE /v1/device-tokens` (`DeviceToken`): a client registers/deactivates
+  its push token, **user-scoped**; the Expo transport reads a recipient's ACTIVE tokens.
+
+**As-built ↔ PRD reconciliations (Increment 8).**
+- *Push is partly modeled, by design.* The `DeviceToken` registration endpoint **and** the Expo transport
+  are **real + tested**; the only deferred link is a real phone receiving the push (waits on the customer-app
+  increment). There is **no mock push client** either way.
+- *Provider live-proof needs creds.* The engine + outbox + dedup + preferences + quiet-hours + retry +
+  scoping + degradation are fully proven (unit + e2e via the real-but-local console transports). The
+  Twilio/SendGrid/Expo provider paths are real code (QC-verified) selected by env; executing them against
+  live providers needs test/sandbox creds (a credentialed CI/founder run — see the handoff).
+- *Matrix vs §17.2.* §17.2's geofence row is Push+SMS; we additionally deliver **Email** (configurable per
+  event) so the customer also gets a durable confirmation.
+- *`DeviceToken` vs the legacy `Device`.* §9.1 already had a `Device` record carrying an optional
+  `push_token` for session tracking; Increment 8 adds the purpose-built `DeviceToken` (unique token, `active`
+  flag, platform) as the real registration surface rather than overload `Device`, which is left untouched.
 
 ## NFRs that shape the code (PRD §12)
 Live location end-to-end < 3s p95; map updates ≥ every 30s within 5 km of a stop. API reads < 300ms / writes < 800ms p95. TLS everywhere + encryption at rest. **PCI handled by tokenizing through Stripe (no raw PAN).** JWT short-lived + RBAC row-scoping. PIPEDA / PHIPA-adjacent care for resident + location data. Retention: pings hot 7d → downsampled 90d; POD 24mo; financial 7y.

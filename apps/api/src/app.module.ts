@@ -7,13 +7,15 @@ import { SmsModule } from './auth/sms/sms.module';
 import { AuthModule } from './auth/auth.module';
 import { OrdersModule } from './orders/orders.module';
 import { LogisticsModule } from './logistics/logistics.module';
+import { TrackingModule } from './tracking/tracking.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
  * the Postgres/Redis infrastructure + health + auth (Increment 2) + orders
  * (Increment 3 — specialty book→intake→quote→approve) + logistics (Increment 4 —
- * Route/RouteStop backbone + §5.4 stop state machine). The live tracking gateway
- * (Increment 5) and billing land later.
+ * Route/RouteStop backbone + §5.4 stop state machine) + tracking (Increment 5 —
+ * location ingestion + Redis last-known + Timescale history + scoped reads). The
+ * realtime gateway (Socket.IO + ETA + geofence — Increment 6) and billing land later.
  */
 @Module({
   imports: [
@@ -24,6 +26,7 @@ import { LogisticsModule } from './logistics/logistics.module';
     AuthModule,
     OrdersModule,
     LogisticsModule,
+    TrackingModule,
     HealthModule,
   ],
 })

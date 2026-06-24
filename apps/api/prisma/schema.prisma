@@ -762,6 +762,11 @@ model GpsPing {
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
   @@id([id, recordedAt])
+  // Dedup key (Increment 5): a vehicle has at most one ping per recorded_at instant, so a
+  // replayed/duplicate batch is a no-op via INSERT … ON CONFLICT DO NOTHING (§6.2 robust
+  // ingestion). Includes the partition column (recorded_at), satisfying Timescale's
+  // unique-index-must-cover-partition-key rule.
+  @@unique([vehicleId, recordedAt])
   @@index([orgId])
   @@index([shiftId])
   @@index([vehicleId])

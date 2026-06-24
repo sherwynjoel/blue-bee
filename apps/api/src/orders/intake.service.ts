@@ -63,9 +63,14 @@ export class IntakeService {
 
   /**
    * Authorized CSR/OWNER "received at plant" — drives the order along the linear pickup
-   * spine to PICKED_UP so intake can proceed WITHOUT fabricating a driver/GPS (the real
-   * PICKUP_EN_ROUTE/PICKED_UP driver scans land in Increment 4). Each step is a legal,
-   * atomic, audited §5.1 transition; on PICKED_UP every item gets a real PICKED_UP custody event.
+   * spine to PICKED_UP so intake can proceed WITHOUT a route. Each step is a legal, atomic,
+   * audited §5.1 transition; on PICKED_UP every item gets a real PICKED_UP custody event.
+   *
+   * RECONCILIATION (Increment 4): the PRIMARY pickup path is now a real RouteStop — completing
+   * a pickup stop drives SCHEDULED_PICKUP → PICKUP_EN_ROUTE → PICKED_UP via the same
+   * OrderStateMachine (see logistics/route-stop.service.ts). This endpoint is KEPT as an
+   * explicit authorized-manual fallback for orders that arrive without a dispatched route
+   * (walk-in / customer drop-off / ops override) — same legal spine, no fabricated driver.
    */
   async receivedAtPlant(principal: RequestPrincipal, orderId: string, dto: ReceivedAtPlantDto) {
     const order = await this.access.requireOrderForWrite(principal, orderId);

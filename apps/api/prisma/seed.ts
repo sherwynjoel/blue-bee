@@ -50,7 +50,21 @@ const ID = {
   quote: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
   priceListDefault: 'f0000000-0000-4000-8000-000000000001',
   priceListItemDefault: 'f0000000-0000-4000-8000-000000000002',
+  // Increment 4 — extra Account-A sites with distinct GTA geo so the route sequencer has
+  // real, distinct PostGIS points to order. (id, lng, lat)
+  siteNorth: 'f1000000-0000-4000-8000-000000000001', // North York
+  siteEast: 'f1000000-0000-4000-8000-000000000002', // Scarborough
+  siteWest: 'f1000000-0000-4000-8000-000000000003', // Etobicoke
+  driverUser2: 'f1000000-0000-4000-8000-000000000010', // 2nd driver (for stop-reassign tests)
+  driverRole2: 'f1000000-0000-4000-8000-000000000011',
 } as const;
+
+// Distinct GTA coordinates (WGS84 lng/lat) for the sequencer fixtures.
+const GTA_SITES = [
+  { id: ID.siteNorth, name: 'Demo — North York site', lng: -79.4111, lat: 43.7615 },
+  { id: ID.siteEast, name: 'Demo — Scarborough site', lng: -79.2318, lat: 43.7731 },
+  { id: ID.siteWest, name: 'Demo — Etobicoke site', lng: -79.5435, lat: 43.6205 },
+];
 
 // Toronto City Hall — a real GTA coordinate for the demo site (WGS84 lng/lat).
 const SITE_LNG = -79.3839;
@@ -478,10 +492,41 @@ async function seedPricing(): Promise<void> {
   console.log('[seed] Pricing ready: org default rate $6.50/sqft; Account B override $5.00/sqft (override → list → base).');
 }
 
+// ─────────────────────── Increment 4 — logistics fixtures ───────────────────────
+// 3 Account-A sites with distinct GTA geo (sequencer), and a 2nd driver-capable user
+// (stop reassignment). Vehicles/drivers/shifts/routes themselves are created via the API
+// in the e2e to exercise those endpoints.
+async function seedLogistics(): Promise<void> {
+  for (const s of GTA_SITES) {
+    await prisma.site.upsert({
+      where: { id: s.id },
+      update: {},
+      create: { id: s.id, orgId: ID.org, accountId: ID.account, name: s.name, createdBy: ID.owner },
+    });
+    await prisma.$executeRaw`
+      UPDATE "Site" SET geo = ST_SetSRID(ST_MakePoint(${s.lng}, ${s.lat}), 4326)::geography
+      WHERE id = ${s.id}::uuid`;
+  }
+
+  await prisma.user.upsert({
+    where: { id: ID.driverUser2 },
+    update: { phone: '+14165550007', name: 'Demo Driver 2' },
+    create: { id: ID.driverUser2, orgId: ID.org, name: 'Demo Driver 2', phone: '+14165550007', email: 'driver2@bluebee.example', authProviders: ['phone'], status: UserStatus.ACTIVE, createdBy: ID.owner },
+  });
+  await prisma.userRole.upsert({
+    where: { id: ID.driverRole2 },
+    update: {},
+    create: { id: ID.driverRole2, orgId: ID.org, userId: ID.driverUser2, role: RoleType.DRIVER, scope: RoleScope.ORG, scopeId: null, createdBy: ID.owner },
+  });
+
+  console.log('[seed] Logistics ready: 3 Account-A geo sites (N/E/W) + a 2nd driver user (+14165550007).');
+}
+
 async function main(): Promise<void> {
   await seedDemoOrder();
   await seedAuthFixtures();
   await seedPricing();
+  await seedLogistics();
 }
 
 main()

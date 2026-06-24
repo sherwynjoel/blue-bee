@@ -42,6 +42,9 @@ const FULL_INCLUDE = {
     },
   },
   quotes: { orderBy: { createdAt: 'desc' as const } },
+  // Increment 4: the order's route stops (status/eta) — the "track my truck" data, surfaced
+  // here so a customer reading their own order sees its pickup stop's progress (row-scoped).
+  routeStops: { orderBy: { createdAt: 'asc' as const }, select: { id: true, kind: true, seq: true, status: true, eta: true, arrivedAt: true, completedAt: true, routeId: true } },
 } satisfies Prisma.OrderInclude;
 
 @Injectable()

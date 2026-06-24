@@ -685,42 +685,49 @@ model Shift {
 }
 
 model Route {
-  id        String      @id @default(uuid()) @db.Uuid
-  orgId     String      @map("org_id") @db.Uuid
-  date      DateTime    @db.Date
-  driverId  String?     @map("driver_id") @db.Uuid
-  vehicleId String?     @map("vehicle_id") @db.Uuid
-  status    RouteStatus @default(PLANNED)
-  optimized Boolean     @default(false)
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
-  createdBy String?     @map("created_by") @db.Uuid
+  id        String                                 @id @default(uuid()) @db.Uuid
+  orgId     String                                 @map("org_id") @db.Uuid
+  date      DateTime                               @db.Date
+  driverId  String?                                @map("driver_id") @db.Uuid
+  vehicleId String?                                @map("vehicle_id") @db.Uuid
+  status    RouteStatus                            @default(PLANNED)
+  optimized Boolean                                @default(false)
+  // Depot/start point for the in-house sequencer (PostGIS distance origin). Set via raw
+  // SQL (Unsupported geography). Increment 4 — additive; null ⇒ sequence from the first stop.
+  startGeo  Unsupported("geography(Point, 4326)")? @map("start_geo")
+  createdAt DateTime                               @default(now()) @map("created_at")
+  updatedAt DateTime                               @updatedAt @map("updated_at")
+  createdBy String?                                @map("created_by") @db.Uuid
 
-  driver  Driver?     @relation(fields: [driverId], references: [id])
-  vehicle Vehicle?    @relation(fields: [vehicleId], references: [id])
-  stops   RouteStop[]
+  driver    Driver?     @relation(fields: [driverId], references: [id])
+  vehicle   Vehicle?    @relation(fields: [vehicleId], references: [id])
+  stops     RouteStop[]
+  manifests Manifest[]
 
   @@index([orgId])
   @@index([date])
 }
 
 model RouteStop {
-  id          String          @id @default(uuid()) @db.Uuid
-  orgId       String          @map("org_id") @db.Uuid
-  routeId     String          @map("route_id") @db.Uuid
-  seq         Int
-  accountId   String?         @map("account_id") @db.Uuid
-  siteId      String?         @map("site_id") @db.Uuid
-  orderId     String?         @map("order_id") @db.Uuid
-  kind        RouteStopKind   @default(PICKUP)
-  timeWindow  Json?           @map("time_window")
-  status      RouteStopStatus @default(PENDING)
-  eta         DateTime?
-  arrivedAt   DateTime?       @map("arrived_at")
-  completedAt DateTime?       @map("completed_at")
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
-  createdBy   String?         @map("created_by") @db.Uuid
+  id              String          @id @default(uuid()) @db.Uuid
+  orgId           String          @map("org_id") @db.Uuid
+  routeId         String          @map("route_id") @db.Uuid
+  seq             Int
+  accountId       String?         @map("account_id") @db.Uuid
+  siteId          String?         @map("site_id") @db.Uuid
+  orderId         String?         @map("order_id") @db.Uuid
+  kind            RouteStopKind   @default(PICKUP)
+  timeWindow      Json?           @map("time_window")
+  status          RouteStopStatus @default(PENDING)
+  // Reason code recorded when a stop is FAILED or SKIPPED (PRD §5.4/§6.3 exceptions).
+  // Required by the API on those transitions. Increment 4 — additive, nullable.
+  exceptionReason String?         @map("exception_reason")
+  eta             DateTime?
+  arrivedAt       DateTime?       @map("arrived_at")
+  completedAt     DateTime?       @map("completed_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdBy       String?         @map("created_by") @db.Uuid
 
   route          Route            @relation(fields: [routeId], references: [id], onDelete: Cascade)
   account        Account?         @relation(fields: [accountId], references: [id])
@@ -728,6 +735,7 @@ model RouteStop {
   order          Order?           @relation(fields: [orderId], references: [id])
   geofenceEvents GeofenceEvent[]
   pod            ProofOfDelivery?
+  manifests      Manifest[]
 
   @@unique([routeId, seq])
   @@index([orgId])
@@ -792,6 +800,29 @@ model ProofOfDelivery {
   photos    Photo[]
 
   @@index([orgId])
+}
+
+// PRD §9.5 Manifest — the expected items/orders for a route or stop (load sheet / pickup
+// check-list). Increment 4 added this (Increment 1 deferred it, like PriceList); Phase-1
+// specialty manifests list the order's items expected at a pickup stop. `lines` is a jsonb
+// snapshot generated at a point in time. Bound to a route OR a single stop.
+model Manifest {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  routeId     String?  @map("route_id") @db.Uuid
+  routeStopId String?  @map("route_stop_id") @db.Uuid
+  lines       Json     @default("[]")
+  generatedAt DateTime @default(now()) @map("generated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   String?  @map("created_by") @db.Uuid
+
+  route     Route?     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  routeStop RouteStop? @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([routeId])
+  @@index([routeStopId])
 }
 
 // ─────────────────────────────── billing, comms & system (§9.6) ───────────────────────────────

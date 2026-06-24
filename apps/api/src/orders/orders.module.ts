@@ -29,5 +29,8 @@ import { OrderStateMachine } from './state-machine.service';
     MediaService,
     IdempotencyInterceptor,
   ],
+  // Reused by the logistics module (Increment 4): the order state machine + parent-ownership
+  // gate drive the pickup leg, and the audit writer is shared.
+  exports: [OrderStateMachine, OrderAccessService, AuditService],
 })
 export class OrdersModule {}

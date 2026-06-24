@@ -1,0 +1,31 @@
+# Local dev infra for Blue Bee — start with `npm run infra:up`.
+# Postgres (PostGIS + TimescaleDB) and Redis. Local only — not production config.
+services:
+  postgres:
+    image: timescale/timescaledb-ha:pg16
+    container_name: bluebee-postgres
+    environment:
+      POSTGRES_USER: bluebee
+      POSTGRES_PASSWORD: bluebee
+      POSTGRES_DB: bluebee
+    ports:
+      - "5432:5432"
+    volumes:
+      - bluebee_pg:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bluebee"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bluebee-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - bluebee_redis:/data
+
+volumes:
+  bluebee_pg:
+  bluebee_redis:

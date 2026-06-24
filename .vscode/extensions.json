@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "expo.vscode-expo-tools",
+    "Prisma.prisma",
+    "bradlc.vscode-tailwindcss"
+  ]
+}

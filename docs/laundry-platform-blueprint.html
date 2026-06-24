@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cascade — Commercial Laundry Platform Blueprint</title>
+<style>
+  :root{
+    --navy:#0d2440; --navy2:#163a5f; --teal:#0fa3a3; --blue:#2563eb;
+    --gold:#e6a817; --green:#15a36a; --red:#d64545; --amber:#e08a1e; --purple:#6b4bc0;
+    --bg:#f5f7fb; --card:#ffffff; --line:#e3e8f0; --ink:#1c2a3a; --mut:#5d6b7e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+  a{color:inherit}
+  /* header */
+  header{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:34px 0 26px}
+  header .tagline{color:#9fc6e0;font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+  header h1{font-size:30px;margin:8px 0 6px;font-weight:740;letter-spacing:-.5px}
+  header p.sub{color:#c7d8e8;font-size:15px;max-width:820px}
+  header .meta{margin-top:14px;display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:#9fc6e0}
+  header .meta b{color:#fff;font-weight:600}
+  /* nav */
+  nav.tabs{position:sticky;top:0;z-index:50;background:rgba(13,36,64,.97);backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,.08)}
+  nav.tabs .wrap{display:flex;gap:4px;overflow-x:auto}
+  nav.tabs a{color:#bcd0e2;text-decoration:none;font-size:13px;font-weight:600;padding:13px 12px;white-space:nowrap;border-bottom:3px solid transparent;transition:.15s}
+  nav.tabs a:hover{color:#fff}
+  nav.tabs a.on{color:#fff;border-bottom-color:var(--teal)}
+  section{padding:40px 0 8px;scroll-margin-top:54px}
+  h2{font-size:22px;font-weight:720;letter-spacing:-.3px;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+  h2 .ix{background:var(--navy);color:#fff;font-size:13px;width:26px;height:26px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+  .lead{color:var(--mut);font-size:14.5px;max-width:880px;margin:6px 0 20px}
+  h3{font-size:15px;font-weight:700;margin:22px 0 10px;color:var(--navy)}
+  /* cards & grids */
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:16px;position:relative;overflow:hidden}
+  .stat .k{font-size:25px;font-weight:760;color:var(--navy);letter-spacing:-.5px}
+  .stat .l{font-size:12.5px;color:var(--mut);margin-top:3px;line-height:1.35}
+  .stat .t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal);margin-bottom:7px}
+  .stat .bar{position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--teal)}
+  /* verdict / hero band */
+  .band{background:linear-gradient(120deg,#0d2440,#15466e);color:#fff;border-radius:15px;padding:22px 24px;margin-top:8px;border:1px solid #1f6b46}
+  .band .badge{display:inline-block;background:var(--gold);color:#3a2c00;font-weight:800;font-size:12px;letter-spacing:.06em;padding:5px 12px;border-radius:20px;text-transform:uppercase}
+  .band h3{color:#fff;font-size:18px;margin:12px 0 8px}
+  .band p{font-size:14px;color:#d4e4f1;max-width:920px}
+  .band ul{margin:12px 0 0 0;list-style:none;display:grid;gap:7px}
+  .band li{font-size:13.5px;color:#cfe0ee;padding-left:22px;position:relative}
+  .band li:before{content:"\25B8";position:absolute;left:4px;color:var(--teal)}
+  /* tables */
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th{background:var(--navy);color:#fff;text-align:left;padding:10px 12px;font-weight:600;font-size:12px}
+  td{padding:9px 12px;border-top:1px solid var(--line);vertical-align:top}
+  tr:nth-child(even) td{background:#fafbfd}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.03em}
+  .p-anchor{background:#e6f6ef;color:#0c7a4d} .p-exp{background:#eaf0fe;color:#2451c4} .p-vision{background:#fdeee5;color:#c2611a} .p-feat{background:#f0eefb;color:#6b4bc0}
+  .yes{color:var(--green);font-weight:800}.no{color:#cdd4dd;font-weight:700}.part{color:var(--amber);font-weight:700;font-size:12px}
+  .win{color:var(--teal);font-weight:800}
+  /* callout */
+  .callout{border-left:4px solid var(--amber);background:#fff8ec;border-radius:0 10px 10px 0;padding:13px 15px;font-size:13.5px;color:#6b4e16}
+  .callout.red{border-color:var(--red);background:#fdf0f0;color:#7d2b2b}
+  .callout.teal{border-color:var(--teal);background:#eefafa;color:#0b5d5d}
+  .callout b{color:inherit}
+  /* chips row */
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .chip{font-size:11px;font-weight:600;padding:4px 9px;border-radius:7px;background:#eef2f8;color:var(--navy);border:1px solid var(--line)}
+  /* surface selector */
+  .ssel{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .scard{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;transition:.15s}
+  .scard:hover{border-color:var(--teal);transform:translateY(-2px)}
+  .scard.on{border-color:var(--teal);box-shadow:0 6px 18px rgba(15,163,163,.16);background:#f4fdfd}
+  .scard .ic{font-size:22px}
+  .scard .nm{font-weight:720;font-size:14px;color:var(--navy);margin-top:6px}
+  .scard .pf{font-size:11px;color:var(--mut);margin-top:2px}
+  .screens{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+  .screen{border:1px solid var(--line);border-radius:11px;background:var(--card);padding:13px}
+  .screen .sh{font-weight:700;font-size:13.5px;color:var(--navy);display:flex;align-items:center;gap:7px}
+  .screen .sd{font-size:12px;color:var(--mut);margin-top:5px}
+  .screen .tag{font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:5px;background:#e6f6ef;color:#0c7a4d;margin-left:auto}
+  .screen .tag.p2{background:#eaf0fe;color:#2451c4}.screen .tag.p3{background:#f0eefb;color:#6b4bc0}
+  /* lifecycle flow */
+  .lcsel{display:inline-flex;background:#e9eef6;border-radius:9px;padding:3px;margin:4px 0 16px;flex-wrap:wrap}
+  .lcsel button{border:0;background:transparent;padding:8px 14px;font-size:12.5px;font-weight:700;color:var(--mut);border-radius:7px;cursor:pointer}
+  .lcsel button.on{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .node{background:#f4f7fc;border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap}
+  .node.start{background:#e6f6ef;border-color:#bfe6d2;color:#0c7a4d}
+  .node.end{background:#eaf0fe;border-color:#cdddfb;color:#2451c4}
+  .node.branch{background:#fdf0f0;border-color:#f3cccc;color:#a3382f}
+  .node.track{background:#eefafa;border-color:#bfeaea;color:#0b5d5d}
+  .arrow{color:var(--mut);font-weight:800;font-size:13px}
+  .flow-note{font-size:12px;color:var(--mut);margin-top:10px}
+  /* diagram (architecture / tracking) boxes */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px;overflow-x:auto}
+  .layer{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+  .box{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;text-align:center;background:#fafbfd;min-width:120px}
+  .box .bt{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--teal);display:block;margin-bottom:3px}
+  .box.client{background:#eef6ff;border-color:#cfe0f5}
+  .box.svc{background:#f4fdfd;border-color:#bfeaea}
+  .box.data{background:#fff8ec;border-color:#f0e0bf}
+  .box.ext{background:#f6f2fc;border-color:#e0d6f3}
+  .vstep{text-align:center;color:var(--mut);font-weight:800;margin:2px 0}
+  /* tracking demo */
+  .trackdemo{background:linear-gradient(135deg,#0d2440,#163a5f);border-radius:14px;padding:18px;color:#fff;position:relative}
+  .trackdemo .road{position:relative;height:120px;margin:14px 0 6px;border-radius:10px;background-color:#13314f;overflow:hidden;border:1px solid rgba(255,255,255,.1)}
+  .road .line{position:absolute;top:50%;left:3%;right:3%;height:3px;background:repeating-linear-gradient(90deg,#3a6391 0 14px,transparent 14px 26px);transform:translateY(-50%)}
+  .pin{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:20px}
+  .pin.home{left:6%}.pin.plant{right:6%}
+  .truck{position:absolute;top:50%;left:6%;transform:translate(-50%,-50%);font-size:24px;transition:left .25s linear}
+  .trackbar{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#cfe0ee;margin-top:6px}
+  .trackbar .eta{font-weight:800;color:#fff;font-size:15px}
+  .tl{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+  .tl .st{font-size:11px;font-weight:700;padding:4px 9px;border-radius:7px;background:rgba(255,255,255,.08);color:#9fc6e0}
+  .tl .st.done{background:var(--teal);color:#04312f}
+  .tl .st.now{background:var(--gold);color:#3a2c00}
+  .btn{background:var(--teal);color:#04312f;border:0;border-radius:8px;padding:8px 14px;font-weight:800;font-size:12.5px;cursor:pointer;margin-top:12px}
+  /* erd */
+  .erd{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+  .ent{border:1px solid var(--line);border-radius:11px;background:var(--card);overflow:hidden}
+  .ent .eh{background:var(--navy);color:#fff;font-weight:700;font-size:12.5px;padding:7px 11px}
+  .ent .ef{font-size:11.5px;color:var(--mut);padding:4px 11px;border-top:1px solid var(--line)}
+  .ent .ef b{color:var(--ink);font-weight:600}
+  .ent.core .eh{background:var(--teal);color:#04312f}
+  .ent.log .eh{background:var(--blue)}
+  .ent.bill .eh{background:var(--purple)}
+  /* phases */
+  .phase{display:grid;grid-template-columns:120px 1fr;gap:16px;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:16px;margin-bottom:12px}
+  .phase .when{font-weight:800;color:#fff;background:var(--navy);border-radius:9px;padding:12px;text-align:center;height:fit-content}
+  .phase .when small{display:block;font-weight:600;color:#9fc6e0;font-size:11px;margin-top:4px}
+  .phase h4{font-size:15px;color:var(--navy);margin-bottom:4px}
+  .phase p{font-size:13px;color:var(--mut)}
+  .phase .wn{font-size:12px;color:var(--green);font-weight:700;margin-top:7px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .src{font-size:11.5px;color:var(--mut)}
+  .footer{background:var(--navy);color:#9fc6e0;font-size:12px;padding:26px 0;margin-top:40px}
+  .footer b{color:#fff}
+  @media(max-width:900px){.g4,.g3,.two,.ssel{grid-template-columns:1fr 1fr}.phase{grid-template-columns:1fr}.g2{grid-template-columns:1fr}}
+  @media(max-width:560px){.g4,.g3,.ssel{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="tagline">Product Blueprint · Build Spec · Companion to the Market Analysis</div>
+    <h1>Cascade — Commercial Laundry &amp; Specialty-Cleaning Operating System</h1>
+    <p class="sub">The end-to-end product blueprint for a GTA commercial laundry business: a customer app, an owner app, a driver app and a web console over one backend — built around live vehicle tracking and item-level chain of custody, for the three commercial verticals: <b>carpets/specialty</b>, <b>care &amp; nursing homes</b>, and <b>hotels</b>.</p>
+    <div class="meta">
+      <span><b>Surfaces:</b> Customer · Web · Owner · Driver</span>
+      <span><b>Platforms:</b> iOS · Android · Web</span>
+      <span><b>Verticals:</b> Carpets · Care homes · Hotels</span>
+      <span><b>Core wedge:</b> Live tracking + chain of custody</span>
+      <span><b>Prepared:</b> June 2026</span>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs"><div class="wrap" id="navwrap">
+  <a href="#overview" class="on">Overview</a>
+  <a href="#verticals">3 Verticals</a>
+  <a href="#apps">The 4 Apps</a>
+  <a href="#workflows">Workflows</a>
+  <a href="#tracking">Live Tracking</a>
+  <a href="#data">Data Model</a>
+  <a href="#arch">Architecture</a>
+  <a href="#roadmap">Roadmap</a>
+  <a href="#compete">Competitors</a>
+  <a href="#risks">Risks</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- OVERVIEW -->
+<section id="overview">
+  <h2><span class="ix">&#9733;</span> What we are building</h2>
+  <p class="lead">A vertical operating system for the high-ticket specialty trade and recurring institutional linen — the fundable opportunity identified in the market analysis — not "Uber for consumer laundry." One backend powers four surfaces; the whole system is organized around making every truck and every item locatable in real time.</p>
+
+  <div class="grid g4">
+    <div class="stat"><span class="bar"></span><div class="t">Client surfaces</div><div class="k">4</div><div class="l">Customer · Web console · Owner · Driver (the GPS source for tracking)</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Commercial verticals</div><div class="k">3</div><div class="l">Carpets/specialty · Care &amp; nursing homes · Hotels</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Tracking experiences</div><div class="k">2</div><div class="l">Customers track the inbound truck · Owner tracks all outbound trucks</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Build phases</div><div class="k">4</div><div class="l">Anchor &#8594; institutional linen &#8594; scale &#8594; optional consumer</div></div>
+  </div>
+
+  <div class="band">
+    <span class="badge">Strategy carried from the market analysis</span>
+    <h3>Lead with the trade the anchor already supplies. Defer the graveyard.</h3>
+    <p>The market work concluded that "laundry" is four businesses, and the fundable one is the fragmented, high-ticket specialty trade plus recurring B2B linen. This product builds exactly that first, and leaves room (but not MVP scope) for consumer wash-&amp;-fold and laundromat machine-booking later.</p>
+    <ul>
+      <li><b>Phase 1 — anchor:</b> digitize specialty cleaning (rugs, carpets, blinds, upholstery) with live tracking + chain of custody.</li>
+      <li><b>Phase 2 — expansion:</b> care/nursing homes and hotels — recurring routes, par levels, resident-clothing tracking, cost-center billing.</li>
+      <li><b>Deferred by design:</b> consumer on-demand (subscription-first, later) and machine-booking (a SaaS wedge). The data model anticipates both.</li>
+    </ul>
+  </div>
+
+  <h3>The product principles</h3>
+  <div class="grid g3">
+    <div class="card"><b>Tracking is the wedge.</b><p class="src" style="margin-top:6px">Every job and truck is locatable in real time. Transparency beats opaque incumbent contracts and reassures high-value-rug customers.</p></div>
+    <div class="card"><b>Chain of custody end to end.</b><p class="src" style="margin-top:6px">Every item — a silk rug, a resident's cardigan, a hotel duvet — is tagged, scanned, photographed, and accounted for from pickup to return.</p></div>
+    <div class="card"><b>One backend, many surfaces.</b><p class="src" style="margin-top:6px">Customer, owner, dispatcher, plant and driver all read/write the same order and route objects. No parallel spreadsheets.</p></div>
+    <div class="card"><b>Vertical-aware, not generic.</b><p class="src" style="margin-top:6px">A rug is not a linen cart is not a resident's blouse. Three genuinely different workflows, not one forced template.</p></div>
+    <div class="card"><b>Offline-tolerant field ops.</b><p class="src" style="margin-top:6px">Drivers and intake staff work in basements and loading docks. Driver and plant apps work offline and sync.</p></div>
+    <div class="card"><b>Honest by construction.</b><p class="src" style="margin-top:6px">No invented capacity or counts. Liability on high-value items is explicit (inspection + condition photos + signed terms), never hidden.</p></div>
+  </div>
+</section>
+
+<!-- VERTICALS -->
+<section id="verticals">
+  <h2><span class="ix">1</span> The three commercial verticals</h2>
+  <p class="lead">Each vertical is a different customer, a different unit of work, and a different billing model. The platform models them as three distinct workflows sharing one logistics-and-tracking backbone.</p>
+  <div class="grid g3">
+    <div class="card">
+      <span class="pill p-anchor">ANCHOR · build first</span>
+      <h3 style="margin-top:10px">Carpets / Specialty</h3>
+      <p class="src">Rugs, wall-to-wall carpet, window blinds, upholstery, drapery. <b>Item-centric:</b> each piece is QR-tagged, inspected with condition photos, measured (sq ft), quoted, cleaned through stages, QC'd, and returned with before/after evidence.</p>
+      <div class="chips"><span class="chip">High ticket</span><span class="chip">Low frequency</span><span class="chip">Quote &#8594; approve</span><span class="chip">Damage liability</span></div>
+    </div>
+    <div class="card">
+      <span class="pill p-exp">EXPANSION</span>
+      <h3 style="margin-top:10px">Care / Nursing homes</h3>
+      <p class="src"><b>Two streams in one account.</b> Facility linen (sheets/towels) on a par/rental model with soil intake by cart/weight; plus <b>residents' personal clothing</b> — tagged per resident, sorted on return, lost items tracked. Cost-center billing by wing.</p>
+      <div class="chips"><span class="chip">Recurring routes</span><span class="chip">Par levels</span><span class="chip">Resident clothing</span><span class="chip">Infection control</span></div>
+    </div>
+    <div class="card">
+      <span class="pill p-exp">EXPANSION</span>
+      <h3 style="margin-top:10px">Hotels</h3>
+      <p class="src">Sheets, towels, F&amp;B/banquet linen. Soil by weight/pieces/carts &#8594; production &#8594; packed to par with container tickets &amp; consolidated manifests &#8594; routed &#8594; delivered against load sheet. RFID linen pooling (P3) cuts shrinkage. Production-linked billing.</p>
+      <div class="chips"><span class="chip">High volume</span><span class="chip">Occupancy-driven</span><span class="chip">Manifests</span><span class="chip">RFID-ready</span></div>
+    </div>
+  </div>
+  <div class="callout teal" style="margin-top:14px"><b>Shared backbone:</b> all three run on one <b>Route &#8594; Stop &#8594; Scan &#8594; Proof-of-Delivery</b> logistics spine. That spine is what the live tracking renders against, and what makes the same driver and owner apps work across every vertical.</div>
+</section>
+
+<!-- APPS -->
+<section id="apps">
+  <h2><span class="ix">2</span> The four apps (click to explore)</h2>
+  <p class="lead">You asked for three apps — customer, web, owner. The <b>driver app is the fourth, non-optional surface</b>: live "track the truck" only exists if a driver device is emitting GPS and scanning carts. Select a surface to see its key screens.</p>
+
+  <div class="ssel" id="ssel"></div>
+  <div class="card" style="background:#f9fbfe">
+    <h3 id="surfTitle" style="margin-top:0">&nbsp;</h3>
+    <p class="src" id="surfDesc" style="margin-bottom:14px"></p>
+    <div class="screens" id="screens"></div>
+  </div>
+  <div class="callout" style="margin-top:14px"><b>Platforms:</b> Customer, Owner and Driver ship as one React Native codebase to <b>iOS + Android</b>; the Web console and the customer web portal are <b>Next.js</b>. All four hit one API and share the design system.</div>
+</section>
+
+<!-- WORKFLOWS -->
+<section id="workflows">
+  <h2><span class="ix">3</span> End-to-end workflows (the lifecycle spine)</h2>
+  <p class="lead">Each vertical is a distinct state machine. These are normative — the status enums in the data model and the API transitions must match them exactly. Select a workflow.</p>
+  <div class="lcsel" id="lcsel">
+    <button data-w="specialty" class="on">Specialty job (carpets)</button>
+    <button data-w="care">Care-home linen + clothing</button>
+    <button data-w="hotel">Hotel linen</button>
+  </div>
+  <div class="flow" id="flow"></div>
+  <p class="flow-note" id="flowNote"></p>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><b>Where customers track</b><p class="src" style="margin-top:6px">At <span class="win">pickup</span> (inbound truck) and <span class="win">delivery</span> (outbound truck) — the green <b>track</b> nodes in the flow. ETA, live map, status timeline, driver card.</p></div>
+    <div class="card"><b>Where the owner watches</b><p class="src" style="margin-top:6px">The fleet map shows every outbound vehicle and flags any late / off-route / failed stop into the exceptions feed in real time.</p></div>
+    <div class="card"><b>Where custody is captured</b><p class="src" style="margin-top:6px">Every scan (intake, stage, pack, pickup, delivery) writes an append-only custody event — the timeline customers and the owner can audit.</p></div>
+  </div>
+</section>
+
+<!-- TRACKING -->
+<section id="tracking">
+  <h2><span class="ix">4</span> Live tracking &amp; logistics — the headline capability</h2>
+  <p class="lead">The requirement you called out: customers track the inbound pickup vehicle; the owner tracks outbound vehicles; plus scheduling, pickup and drop. Here is both the experience and the architecture.</p>
+
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0">(a) Customer — "track my truck"</h3>
+      <p class="src">Live map of the assigned vehicle + a dynamic ETA, for both pickup and delivery. Status timeline (Scheduled &#8594; Driver assigned &#8594; On the way &#8594; Arriving &#8594; Arrived &#8594; Completed) with push/SMS at each step. Driver card (name, photo, masked call + chat). Geofenced "arriving in ~5 min" alert. Shareable read-only link for staff without the app. The customer sees <b>only their one vehicle</b> — never the fleet.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">(b) Owner / dispatch — fleet tracking</h3>
+      <p class="src">One map, every active vehicle, colour-coded by status, with live breadcrumbs. Per vehicle: current stop, stops done/remaining, on-time vs plan, next ETA, driver, load. Exceptions surfaced (stalled, off-route, late, failed). Historical breadcrumb replay for disputes, coaching and audits.</p>
+    </div>
+  </div>
+
+  <h3>Illustrative live-tracking view (the customer experience)</h3>
+  <div class="trackdemo">
+    <div class="trackbar">
+      <span>Order #SP-10427 · Area rug pickup</span>
+      <span>ETA <span class="eta" id="etaVal">8 min</span></span>
+    </div>
+    <div class="road">
+      <div class="line"></div>
+      <span class="pin home" title="You">&#127968;</span>
+      <span class="pin plant" title="Plant">&#127981;</span>
+      <span class="truck" id="truck">&#128666;</span>
+    </div>
+    <div class="trackbar"><span id="trackStatus">Driver Sam is on the way to you</span><span class="src" style="color:#9fc6e0">updates ~every 30s</span></div>
+    <div class="tl" id="trackTl"></div>
+    <button class="btn" id="trackBtn">&#9654; Play pickup</button>
+  </div>
+
+  <h3>Tracking architecture</h3>
+  <div class="diagram">
+    <div class="layer"><div class="box client"><span class="bt">Source</span>Driver app<br><span class="src">background GPS, adaptive duty cycle, offline queue</span></div></div>
+    <div class="vstep">&#8595;&nbsp; batched + compressed pings</div>
+    <div class="layer"><div class="box svc"><span class="bt">Gateway</span>Location ingestion<br><span class="src">stateless, scalable</span></div><div class="box data"><span class="bt">Live store</span>Redis geo<br><span class="src">last-known per vehicle</span></div><div class="box data"><span class="bt">History</span>PostGIS / Timescale<br><span class="src">breadcrumbs &amp; replay</span></div></div>
+    <div class="vstep">&#8595;&nbsp; ETA recompute (Routes API) · geofence eval &#8594; events</div>
+    <div class="layer"><div class="box svc"><span class="bt">Realtime</span>WebSocket / pub-sub<br><span class="src">Socket.IO or Ably/Pusher</span></div></div>
+    <div class="vstep">&#8595;&nbsp; scoped fan-out</div>
+    <div class="layer"><div class="box client"><span class="bt">Customer</span>one vehicle only<br><span class="src">short-lived signed token</span></div><div class="box client"><span class="bt">Owner / dispatch</span>whole fleet</div><div class="box ext"><span class="bt">Notify</span>push · SMS · email</div></div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="callout"><b>Battery &amp; cost:</b> adaptive ping rate (fast near a stop, slow on the highway, paused when idle/off-shift); batched &amp; compressed.</div>
+    <div class="callout teal"><b>Privacy:</b> location only emits during an active shift (consent + visible indicator); a customer channel is cryptographically scoped to exactly one vehicle for their stop window.</div>
+    <div class="callout"><b>Offline:</b> pings queue locally and flush on reconnect; the scanned stop status is authoritative even if GPS dropped.</div>
+  </div>
+  <h3>Scheduling, pickup &amp; drop</h3>
+  <table>
+    <thead><tr><th>Step</th><th>One-off (specialty)</th><th>Recurring (B2B linen)</th></tr></thead>
+    <tbody>
+      <tr><td><b>Schedule</b></td><td>Customer/CSR picks a pickup window; zone + capacity rules prevent over-booking</td><td>Standing routes auto-generate stops (e.g. Mon/Wed/Fri); skip/holiday handling</td></tr>
+      <tr><td><b>Build route</b></td><td colspan="2">Dispatcher groups stops &#8594; optimizer sequences (time windows, capacity, traffic) &#8594; assigns driver + vehicle &#8594; publishes to driver app</td></tr>
+      <tr><td><b>Pickup</b></td><td>Scan item QR tags; intake photos; note pre-existing damage</td><td>Scan/tally carts &amp; bags vs expected; "picked up N carts at HH:MM" SMS</td></tr>
+      <tr><td><b>Drop-off</b></td><td colspan="2">Validate load vs system load sheet &#8594; scan at door &#8594; geo-tagged, time-stamped <b>photo and/or signature</b> &#8594; signed POD emailed</td></tr>
+      <tr><td><b>Exceptions</b></td><td colspan="2">Missed/failed stop (reason codes), customer-not-available, partial pickup, ad-hoc pickup, redelivery, "skip today"</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- DATA MODEL -->
+<section id="data">
+  <h2><span class="ix">5</span> Data model (the core entities)</h2>
+  <p class="lead">Relational core (PostgreSQL + PostGIS). Every row carries <b>org_id</b> (so the same schema federates to a multi-operator marketplace later), plus timestamps and created_by. The full field list is in the PRD §9; the spine is below.</p>
+  <div class="erd">
+    <div class="ent"><div class="eh">Account</div><div class="ef">type: residential | business</div><div class="ef">&#8594; Sites, Contracts</div></div>
+    <div class="ent"><div class="eh">Site</div><div class="ef">address, <b>geo POINT</b>, windows</div><div class="ef">&#8594; CostCenters</div></div>
+    <div class="ent"><div class="eh">CostCenter</div><div class="ef">wing / floor / funding line</div><div class="ef">split billing</div></div>
+    <div class="ent"><div class="eh">Contract</div><div class="ef">rental | COG</div><div class="ef">basis: par / weight / piece</div></div>
+    <div class="ent"><div class="eh">ParLevel · StandingOrder</div><div class="ef">par_qty, RRULE schedule</div><div class="ef">auto-generates routes</div></div>
+    <div class="ent core"><div class="eh">Order</div><div class="ef">vertical, <b>status</b> (lifecycle)</div><div class="ef">&#8594; OrderLines, Items</div></div>
+    <div class="ent core"><div class="eh">Item</div><div class="ef">kind: rug | blind | garment | linen</div><div class="ef">&#8594; Tag, Resident?</div></div>
+    <div class="ent core"><div class="eh">Tag</div><div class="ef">qr | barcode | rfid</div><div class="ef">binds item/cart/resident</div></div>
+    <div class="ent"><div class="eh">Resident</div><div class="ef">name, room, cost_center</div><div class="ef">owns personal garments</div></div>
+    <div class="ent"><div class="eh">Inspection · Photo · Quote</div><div class="ef">condition, measure, before/after</div><div class="ef">approve / decline</div></div>
+    <div class="ent core"><div class="eh">CustodyEvent</div><div class="ef">stage, actor, geo, time</div><div class="ef">append-only timeline</div></div>
+    <div class="ent"><div class="eh">SoilIntake · Production · Pack</div><div class="ef">weight / count, load sheet</div><div class="ef">reconcile vs pickup</div></div>
+    <div class="ent core"><div class="eh">Route</div><div class="ef">date, driver, vehicle</div><div class="ef">&#8594; RouteStops</div></div>
+    <div class="ent core"><div class="eh">RouteStop</div><div class="ef">seq, kind: pickup/delivery</div><div class="ef"><b>status</b>, ETA, window</div></div>
+    <div class="ent"><div class="eh">Vehicle · Driver · Shift</div><div class="ef">location emits while shift active</div><div class="ef">&#8594; GpsPings</div></div>
+    <div class="ent log"><div class="eh">GpsPing</div><div class="ef">geo, speed, time (time-series)</div><div class="ef">live + replay</div></div>
+    <div class="ent log"><div class="eh">GeofenceEvent</div><div class="ef">approaching / arrived / departed</div><div class="ef">triggers notifications</div></div>
+    <div class="ent log"><div class="eh">ProofOfDelivery</div><div class="ef">photo / signature, geo, time</div><div class="ef">per stop</div></div>
+    <div class="ent bill"><div class="eh">Invoice · Payment</div><div class="ef">par/weight/piece, cost-center split</div><div class="ef">Stripe, accounting sync</div></div>
+    <div class="ent bill"><div class="eh">Claim · CreditNote</div><div class="ef">damage / loss, evidence photos</div><div class="ef">owner approval</div></div>
+    <div class="ent log"><div class="eh">AuditLog</div><div class="ef">actor, before/after (immutable)</div><div class="ef">staff accountability</div></div>
+    <div class="ent"><div class="eh">User · Role · Device</div><div class="ef">org-scoped RBAC</div><div class="ef">push tokens</div></div>
+  </div>
+  <p class="flow-note">Key relationships: Account 1&#8211;* Site 1&#8211;* CostCenter · Contract 1&#8211;* ParLevel/StandingOrder · Order 1&#8211;* Item 1&#8211;1 Tag · Item *&#8211;1 Resident · Route 1&#8211;* RouteStop *&#8211;1 Order|Contract · Shift 1&#8211;* GpsPing · RouteStop 1&#8211;1 ProofOfDelivery · Item 1&#8211;* CustodyEvent.</p>
+</section>
+
+<!-- ARCHITECTURE -->
+<section id="arch">
+  <h2><span class="ix">6</span> System architecture &amp; stack</h2>
+  <p class="lead">A modular monolith now (faster to build, easy to keep orders&#8596;routes&#8596;billing consistent), with the location/tracking path designed to scale out independently. Cloud-agnostic, AWS baseline.</p>
+  <div class="diagram">
+    <div class="layer">
+      <div class="box client"><span class="bt">Mobile</span>Customer · Owner · Driver<br><span class="src">React Native + Expo (iOS/Android)</span></div>
+      <div class="box client"><span class="bt">Web</span>Console + customer portal<br><span class="src">Next.js (React, TS)</span></div>
+    </div>
+    <div class="vstep">&#8595;&nbsp; REST + WebSocket</div>
+    <div class="layer"><div class="box svc" style="min-width:280px"><span class="bt">API / BFF</span>NestJS (Node + TypeScript)<br><span class="src">auth · RBAC · validation · rate limiting</span></div></div>
+    <div class="vstep">&#8595;</div>
+    <div class="layer">
+      <div class="box svc"><span class="bt">Core</span>orders · routes · production · accounts</div>
+      <div class="box svc"><span class="bt">Tracking</span>geo · ETA · geofence</div>
+      <div class="box svc"><span class="bt">Notify</span>push · SMS · email</div>
+      <div class="box svc"><span class="bt">Billing</span>Stripe · tax · accounting</div>
+    </div>
+    <div class="vstep">&#8595;</div>
+    <div class="layer">
+      <div class="box data"><span class="bt">DB</span>PostgreSQL + PostGIS<br><span class="src">+ Timescale (ping history)</span></div>
+      <div class="box data"><span class="bt">Cache / live</span>Redis<br><span class="src">geo, queues (BullMQ), pub-sub</span></div>
+      <div class="box data"><span class="bt">Storage</span>S3 + CloudFront<br><span class="src">photos, POD, signatures</span></div>
+    </div>
+    <div class="vstep">&#8595;&nbsp; external</div>
+    <div class="layer">
+      <div class="box ext">Google Maps Platform</div>
+      <div class="box ext">Stripe</div>
+      <div class="box ext">Twilio · SendGrid</div>
+      <div class="box ext">QuickBooks / Xero</div>
+      <div class="box ext">Onfleet / Routific (opt)</div>
+      <div class="box ext">RFID readers (P3)</div>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><b>Why React Native</b><p class="src" style="margin-top:6px">One codebase &#8594; iOS + Android (your requirement), shared TypeScript with the web/BFF, mature background-geolocation + maps. Flutter is the alternative.</p></div>
+    <div class="card"><b>Why a modular monolith</b><p class="src" style="margin-top:6px">At launch volume it ships faster and stays transactionally consistent. The stateless tracking path peels off first if scale demands.</p></div>
+    <div class="card"><b>Forward-compatible</b><p class="src" style="margin-top:6px">org_id everywhere + Stripe Connect-ready &#8594; the same code can become a multi-operator marketplace later, without a rewrite.</p></div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section id="roadmap">
+  <h2><span class="ix">7</span> Build roadmap</h2>
+  <p class="lead">Sequenced to the market analysis GTM: prove the anchor, then land institutional linen, then scale, then optionally chase consumer — each phase de-risks the next.</p>
+  <div class="phase"><div class="when">Phase 1<small>~0&#8211;4 mo · MVP</small></div><div>
+    <h4>Digitize the anchor (specialty / carpets)</h4>
+    <p>Customer app+web (book, quote-approve, <b>live tracking</b>, pay, before/after photos) · Web console (orders, intake/inspection/quote, cleaning stages, QC, routes + <b>live fleet</b>) · Owner app (fleet, today, approvals, exceptions) · Driver app (route, scan, POD, background GPS, offline) · Stripe · notifications · RBAC/audit.</p>
+    <div class="wn">&#10003; Exit: real specialty GMV flowing with end-to-end tracking + chain of custody</div>
+  </div></div>
+  <div class="phase"><div class="when">Phase 2<small>~4&#8211;10 mo</small></div><div>
+    <h4>Institutional linen: care homes + hotels</h4>
+    <p>Contracts / par / standing orders · recurring route auto-generation · soil intake (weight/count) · pack-to-par + load sheets + manifests · <b>resident personal-clothing tracking + lost&amp;found</b> · cost-center billing · B2B portal · batch invoicing + accounting sync.</p>
+    <div class="wn">&#10003; Exit: recurring contract revenue with proof-of-delivery and per-account loss / on-time scorecards</div>
+  </div></div>
+  <div class="phase"><div class="when">Phase 3<small>~10&#8211;16 mo</small></div><div>
+    <h4>Scale &amp; hardening</h4>
+    <p>RFID linen pooling · full production/plant module + rewash/reject/reclaim · BI suite · FR localization · SSO for enterprise accounts · advanced route optimization · uniform/mat-rental adjacency.</p>
+    <div class="wn">&#10003; Exit: shrinkage controlled, plant fully instrumented, enterprise-ready</div>
+  </div></div>
+  <div class="phase"><div class="when">Phase 4<small>16 mo+</small></div><div>
+    <h4>Optional expansion (validate first)</h4>
+    <p>Consumer wash-&amp;-fold (subscription-first, dense core) · laundromat machine-booking SaaS wedge · multi-operator marketplace / multi-city. Each gated on Phase 1&#8211;3 traction.</p>
+    <div class="wn">&#10003; Exit: a repeatable city playbook toward the national-scale vision</div>
+  </div></div>
+</section>
+
+<!-- COMPETITORS -->
+<section id="compete">
+  <h2><span class="ix">8</span> Competitor benchmark — what we borrow, what we beat</h2>
+  <p class="lead">Researched live (June 2026). The consumer tools (CleanCloud, Cents, Starchup) own slick delivery + tracking; the linen tools (LinenTech) own par/RFID/cost-center billing; the specialty tools (Ruggy, ARMS, Fieldd) own rug intake. <b>None do all three commercial verticals in one system with end-to-end tracking — that gap is the wedge.</b></p>
+  <table>
+    <thead><tr><th>Capability</th><th>CleanCloud</th><th>Cents</th><th>Starchup</th><th>LinenTech</th><th>Specialty tools</th><th>Cascade</th></tr></thead>
+    <tbody>
+      <tr><td>Customer app + live driver tracking</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="part">part</td><td class="part">part</td><td class="win">&#10003; all verticals</td></tr>
+      <tr><td>Owner live fleet map</td><td class="part">part</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&#10007;</td><td class="win">&#10003; +replay</td></tr>
+      <tr><td>Driver: scan, load-sheet validate, geo-POD</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="part">part</td><td class="win">&#10003;</td></tr>
+      <tr><td>Route optimization + geofencing</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="part">part</td><td class="win">&#10003;</td></tr>
+      <tr><td>Specialty: tag, inspect, sq-ft, before/after, quote</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="yes">&#10003;</td><td class="win">&#10003;</td></tr>
+      <tr><td>Linen par, soil intake, manifests, cost-center bill</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="yes">&#10003;</td><td class="no">&#10007;</td><td class="win">&#10003;</td></tr>
+      <tr><td>Care-home <b>resident clothing</b> + lost&amp;found</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="part">part</td><td class="no">&#10007;</td><td class="win">&#10003;</td></tr>
+      <tr><td>RFID linen pooling</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="yes">&#10003;</td><td class="no">&#10007;</td><td class="win">&#10003; (P3)</td></tr>
+      <tr style="background:#f0f6ff"><td><b>All three commercial verticals in ONE system</b></td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="part">linen only</td><td class="part">specialty only</td><td class="win">&#10003; the wedge</td></tr>
+    </tbody>
+  </table>
+  <div class="callout teal" style="margin-top:14px"><b>Borrowed mechanics:</b> heat-seal barcode labels, garment photos, rack location, staff accountability (CleanCloud) · own-fleet-or-network dispatch, geofencing (Cents) · two-way SMS + "skip text" (Starchup) · par levels, soil intake, load-sheet validation, geo-tagged POD, cost-center billing, RFID (LinenTech) · QR rug intake, before/after, auto-quote, drawn service zones (Ruggy / ARMS / Fieldd). Sources in the chat "Sources" list.</div>
+</section>
+
+<!-- RISKS -->
+<section id="risks">
+  <h2><span class="ix">9</span> Risks &amp; open questions</h2>
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0">Top risks</h3>
+      <ul class="src" style="list-style:none;display:grid;gap:9px">
+        <li>&#129702; <b>Consumer economics are a graveyard</b> — keep it deferred and subscription-first; don't let "Uber for laundry" creep into MVP.</li>
+        <li>&#128142; <b>Damage / loss liability</b> on high-value rugs and resident clothing is the trust make-or-break — mitigated by mandatory intake photos, acknowledged pre-existing damage, and the claims object.</li>
+        <li>&#128241; <b>Background GPS reliability</b> across iOS/Android versions (battery, OS throttling) — budget real device-matrix testing; degrade gracefully to last-known + status.</li>
+        <li>&#128260; <b>Offline sync conflicts</b> in plant/driver apps — keep custody/scan events append-only.</li>
+        <li>&#128100; <b>Single-anchor concentration</b> — onboard a second specialty supplier early.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Open questions to settle early</h3>
+      <ul class="src" style="list-style:none;display:grid;gap:9px">
+        <li>&#10067; <b>"10% of what?"</b> (from the analysis) — net-new only or the anchor's existing volume? Affects billing config, not architecture.</li>
+        <li>&#127973; <b>Resident-clothing liability</b> model — who owns loss risk; drives claim rules.</li>
+        <li>&#128225; <b>RFID timing</b> — is Phase 3 soon enough, or does a flagship hotel demand it at signing?</li>
+        <li>&#128667; <b>Own fleet only, or + 3PL/gig overflow?</b> (architecture supports both)</li>
+        <li>&#129534; <b>Accounting system of record</b> (QBO vs Xero) for the anchor &#8594; which sync ships first.</li>
+        <li>&#127467;&#127479; <b>French (Canada)</b> — needed for some institutional RFPs; confirm timing.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:14px"><b>Compliance note (Canada):</b> PIPEDA governs personal data; care-home resident data is sensitive (least-privilege, audit every read, retention limits, signed data-processing terms). Location data is consent-gated and shift-scoped. Full NFRs in PRD §12.</div>
+</section>
+
+</div>
+
+<div class="footer"><div class="wrap">
+  <b>Cascade — Commercial Laundry &amp; Specialty-Cleaning Operating System.</b> Product blueprint (build spec), June 2026. Companion to the written PRD (<b>laundry-platform-PRD.docx / .md</b>) and the prior market analysis. Working codename; rename at will.<br>
+  Competitor mechanics researched live June 2026: CleanCloud, Cents, Starchup, LinenTech, Ruggy / Area Rug Management System / Fieldd, and nursing-home clothing-labeling (SimSort) guidance.
+</div></div>
+
+<script>
+/* ---------- data: the four surfaces ---------- */
+const surfaces = {
+  customer:{ic:'📱',nm:'Customer app',pf:'iOS · Android · Web',title:'Customer app — book, track, approve, pay',
+    desc:'Two modes behind one login: residential/specialty (book a job, get a quote, track the truck, see before/after) and B2B account (routes, par, manifests, invoices, exceptions).',
+    screens:[
+      ['Home / book a job','Pick service, add items with photos, choose pickup window','MVP'],
+      ['Live tracking','Map of the assigned truck + ETA + status timeline + driver card','MVP'],
+      ['Quote approval','Itemized quote (measure × rate); one-tap approve / decline','MVP'],
+      ['Item timeline','Per-item journey + before/after photos (chain of custody)','MVP'],
+      ['Payments & receipts','Card / Apple Pay / Google Pay, tips, receipts','MVP'],
+      ['B2B account home','Scheduled routes, par levels, pending deliveries','P2'],
+      ['Manifests & invoices','Expected vs delivered counts, cost-center invoices','P2'],
+      ['Resident clothing','Look up a resident: enrolled / in-process / returned / lost&found','P2'],
+      ['Exceptions & claims','Raise missing item / damage with photos; track status','MVP'],
+      ['Chat & ratings','Two-way chat with driver/CSR; rate after delivery','MVP']
+    ]},
+  web:{ic:'💻',nm:'Web console',pf:'Browser',title:'Web console — the operational brain',
+    desc:'Role-gated modules for owner, dispatcher, CSR, plant and finance. Everything runs here.',
+    screens:[
+      ['Order board','Kanban by lifecycle state + search/filter by tag, customer, status','MVP'],
+      ['Intake & inspection','Scan/create tag, condition photos, measurements, damage flags','MVP'],
+      ['Quote builder','Auto-calc from rate card, manual adjust with reason, send','MVP'],
+      ['Cleaning stages + QC','Scan items through stages; QC checklist; before/after','MVP'],
+      ['Route builder + optimizer','Group stops, time windows, optimize, assign, publish','MVP'],
+      ['Live fleet map','All vehicles, progress, on-time, exceptions; reassign a stop','MVP'],
+      ['Soil intake & production','Weigh/count by cart, segregate, reconcile vs pickup','P2'],
+      ['Pack to par / load sheets','Load sheets, container tickets, consolidated manifests','P2'],
+      ['Resident sort station','Scan garment → resident bin; lost&found reconciliation','P2'],
+      ['Accounts & contracts','Sites, cost centers, par, rate cards, standing orders','MVP'],
+      ['Billing & finance','Invoices (par/weight/piece), batch, AR, exports, sync','MVP'],
+      ['Analytics & admin','Dashboards; users/roles, vehicles, templates, audit log','MVP']
+    ]},
+  owner:{ic:'👑',nm:'Owner app',pf:'iOS · Android',title:'Owner app — the executive cockpit',
+    desc:'Deliberately not the full console on a phone. A glanceable command view of money, trucks and anything on fire.',
+    screens:[
+      ['Live fleet','Every outbound vehicle, route progress, ETAs, exceptions','MVP'],
+      ['Today','GMV, jobs in/out, on-time %, collected $, low-par alerts','MVP'],
+      ['Approvals','Quotes / claims / credits above threshold — one-tap','MVP'],
+      ['Exceptions feed','Missed pickups, late routes, damage claims, failed deliveries','MVP'],
+      ['Drill-through','Truck → stops → order → item chain of custody (read-only)','MVP']
+    ]},
+  driver:{ic:'🚚',nm:'Driver app',pf:'iOS · Android · offline-first',title:'Driver app — the field app + the GPS source for all tracking',
+    desc:'Offline-first. This surface is what makes live "track the truck" real.',
+    screens:[
+      ['My route today','Optimized stop sequence on a map; hand off to native nav','MVP'],
+      ['Pickup','Scan/tally carts, bags or tagged items vs expected; flag discrepancy','MVP'],
+      ['Delivery','Validate load vs load sheet; scan at door; confirm right customer','MVP'],
+      ['Proof of delivery','Geo-tagged, time-stamped photo and/or signature','MVP'],
+      ['Background location','Emit GPS on duty cycle while shift active (visible indicator)','MVP'],
+      ['Comms & exceptions','Chat/SMS, reason-coded failed/skip, ad-hoc pickup, take payment','MVP']
+    ]}
+};
+const ssel=document.getElementById('ssel');
+const order=['customer','web','owner','driver'];
+order.forEach((k,i)=>{const s=surfaces[k];const d=document.createElement('div');
+  d.className='scard'+(i===0?' on':'');d.dataset.k=k;
+  d.innerHTML=`<div class="ic">${s.ic}</div><div class="nm">${s.nm}</div><div class="pf">${s.pf}</div>`;
+  d.onclick=()=>{document.querySelectorAll('.scard').forEach(x=>x.classList.toggle('on',x.dataset.k===k));renderSurface(k);};
+  ssel.appendChild(d);});
+function renderSurface(k){const s=surfaces[k];
+  document.getElementById('surfTitle').textContent=s.title;
+  document.getElementById('surfDesc').textContent=s.desc;
+  const g=document.getElementById('screens');g.innerHTML='';
+  s.screens.forEach(([nm,desc,tag])=>{const e=document.createElement('div');e.className='screen';
+    const tg=tag==='MVP'?'tag':(tag==='P2'?'tag p2':'tag p3');
+    e.innerHTML=`<div class="sh">${nm}<span class="${tg}">${tag}</span></div><div class="sd">${desc}</div>`;
+    g.appendChild(e);});}
+renderSurface('customer');
+
+/* ---------- data: lifecycles ---------- */
+const flows={
+  specialty:{note:'High-ticket, item-centric. Branches: quote declined → return; pre-existing damage flagged with photo + ack; rewash loop; post-delivery claim.',
+    nodes:[['Requested','start'],['Scheduled pickup',''],['Pickup en route','track'],['Picked up',''],['Intake + inspected',''],['Quoted',''],['Quote approved',''],['In cleaning',''],['QC',''],['Ready',''],['Delivery en route','track'],['Delivered',''],['Invoiced',''],['Closed','end'],['Claim (branch)','branch']]},
+  care:{note:'Two linked streams on one recurring route. Facility linen runs par/COG; resident personal clothing is tagged per resident, return-sorted, and any unmatched item drops into lost&found for reconciliation.',
+    nodes:[['Contract active','start'],['Route scheduled',''],['Soil pickup (scan carts)','track'],['Soil intake + segregate',''],['Production',''],['Pack to par (load sheet)',''],['Dispatch',''],['Delivery en route','track'],['Delivered (scan, POD)',''],['Billed (par/weight)',''],['Reconciled','end'],['Resident clothing → lost&found','branch']]},
+  hotel:{note:'Same logistics backbone as care homes, minus the per-resident stream. Occupancy-driven volume; production-linked billing by weight/piece; RFID pooling in P3.',
+    nodes:[['Contract active','start'],['Route scheduled',''],['Soil pickup (weight/pieces)','track'],['Soil intake + reconcile',''],['Production',''],['Pack to par (container tickets)',''],['Consolidated manifest',''],['Dispatch',''],['Delivery en route','track'],['Delivered (scan vs manifest)',''],['Billed (weight/piece)',''],['Reconciled','end']]}
+};
+const flowEl=document.getElementById('flow'),flowNote=document.getElementById('flowNote');
+function renderFlow(w){const f=flows[w];flowEl.innerHTML='';
+  f.nodes.forEach((n,i)=>{const [label,type]=n;
+    const node=document.createElement('span');node.className='node'+(type?' '+type:'');node.textContent=label;
+    flowEl.appendChild(node);
+    if(i<f.nodes.length-1 && type!=='branch' && f.nodes[i+1][1]!=='branch'){const a=document.createElement('span');a.className='arrow';a.innerHTML='&#8594;';flowEl.appendChild(a);}
+  });
+  flowNote.textContent=f.note;}
+document.querySelectorAll('#lcsel button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#lcsel button').forEach(x=>x.classList.remove('on'));b.classList.add('on');renderFlow(b.dataset.w);});
+renderFlow('specialty');
+
+/* ---------- tracking demo ---------- */
+const steps=['Scheduled','Driver assigned','On the way','Arriving','Arrived','Completed'];
+const tl=document.getElementById('trackTl');
+function paintTl(active){tl.innerHTML='';steps.forEach((s,i)=>{const e=document.createElement('span');
+  e.className='st'+(i<active?' done':(i===active?' now':''));e.textContent=s;tl.appendChild(e);});}
+paintTl(2);
+let playing=false;
+document.getElementById('trackBtn').onclick=()=>{
+  if(playing)return;playing=true;
+  const truck=document.getElementById('truck'),eta=document.getElementById('etaVal'),st=document.getElementById('trackStatus');
+  let pct=6,mins=8;truck.style.left=pct+'%';paintTl(2);eta.textContent='8 min';st.textContent='Driver Sam is on the way to you';
+  const timer=setInterval(()=>{
+    pct+=4.7;mins=Math.max(0,Math.round(8*(1-(pct-6)/88)));
+    truck.style.left=Math.min(pct,94)+'%';eta.textContent=mins+' min';
+    if(pct>=70&&pct<88){paintTl(3);st.textContent='Sam is arriving — about '+mins+' min away';}
+    if(pct>=94){clearInterval(timer);paintTl(4);eta.textContent='Arrived';st.textContent='Sam has arrived for pickup';
+      setTimeout(()=>{paintTl(6);eta.textContent='Done';st.textContent='Picked up · 1 rug scanned & photographed';playing=false;},1200);}
+  },420);
+};
+
+/* ---------- nav scroll-spy ---------- */
+const links=[...document.querySelectorAll('nav.tabs a')];
+const secs=links.map(a=>document.querySelector(a.getAttribute('href')));
+window.addEventListener('scroll',()=>{let i=secs.length-1;for(let j=0;j<secs.length;j++){if(secs[j].getBoundingClientRect().top<120)i=j;}
+ links.forEach((a,k)=>a.classList.toggle('on',k===i));},{passive:true});
+links.forEach(a=>a.onclick=e=>{e.preventDefault();document.querySelector(a.getAttribute('href')).scrollIntoView({behavior:'smooth'});});
+</script>
+</body>
+</html>

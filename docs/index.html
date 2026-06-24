@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Commercial Laundry — Market Opportunity &amp; Product Plan (GTA)</title>
+
+<!-- ===== Google Analytics 4 (gtag.js) =====  REPLACE G-XXXXXXXXXX WITH YOUR GA4 MEASUREMENT ID -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX');
+</script>
+
+<!-- ===== Vercel Web Analytics (plain-HTML method) =====
+     IMPORTANT: in the Vercel dashboard open Project > Analytics > Enable, then redeploy.
+     The /_vercel/insights/* route only exists on the deployed site (it 404s locally). -->
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --navy:#0b2138; --navy2:#15436b; --teal:#0fa3a3; --teal2:#15c2bd; --blue:#2563eb;
+    --gold:#e6a817; --green:#15a36a; --red:#d64545; --amber:#e08a1e; --purple:#6b4bc0;
+    --bg:#eef2f8; --card:#ffffff; --line:#e6ebf3; --ink:#16243a; --mut:#5b6979;
+    --radius:16px; --radius-sm:11px;
+    --sh-sm:0 1px 2px rgba(13,36,64,.05);
+    --sh:0 2px 4px rgba(13,36,64,.04),0 12px 28px -16px rgba(13,36,64,.22);
+    --sh-lg:0 10px 20px rgba(13,36,64,.07),0 28px 54px -24px rgba(13,36,64,.32);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    background-image:radial-gradient(1100px 480px at 80% -8%,rgba(21,194,189,.12),transparent 60%),radial-gradient(820px 420px at -5% 2%,rgba(37,99,235,.07),transparent 55%);
+    background-attachment:fixed;color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden;font-size:15px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+  a{color:inherit}
+  ::selection{background:rgba(21,194,189,.25)}
+  header{position:relative;overflow:hidden;color:#fff;padding:clamp(28px,5vw,42px) 0 clamp(24px,4vw,32px);
+    background:linear-gradient(135deg,#0b2138 0%,#15436b 58%,#0f5a60 125%)}
+  header:before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.7;
+    background-image:radial-gradient(540px 300px at 90% -25%,rgba(21,194,189,.40),transparent 62%),
+      linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);
+    background-size:auto,32px 32px,32px 32px;animation:drift 26s ease-in-out infinite alternate}
+  @keyframes drift{from{background-position:0 0,0 0,0 0}to{background-position:0 0,18px 14px,18px 14px}}
+  header .wrap{position:relative}
+  header .tagline{color:#8fdad4;font-size:clamp(10.5px,2.3vw,13px);letter-spacing:.16em;text-transform:uppercase;font-weight:700}
+  header h1{font-size:clamp(23px,4.7vw,33px);margin:10px 0 9px;font-weight:780;letter-spacing:-.6px;line-height:1.13;max-width:920px}
+  header p.sub{color:#d0e1ee;font-size:clamp(13.5px,2.6vw,15.5px);max-width:860px;line-height:1.5}
+  header .meta{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:#bfe0e8}
+  header .meta span{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);padding:5px 11px;border-radius:30px;backdrop-filter:blur(4px)}
+  header .meta b{color:#fff;font-weight:700}
+  nav.tabs{position:sticky;top:0;z-index:50;background:rgba(11,33,56,.93);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.10)}
+  nav.tabs .wrap{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  nav.tabs .wrap::-webkit-scrollbar{display:none}
+  nav.tabs a{position:relative;color:#bcd0e2;text-decoration:none;font-size:13px;font-weight:600;padding:13px 13px;white-space:nowrap;border-bottom:3px solid transparent;transition:.18s;border-radius:9px 9px 0 0}
+  nav.tabs a:hover{color:#fff;background:rgba(255,255,255,.06)}
+  nav.tabs a.on{color:#fff;border-bottom-color:var(--teal2);background:rgba(21,194,189,.14)}
+  section{padding:clamp(32px,5vw,46px) 0 8px;scroll-margin-top:58px}
+  h2{font-size:clamp(19px,3.4vw,24px);font-weight:760;letter-spacing:-.3px;margin-bottom:6px;display:flex;align-items:center;gap:11px;line-height:1.2}
+  h2 .ix{background:linear-gradient(135deg,var(--navy2),var(--teal));color:#fff;font-size:13px;min-width:27px;height:27px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;box-shadow:var(--sh-sm);flex:none}
+  .lead{color:var(--mut);font-size:clamp(13.5px,2.4vw,14.5px);max-width:900px;margin:8px 0 22px}
+  h3{font-size:15px;font-weight:750;margin:24px 0 12px;color:var(--navy)}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--sh);transition:transform .18s ease,box-shadow .18s ease}
+  .card:hover{transform:translateY(-3px);box-shadow:var(--sh-lg)}
+  .card b{color:var(--navy)}
+  .stat{background:linear-gradient(180deg,#ffffff,#fbfdff);border:1px solid var(--line);border-radius:var(--radius);padding:19px 16px 16px;position:relative;overflow:hidden;box-shadow:var(--sh);transition:transform .18s ease,box-shadow .18s ease}
+  .stat:hover{transform:translateY(-3px);box-shadow:var(--sh-lg)}
+  .stat .k{font-size:clamp(22px,4vw,28px);font-weight:800;color:var(--navy);letter-spacing:-.6px;line-height:1.05}
+  .stat .l{font-size:12.5px;color:var(--mut);margin-top:6px;line-height:1.4}
+  .stat .t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--teal);margin-bottom:9px}
+  .stat .bar{position:absolute;left:0;top:0;height:4px;width:100%;background:linear-gradient(90deg,var(--teal),var(--teal2))}
+  .band{position:relative;overflow:hidden;background:linear-gradient(125deg,#0b2138,#15466e 70%,#0f5a60);color:#fff;border-radius:var(--radius);padding:clamp(20px,3.5vw,26px);margin-top:8px;border:1px solid rgba(21,194,189,.35);box-shadow:var(--sh-lg)}
+  .band:before{content:"";position:absolute;right:-60px;top:-60px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(21,194,189,.30),transparent 70%);pointer-events:none}
+  .band .badge{display:inline-block;background:linear-gradient(135deg,#f0b836,var(--gold));color:#3a2c00;font-weight:800;font-size:12px;letter-spacing:.05em;padding:6px 13px;border-radius:30px;text-transform:uppercase;box-shadow:var(--sh-sm)}
+  .band h3{color:#fff;font-size:clamp(16px,2.8vw,19px);margin:13px 0 9px}
+  .band p{font-size:14px;color:#d6e5f1;max-width:940px;position:relative}
+  .band ul{margin:13px 0 0 0;list-style:none;display:grid;gap:8px;position:relative}
+  .band li{font-size:13.5px;color:#cfe0ee;padding-left:24px;position:relative}
+  .band li:before{content:"\25B8";position:absolute;left:4px;color:var(--teal2);font-weight:800}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius-sm);box-shadow:var(--sh);border:1px solid var(--line);margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);overflow:hidden}
+  th{background:var(--navy);color:#fff;text-align:left;padding:11px 12px;font-weight:600;font-size:12px}
+  td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+  tr:nth-child(even) td{background:#f8fafd}
+  tbody tr{transition:background .12s}
+  tbody tr:hover td{background:#f2f8fb}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:30px;letter-spacing:.03em}
+  .p-anchor{background:#e3f6ec;color:#0c7a4d} .p-exp{background:#e9f0fe;color:#2451c4} .p-vision{background:#fdeee5;color:#c2611a} .p-feat{background:#efedfb;color:#6b4bc0}
+  .yes{color:var(--green);font-weight:800}.no{color:#cdd4dd;font-weight:700}.part{color:var(--amber);font-weight:700;font-size:12px}
+  .win{color:var(--teal);font-weight:800}
+  .callout{border-left:4px solid var(--amber);background:linear-gradient(100deg,#fff8ec,#fffdf8);border-radius:0 12px 12px 0;padding:14px 16px;font-size:13.5px;color:#6b4e16;box-shadow:var(--sh-sm)}
+  .callout.red{border-color:var(--red);background:linear-gradient(100deg,#fdf0f0,#fffafa);color:#7d2b2b}
+  .callout.teal{border-color:var(--teal);background:linear-gradient(100deg,#eafafa,#fbffff);color:#0b5d5d}
+  .callout b{color:inherit}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .chip{font-size:11px;font-weight:600;padding:5px 10px;border-radius:8px;background:#eef2f8;color:var(--navy);border:1px solid var(--line)}
+  .chartbox{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--sh)}
+  .chh{position:relative;height:300px}
+  .chh.sm{height:240px}
+  .num{font-variant-numeric:tabular-nums}
+  .conf{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;margin-left:6px}
+  .c-hi{background:#e3f6ec;color:#0c7a4d}.c-md{background:#fef6e7;color:#9a6b00}.c-lo{background:#fdecec;color:#b23b3b}
+  .phase{display:grid;grid-template-columns:124px 1fr;gap:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);padding:17px;margin-bottom:12px;box-shadow:var(--sh);transition:transform .18s,box-shadow .18s}
+  .phase:hover{transform:translateY(-2px);box-shadow:var(--sh-lg)}
+  .phase .when{font-weight:800;color:#fff;background:linear-gradient(150deg,var(--navy2),var(--navy));border-radius:11px;padding:13px;text-align:center;height:fit-content;box-shadow:var(--sh-sm)}
+  .phase .when small{display:block;font-weight:600;color:#9fd2cf;font-size:11px;margin-top:5px}
+  .phase h4{font-size:15.5px;color:var(--navy);margin-bottom:5px}
+  .phase p{font-size:13px;color:var(--mut)}
+  .phase .wn{font-size:12px;color:var(--green);font-weight:700;margin-top:8px}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--sh)}
+  .node{background:#f3f7fc;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap}
+  .node.start{background:#e3f6ec;border-color:#bfe6d2;color:#0c7a4d}
+  .node.end{background:#e9f0fe;border-color:#cdddfb;color:#2451c4}
+  .node.track{background:#e8fafa;border-color:#bfeaea;color:#0b5d5d}
+  .arrow{color:#9fb0c2;font-weight:800;font-size:14px}
+  .trackdemo{background:linear-gradient(135deg,#0b2138,#163a5f);border-radius:var(--radius);padding:clamp(15px,3vw,20px);color:#fff;position:relative;box-shadow:var(--sh-lg);overflow:hidden}
+  .trackdemo:before{content:"";position:absolute;right:-50px;top:-50px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(21,194,189,.25),transparent 70%)}
+  .trackdemo .road{position:relative;height:120px;margin:14px 0 6px;border-radius:12px;background-color:#0f2c49;overflow:hidden;border:1px solid rgba(255,255,255,.12)}
+  .road .line{position:absolute;top:50%;left:3%;right:3%;height:3px;background:repeating-linear-gradient(90deg,#3a6391 0 14px,transparent 14px 26px);transform:translateY(-50%)}
+  .pin{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:21px}
+  .pin.home{left:6%}.pin.plant{right:6%}
+  .truck{position:absolute;top:50%;left:6%;transform:translate(-50%,-50%);font-size:25px;transition:left .25s linear;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4))}
+  .trackbar{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;color:#cfe0ee;margin-top:8px;position:relative}
+  .trackbar .eta{font-weight:800;color:#fff;font-size:16px}
+  .tl{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;position:relative}
+  .tl .st{font-size:11px;font-weight:700;padding:5px 10px;border-radius:8px;background:rgba(255,255,255,.09);color:#9fc6e0;transition:.2s}
+  .tl .st.done{background:var(--teal);color:#04312f}
+  .tl .st.now{background:linear-gradient(135deg,#f0b836,var(--gold));color:#3a2c00}
+  .btn{background:linear-gradient(135deg,var(--teal2),var(--teal));color:#04312f;border:0;border-radius:10px;padding:11px 16px;font-weight:800;font-size:12.5px;cursor:pointer;margin-top:14px;min-height:44px;box-shadow:var(--sh);transition:transform .12s}
+  .btn:hover{transform:translateY(-2px)}.btn:active{transform:translateY(0)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .src{font-size:11.5px;color:var(--mut);line-height:1.5}
+  .src a{color:var(--blue);text-decoration:none}
+  .footer{background:linear-gradient(135deg,#0b2138,#15436b);color:#9fc6e0;font-size:12px;padding:28px 0;margin-top:44px}
+  .footer b{color:#fff}
+  @media(max-width:960px){.g4,.g3{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.phase{grid-template-columns:1fr}.phase .when{text-align:left}}
+  @media(max-width:640px){.wrap{padding:0 16px}.g2,.g3,.g4{grid-template-columns:1fr}.tablewrap>table{min-width:560px}nav.tabs a{padding:12px 11px;font-size:12.5px}.band:before{display:none}.chh{height:260px}}
+  @media print{nav.tabs{display:none}.card,.stat,.phase{box-shadow:none}body{background:#fff}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="tagline">Confidential · Prepared for The Blue Bee · June 2026</div>
+    <h1>The Tracked Laundry Operating System — Market Opportunity &amp; Product Plan</h1>
+    <p class="sub">Why the GTA specialty-cleaning and institutional-linen trade is a fundable opportunity, what we recommend building — a single-operator operating system with live vehicle tracking and item-level chain of custody — and how it goes to market, across the <b>carpets</b>, <b>care-home</b>, and <b>hotel</b> verticals.</p>
+    <div class="meta">
+      <span><b>Geography:</b> GTA / Toronto</span>
+      <span><b>Currency:</b> CAD (USD→CAD 1.36)</span>
+      <span><b>Verticals:</b> Carpets · Care homes · Hotels</span>
+      <span><b>Client:</b> The Blue Bee (thebluebee.ca)</span>
+      <span><b>Prepared:</b> June 2026</span>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs"><div class="wrap" id="navwrap">
+  <a href="#overview" class="on">Summary</a>
+  <a href="#market">Market</a>
+  <a href="#strategy">Strategy</a>
+  <a href="#compete">Competition</a>
+  <a href="#product">The Product</a>
+  <a href="#how">How It Works</a>
+  <a href="#build">Build Plan</a>
+  <a href="#gtm">Go-to-Market</a>
+  <a href="#numbers">The Numbers</a>
+  <a href="#risks">Risks</a>
+  <a href="#roadmap">Roadmap</a>
+  <a href="#sources">Sources</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- SUMMARY -->
+<section id="overview">
+  <h2><span class="ix">&#9733;</span> Executive summary</h2>
+  <p class="lead">The headline is good and the framing matters more than any single number: "laundry" is several businesses wearing one word. The fundable one is the high-ticket specialty trade plus recurring institutional linen — exactly where you already have a paying anchor. The recommendation is to build the operating system that runs that business, lead with tracking and chain of custody as the wedge, and keep the bigger platform upside as a foundation you can switch on later. The Blue Bee already runs a consumer wash-&amp;-fold and dry-clean pickup/delivery app in Toronto; this plan is about the larger, more durable money beside it — the commercial trade.</p>
+
+  <div class="grid g4">
+    <div class="stat"><span class="bar"></span><div class="t">GTA market (TAM)</div><div class="k">$1.32B</div><div class="l">Annual GTA spend across the laundry models in scope <span class="conf c-md">est.</span></div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Your anchor segment</div><div class="k">$511M</div><div class="l">GTA specialty cleaning (rugs, carpets, blinds) — growing +6.2%/yr</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Build v1 — the app</div><div class="k" style="font-size:19px">~1 month</div><div class="l">A focused, app-first version one for the specialty operation</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Platform upside (later)</div><div class="k">$2.0–4.6M</div><div class="l">ARR if you open it as a platform — the future option, not the v1 plan</div></div>
+  </div>
+
+  <div class="band">
+    <span class="badge">Recommendation</span>
+    <h3>Build a single-operator operating system for your specialty + institutional-linen business. Win on transparency. Expand vertical by vertical.</h3>
+    <p>The Blue Bee already has a strong consumer pickup-and-delivery business. The biggest growth from here is the commercial trade right next to it — fragmented, high-ticket specialty cleaning and recurring B2B linen (care homes, hotels), where margins are higher and demand is sticky. We recommend building the software that runs that operation first — booking, scheduling, live vehicle tracking, item-level chain of custody, and billing — then using that proof to win care-home and hotel linen contracts.</p>
+    <ul>
+      <li><b>Lead specialty (carpets/rugs/drapes)</b> — your current business, the easiest to digitize and the proving ground.</li>
+      <li><b>Expand to elderly-care and hotel linens together</b> — the recurring-revenue engine ($13K–$110K per account/yr).</li>
+      <li><b>The wedge is tracking + never losing an item</b> — the one thing opaque incumbents (Cintas/Aramark-style contracts) can't show.</li>
+      <li><b>Grow from the consumer base into commercial</b> — that&#39;s where the higher margins and recurring contracts are.</li>
+    </ul>
+  </div>
+
+  <div class="callout teal" style="margin-top:16px"><b>How to read the numbers:</b> the market sizing describes the <b>opportunity</b> — the size of the trade you operate in and can grow into. Figures are decision-grade estimates, labeled by confidence: hard published national figures and competitor facts are <span class="conf c-hi">High</span>; GTA-level dollar splits are computed (national × GTA share) and are <span class="conf c-md">est.</span></div>
+</section>
+
+<!-- MARKET -->
+<section id="market">
+  <h2><span class="ix">1</span> The market</h2>
+  <p class="lead">Canada's laundry economy splits into segments moving in opposite directions: specialty cleaning and healthcare linen are growing; classic dry-cleaning and coin laundromats are shrinking. Hard national figures exist; the GTA dollar splits are labeled estimates (national figure × GTA share).</p>
+
+  <div class="grid g3" style="margin-bottom:18px">
+    <div class="stat"><span class="bar"></span><div class="t">Specialty cleaning · Canada</div><div class="k">$2.84B</div><div class="l">Carpet / upholstery / rug / blind services · +6.2% CAGR <span class="conf c-hi">High</span></div></div>
+    <div class="stat"><span class="bar" style="background:linear-gradient(90deg,var(--green),#3cc98a)"></span><div class="t">Healthcare / hospital linen · Canada</div><div class="k">$2.28B</div><div class="l">~58% outsourced · +9% CAGR (fastest tailwind) <span class="conf c-hi">High</span></div></div>
+    <div class="stat"><span class="bar" style="background:linear-gradient(90deg,var(--blue),#4f7bef)"></span><div class="t">Industrial linen &amp; uniform · Canada</div><div class="k">$1.90B</div><div class="l">~204 firms · flat &amp; consolidating <span class="conf c-hi">High</span></div></div>
+  </div>
+
+  <div class="chartbox">
+    <h3 style="margin-top:0">Canadian segment size vs. growth direction (CAD $M, 2025)</h3>
+    <div class="chh"><canvas id="cMarket"></canvas></div>
+    <p class="src" style="margin-top:10px">Green = growing, red/amber = flat or shrinking. Sources: Grand View Research (carpet/upholstery, hospital linen), IBISWorld (industrial laundry $1.9B; dry cleaners $833M), ISED / Statistics Canada (coin laundromats ~1,092 firms × ~$209K). National CAD figures; the GTA is a share of these.</p>
+  </div>
+
+  <h3>The GTA you'd serve</h3>
+  <div class="grid g4">
+    <div class="stat"><span class="bar"></span><div class="t">Population</div><div class="k">7.1M</div><div class="l">Toronto CMA (Jul 2025) · ~2.5M households</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Hotel rooms</div><div class="k">~36,000</div><div class="l">~160 hotels · ~245K lbs linen/day</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Care + retirement (ON)</div><div class="k">611 + 776</div><div class="l">LTC homes + retirement residences · ~120–160 LTC in GTA</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Specialty &amp; restaurants</div><div class="k">15–20K</div><div class="l">GTA restaurants (est.) · ~300–500 laundromats <span class="conf c-lo">low</span></div></div>
+  </div>
+
+  <h3>Where the money actually is</h3>
+  <div class="two">
+    <div class="chartbox"><h3 style="margin-top:0">Annual value per customer (ARPU, CAD)</h3><div class="chh"><canvas id="cArpu"></canvas></div>
+      <p class="src" style="margin-top:8px">A single B2B linen account (care home, hotel) is worth more than dozens of residential rug jobs. That is why the plan leads specialty (to prove the software) but builds toward recurring linen contracts (the durable revenue).</p></div>
+    <div class="card">
+      <h3 style="margin-top:0">The two shapes of demand</h3>
+      <p class="src"><b>Specialty (carpets/rugs/blinds):</b> high ticket ($55–$640/job), low frequency (~1–2×/yr), high margin, lumpy. Acquisition-heavy but the most bookable online and the least digitized — easy to win with a modern experience.</p>
+      <p class="src" style="margin-top:10px"><b>Institutional linen (care homes, hotels):</b> modest per-pickup value but weekly-to-daily, on recurring contracts — <b>$13K–$110K per account / year</b>. This is the engine the business is built toward.</p>
+      <div class="chips"><span class="chip">Specialty = proof</span><span class="chip">Linen = engine</span><span class="chip">Consumer = deferred</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- STRATEGY -->
+<section id="strategy">
+  <h2><span class="ix">2</span> The strategy</h2>
+  <p class="lead">Sizing "laundry" as one blob produces a number you can't act on. It is several businesses with different markets, economics, and competitors. The plan focuses on the two highest-value, most durable segments and sequences them.</p>
+
+  <div class="grid g4">
+    <div class="card"><span class="pill p-anchor">ANCHOR · build first</span><h3 style="margin-top:10px">Specialty cleaning</h3><p class="src">Rugs, carpets, blinds, upholstery, drapery — your business today. High-ticket, low-frequency, fragmented, barely online. The best place to prove the software because you already own the supply.</p></div>
+    <div class="card"><span class="pill p-exp">EXPANSION</span><h3 style="margin-top:10px">Institutional linen</h3><p class="src">Care homes, retirement residences, hotels, restaurants. Recurring contracts, weekly+ pickups. Dominated by giants at the top, with a long underserved tail — and a transparency gap to exploit.</p></div>
+    <div class="card"><span class="pill p-vision">YOUR BASE</span><h3 style="margin-top:10px">Consumer pickup &amp; delivery</h3><p class="src">Wash-&-fold + dry-clean pickup &amp; delivery — The Blue Bee&#39;s current business and a loyal, app-based customer base. The opportunity is to extend that brand and operating muscle into the higher-value commercial verticals beside it.</p></div>
+    <div class="card"><span class="pill p-feat">LATER · wedge</span><h3 style="margin-top:10px">Machine-booking</h3><p class="src">Reserve a laundromat machine. Real whitespace but technically unproven and IoT-heavy. A supply-acquisition feature, not a revenue line. A much later experiment.</p></div>
+  </div>
+
+  <div class="band" style="margin-top:16px">
+    <span class="badge">The recommendation</span>
+    <h3>Build the operating system for the commercial trade — specialty cleaning plus institutional linen — and run it on live tracking and chain of custody.</h3>
+    <p>This is the durable, higher-margin growth right next to The Blue Bee&#39;s consumer base: specialty cleaning (a business you already run) plus recurring institutional linen, with a relationship into the highest-value vertical (care homes). Lead there, prove the tracking and transparency wedge, and expand vertical by vertical.</p>
+  </div>
+
+  <h3>The opportunity funnel (GTA)</h3>
+  <div class="two">
+    <div class="chartbox"><div class="chh"><canvas id="cFunnel"></canvas></div></div>
+    <div class="card">
+      <h3 style="margin-top:0">What the funnel means</h3>
+      <p class="src"><b>TAM $1.32B</b> — total annual GTA spend across the four laundry models. <b>SAM $606M</b> — the slice a modern booking/operations platform can realistically serve. <b>SOM $17M</b> — a defensible 3-year volume (GMV) flowing through the system.</p>
+      <p class="src" style="margin-top:10px">The funnel sizes the demand your services can capture: a large addressable market, a realistically serviceable slice, and a defensible 3-year volume to build toward. See <a href="#numbers">The Numbers</a> for how the opportunity becomes a recurring revenue engine.</p>
+    </div>
+  </div>
+
+  <div class="callout teal" style="margin-top:14px"><b>Sequencing logic:</b> the anchor gives you specialty supply on day one; the old-age-home relationship is your bridge into the highest-value vertical (care-home linen); from there, hotels and restaurants are the natural fan-out because they share the same plant and the same buyer psychology — a transparent, trackable alternative to opaque incumbent contracts. Consumer households come last, if ever.</div>
+</section>
+
+<!-- COMPETITION -->
+<section id="compete">
+  <h2><span class="ix">3</span> The competition — and how we win</h2>
+  <p class="lead">The competitive picture differs in every segment: B2B linen is an oligopoly of giants over a fragmented tail; specialty is pure fragmentation; consumer delivery is competitive and convenience-driven; the smart-money infrastructure players sell software instead of competing for customers.</p>
+
+  <div class="grid g4">
+    <div class="card"><b>B2B giants</b><p class="src" style="margin-top:6px">Cintas (US$9.6B, #1 in Canada; <b>acquiring UniFirst ~US$5.5B</b>) · K-Bro Linen (CAD $507M, largest Canadian-owned) · Vestis/Canadian Linen (US$2.7B) · Ecotex (healthcare). Entrenched, but opaque and contract-locked.</p></div>
+    <div class="card"><b>Specialty (GTA)</b><p class="src" style="margin-top:6px">Love Your Rug (claims largest GTA rug cleaner) · Turco Persian (est. 1906) · Clean-A-Blind (est. 1992) · Cleanol (drapery). Fragmented, mostly offline — the bar to beat is a better online experience.</p></div>
+    <div class="card"><b>Consumer / on-demand</b><p class="src" style="margin-top:6px">Rinse, Poplin, SudShare and app-based players compete on convenience. The Blue Bee already plays here — the edge is extending that experience and brand into the commercial verticals the consumer apps don&#39;t serve.</p></div>
+    <div class="card"><b>Infra / SaaS</b><p class="src" style="margin-top:6px">Cents (US$140M Series C — sells software to laundromats, the smart-money model) · Coinamatic / CSC ServiceWorks (machine layer; stop at availability, not booking).</p></div>
+  </div>
+
+  <h3>How we win: depth + tracking the incumbents can't match</h3>
+  <p class="lead" style="margin-bottom:14px">The consumer tools (CleanCloud, Cents, Starchup) own slick delivery + tracking but no commercial depth. The linen tools (LinenTech) own par levels and RFID but no specialty intake and no customer-facing tracking. The specialty tools (Ruggy, ARMS) own rug intake but nothing else. <b>None do all three commercial verticals in one tracked system — that gap is the wedge.</b></p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Capability</th><th>Consumer tools</th><th>Linen tools</th><th>Specialty tools</th><th>This platform</th></tr></thead>
+    <tbody>
+      <tr><td>Customer app + live truck tracking</td><td class="yes">&#10003;</td><td class="part">part</td><td class="part">part</td><td class="win">&#10003; all verticals</td></tr>
+      <tr><td>Owner live fleet map</td><td class="part">part</td><td class="yes">&#10003;</td><td class="no">&#10007;</td><td class="win">&#10003; + replay</td></tr>
+      <tr><td>Specialty intake: tag, inspect, photos, measure, quote, before/after</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="yes">&#10003;</td><td class="win">&#10003;</td></tr>
+      <tr><td>Linen par levels, soil intake, manifests, cost-center billing</td><td class="no">&#10007;</td><td class="yes">&#10003;</td><td class="no">&#10007;</td><td class="win">&#10003;</td></tr>
+      <tr><td>Care-home + hotel <b>linen tracking</b> &amp; auditable billing</td><td class="no">&#10007;</td><td class="yes">&#10003;</td><td class="no">&#10007;</td><td class="win">&#10003;</td></tr>
+      <tr style="background:#f0f6ff"><td><b>All three commercial verticals in ONE system</b></td><td class="no">&#10007;</td><td class="part">linen only</td><td class="part">specialty only</td><td class="win">&#10003; the wedge</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout" style="margin-top:14px"><b>Watch item:</b> incumbent consolidation is real — Cintas is acquiring UniFirst (~US$5.5B), so two of the three linen giants become one. That raises prices and reduces choice at the top of the market, which <i>helps</i> a transparent challenger winning the underserved tail.</div>
+</section>
+
+<!-- PRODUCT -->
+<section id="product">
+  <h2><span class="ix">4</span> The product</h2>
+  <p class="lead">One backend powers four surfaces, organized around a single idea: make every truck and every item locatable in real time. Three commercial verticals, modeled as genuinely different workflows on one shared logistics-and-tracking spine.</p>
+
+  <h3>Three commercial verticals</h3>
+  <div class="grid g3">
+    <div class="card"><span class="pill p-anchor">ANCHOR · v1</span><h3 style="margin-top:10px">Carpets / Specialty</h3><p class="src">Rugs, carpet, blinds, upholstery, drapery. Item-centric: each piece is QR-tagged, inspected with condition photos, measured, quoted, cleaned through stages, QC'd, and returned with before/after evidence.</p></div>
+    <div class="card"><span class="pill p-exp">v2</span><h3 style="margin-top:10px">Care / nursing homes</h3><p class="src">Facility linen — sheets, towels, blankets — on a par/rental model, tracked cart-by-cart with reliable recurring delivery, proof on every drop, and cost-center billing by wing or floor.</p></div>
+    <div class="card"><span class="pill p-exp">v2</span><h3 style="margin-top:10px">Hotels</h3><p class="src">Sheets, towels, F&amp;B linen. Soil by weight/pieces/carts → production → packed to par with container tickets and consolidated manifests → routed → delivered against a load sheet. RFID pooling later cuts shrinkage.</p></div>
+  </div>
+
+  <h3>Four apps, one system</h3>
+  <div class="grid g4">
+    <div class="card"><div style="font-size:23px">&#128241;</div><h3 style="margin-top:6px">Customer app</h3><p class="src">iOS · Android · Web. Book, get a firm quote, approve it, <b>track the truck live</b>, see before/after photos, pay. B2B accounts see routes, par, manifests and invoices.</p></div>
+    <div class="card"><div style="font-size:23px">&#128187;</div><h3 style="margin-top:6px">Web console</h3><p class="src">The operational brain: orders, intake &amp; quoting, routes &amp; dispatch, the live fleet map, production, billing, analytics, admin.</p></div>
+    <div class="card"><div style="font-size:23px">&#128081;</div><h3 style="margin-top:6px">Owner app</h3><p class="src">iOS · Android. Your cockpit: <b>every outbound truck on a live map</b>, today's money, approvals, and an exceptions feed for anything going wrong.</p></div>
+    <div class="card"><div style="font-size:23px">&#128666;</div><h3 style="margin-top:6px">Driver app</h3><p class="src">iOS · Android, offline-first. The field app that powers tracking: route, scan carts/items, proof-of-delivery photo + signature, and the GPS source for the live map.</p></div>
+  </div>
+
+  <div class="callout teal" style="margin-top:14px"><b>The core, in one line:</b> every job and every item — a $4,000 silk rug, a hotel duvet, a care home's bedding — is tagged, scanned, photographed, and accounted for from pickup to return, and every truck is on a live map. That chain of custody is both the operational backbone and the sales pitch.</div>
+</section>
+<!-- HOW IT WORKS -->
+<section id="how">
+  <h2><span class="ix">5</span> How it works</h2>
+  <p class="lead">Every job runs one clean lifecycle, and the truck is on a live map the whole way. Here is the specialty flow (the v1 path) and the tracking experience that is the product's signature.</p>
+
+  <h3>The specialty job lifecycle</h3>
+  <div class="flow">
+    <span class="node start">Book</span><span class="arrow">&#8594;</span>
+    <span class="node track">Pickup (tracked)</span><span class="arrow">&#8594;</span>
+    <span class="node">Intake + photos</span><span class="arrow">&#8594;</span>
+    <span class="node">Quote</span><span class="arrow">&#8594;</span>
+    <span class="node">Approve</span><span class="arrow">&#8594;</span>
+    <span class="node">Clean + QC</span><span class="arrow">&#8594;</span>
+    <span class="node">Before/after</span><span class="arrow">&#8594;</span>
+    <span class="node track">Delivery (tracked)</span><span class="arrow">&#8594;</span>
+    <span class="node">Pay</span><span class="arrow">&#8594;</span>
+    <span class="node end">Done</span>
+  </div>
+  <p class="src" style="margin-top:10px">Care-home and hotel linen run the same backbone with recurring routes, par-level replenishment, soil-by-weight intake, consolidated manifests, and proof of every delivery.</p>
+
+  <h3>Live tracking — the signature feature</h3>
+  <div class="two">
+    <div class="card"><h3 style="margin-top:0">The customer sees the truck</h3><p class="src">A live map of the assigned vehicle and a real-time ETA, for both pickup and delivery — with a status timeline (on the way → arriving → arrived) and push/SMS alerts. The same "where's my driver" experience people expect from food delivery, applied to laundry.</p></div>
+    <div class="card"><h3 style="margin-top:0">The owner sees the fleet</h3><p class="src">One map, every outbound truck, colour-coded by status, with live breadcrumbs and an exceptions feed (late, off-route, failed stop). Tap any truck to see its stops; tap any item to see its full chain of custody.</p></div>
+  </div>
+
+  <div class="trackdemo" style="margin-top:16px">
+    <div class="trackbar"><span>Live demo · area-rug pickup</span><span>ETA <span class="eta" id="etaVal">8 min</span></span></div>
+    <div class="road"><div class="line"></div><span class="pin home" title="Customer">&#127968;</span><span class="pin plant" title="Plant">&#127981;</span><span class="truck" id="truck">&#128666;</span></div>
+    <div class="trackbar"><span id="trackStatus">Driver Sam is on the way to you</span><span class="src" style="color:#9fc6e0">updates ~every 30s</span></div>
+    <div class="tl" id="trackTl"></div>
+    <button class="btn" id="trackBtn">&#9654; Play the pickup</button>
+  </div>
+</section>
+
+<!-- BUILD PLAN -->
+<section id="build">
+  <h2><span class="ix">6</span> The build plan</h2>
+  <p class="lead">A focused, single-operator system that runs The Blue Bee's commercial business — built lean, with a foundation that can later become a sellable product if you choose. The Blue Bee already operates consumer pickup/delivery and apps, so a lot of the operational muscle exists; this adds the commercial depth and the tracking spine.</p>
+
+  <div class="grid g4">
+    <div class="stat"><span class="bar"></span><div class="t">Model</div><div class="k" style="font-size:17px">Single-operator OS</div><div class="l">Runs your own business; foundation kept SaaS-ready for later, no rewrite to expand.</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Sequence</div><div class="k" style="font-size:17px">Carpets &#8594; linens</div><div class="l">v1 specialty app &#8594; v2 elderly-care + hotel linens (together).</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Logistics</div><div class="k" style="font-size:17px">Built in-house</div><div class="l">Dispatch, tracking, ETA, custody are your code; maps/SMS/payments are plug-in APIs.</div></div>
+    <div class="stat"><span class="bar"></span><div class="t">Platforms</div><div class="k" style="font-size:17px">iOS · Android · Web</div><div class="l">One mobile codebase for the three apps, plus a browser console.</div></div>
+  </div>
+
+  <h3>The right-sized v1 (the thin slice)</h3>
+  <div class="two">
+    <div class="card"><h3 style="margin-top:0">v1 — IN (one-month app)</h3><p class="src">One vertical (<b>specialty</b>), app-first. The core loop: <b>book &#8594; pickup &#8594; intake &amp; photos &#8594; quote &#8594; approve &#8594; clean &#8594; deliver &#8594; pay</b>, with <b>live tracking both ways</b>. The customer app plus the driver capture and an owner view that make tracking real. Payments and notifications.</p></div>
+    <div class="card"><h3 style="margin-top:0">v1 — OUT (deferred)</h3><p class="src">All linen features (par, soil intake, production, manifests, cost-center billing, RFID) &#8594; v2. B2B portal, recurring routes &#8594; v2. Loyalty, more languages, BI &#8594; later. Selling the platform to others &#8594; only if you choose.</p></div>
+  </div>
+
+  <h3>Build in-house vs. plug-in APIs</h3>
+  <div class="two">
+    <div class="card"><h3 style="margin-top:0">In-house — your IP</h3><p class="src">Order lifecycle · dispatch + route optimization · live-tracking engine (ingestion, geo store, scoped customer links) · geofence + ETA · chain-of-custody · inspection/quote · par/soil/production (v2) · billing.</p></div>
+    <div class="card"><h3 style="margin-top:0">Plug-in — rent</h3><p class="src">Map tiles + geocoding + route distances (Google/Mapbox) · SMS/WhatsApp (Twilio) · push notifications · email · card &amp; bank payments (Stripe) · accounting sync (QuickBooks/Xero) · RFID hardware (later).</p></div>
+  </div>
+
+  <div class="callout teal" style="margin-top:16px"><b>v1 is deliberately small:</b> a focused, app-first build for the specialty operation — the fastest way to put live tracking and a clean booking-to-delivery flow in customers&#39; hands, then expand into linens.</div>
+</section>
+
+<!-- GO-TO-MARKET -->
+<section id="gtm">
+  <h2><span class="ix">7</span> Go-to-market &amp; positioning</h2>
+  <p class="lead">v1 is The Blue Bee's own tool, so go-to-market means two things: roll it out across your operation, and use the proof to win the first external linen contracts. Customer-zero is your existing specialty book — already paying, already a reference set.</p>
+
+  <div class="grid g3">
+    <div class="card"><span class="pill p-exp">BEACHHEAD</span><h3 style="margin-top:10px">Elderly-care homes</h3><p class="src">GTA long-term-care + retirement homes, ~60–250 beds, on an opaque incumbent or in-house laundry, frustrated with an opaque, unreliable incumbent. Triggers: a service failure or billing dispute, a price hike, a new administrator, an accreditation cycle.</p></div>
+    <div class="card"><span class="pill p-anchor">THE WEDGE</span><h3 style="margin-top:10px">The one-line pitch</h3><p class="src">"See every truck in real time, and account for every cart and item end to end." Live tracking + item-level chain of custody + auditable par/weight billing — the transparency opaque incumbents can&#39;t show.</p></div>
+    <div class="card"><span class="pill p-feat">MOTION</span><h3 style="margin-top:10px">Land &#8594; prove &#8594; expand</h3><p class="src">One lighthouse home on a paid 60–90 day pilot (a single wing) &#8594; a measured loss-rate drop + on-time % &#8594; full contract + reference &#8594; sister homes and hotels on the same backbone.</p></div>
+  </div>
+
+  <div class="callout teal" style="margin-top:14px"><b>Positioning:</b> For GTA care homes and hotels tired of opaque, unaccountable vendors, <b>The Blue Bee</b> is the laundry partner whose software gives them <b>real-time tracking and item-level chain of custody on every pickup, cart, and delivery</b> — so they always know where the truck is and that every item is accounted for. Unlike Cintas/Aramark-style incumbents, the whole loop runs on one transparent, tracked system.</div>
+
+  <h3>What to say to each buyer</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Buyer</th><th>Their pain</th><th>The promise</th><th>Proof</th><th>Ask</th></tr></thead>
+    <tbody>
+      <tr><td><b>Care-home manager</b></td><td>Opaque vendor; unreliable delivery; no visibility</td><td>"Every cart tracked, every delivery on time and auditable"</td><td>Live tracking + delivered-vs-par counts + pilot scorecard</td><td>Run a 60-day pilot on one floor</td></tr>
+      <tr><td><b>Hotel ops</b></td><td>Shrinkage; surprise charges; late linen on busy days</td><td>"Live ETAs, par you can see, weight/piece you can audit"</td><td>Manifests + delivered-vs-par counts</td><td>Track one week of deliveries free</td></tr>
+      <tr><td><b>Residential / specialty</b></td><td>Anxiety over a valuable rug; no idea when the truck comes</td><td>"Watch your rug the whole way; firm quote up front"</td><td>Intake photos + live truck map + before/after</td><td>Book a pickup, track it live</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Pricing &amp; proof</h3>
+  <div class="two">
+    <div class="card"><h3 style="margin-top:0">How it makes money (v1)</h3><p class="src">There is no separate software price — it is The Blue Bee's own system. It earns by helping you <b>win and keep higher-value accounts</b> and run them more efficiently: per-item rate cards + quotes (specialty), par/weight/piece billing (linen), fewer lost items, fewer disputes. A future option is to package and sell it to other operators (see <a href="#numbers">The Numbers</a>).</p></div>
+    <div class="card"><h3 style="margin-top:0">Earning trust (B2B buyers are cautious)</h3><p class="src">A quantified pilot scorecard (loss rate, on-time %, dispute time) · privacy-compliant (PIPEDA) from day one, with SOC 2 / ISO 27001 readiness for larger accounts · liability/insurance terms in the contract · a 99%+ on-time SLA, credible because the system already captures the tracking data to prove it.</p></div>
+  </div>
+</section>
+
+<!-- THE NUMBERS -->
+<section id="numbers">
+  <h2><span class="ix">8</span> The numbers — read honestly</h2>
+  <p class="lead">Three different things get called "the number." Keeping them separate is the whole point: the opportunity is large, the committed build is modest and de-risked, and the platform upside is a real but <i>future</i> option — not a v1 forecast.</p>
+
+  <div class="grid g3">
+    <div class="card"><span class="pill p-anchor">1 · THE OPPORTUNITY</span><h3 style="margin-top:10px">The market you operate in</h3><p class="src"><b>$1.32B</b> GTA TAM across the laundry models; <b>$511M</b> in your specialty anchor segment alone (growing +6.2%/yr); the linen engine is worth <b>$13K–$110K per account / year</b>. This sizes the demand your services can capture.</p><div class="chips"><span class="chip">TAM $1.32B</span><span class="chip">SAM $606M</span><span class="chip">SOM $17M GMV</span></div></div>
+    <div class="card" style="border-color:#bfeaea;background:linear-gradient(180deg,#f3fdfd,#fff)"><span class="pill p-feat">2 · THE RECURRING ENGINE</span><h3 style="margin-top:10px">B2B linen contracts</h3><p class="src">The durable revenue is recurring institutional linen: each care-home or hotel account is worth <b>$13K–$110K per year</b> on weekly-to-daily contracts. A handful of these is a stable, compounding book — and the transparency wedge is how you win and keep them.</p><div class="chips"><span class="chip">$13K–$110K / account</span><span class="chip">Recurring</span><span class="chip">Sticky</span></div></div>
+    <div class="card" style="opacity:.96"><span class="pill p-vision">3 · THE SCALE</span><h3 style="margin-top:10px">The prize as you grow</h3><p class="src">The GTA is the beachhead. The same commercial laundry market is worth roughly <b>$8.6B nationally</b> if the model replicates across Canadian metros — a multi-vertical, multi-city business built on the tracked operating system, one proven vertical at a time.</p><div class="chips"><span class="chip">National ~$8.6B</span><span class="chip">Multi-vertical</span><span class="chip">Multi-city</span></div></div>
+  </div>
+
+  <div class="callout teal" style="margin-top:16px"><b>The shape of the business:</b> v1 launches the specialty app fast; recurring B2B linen contracts are where the durable money compounds; and the national market is the long-term scale. Each stage is funded and de-risked by the one before it.</div>
+
+  <div class="callout" style="margin-top:12px"><b>Confidence:</b> national market sizes and competitor facts are <span class="conf c-hi">High</span>; GTA dollar splits, ARPU and frequency are <span class="conf c-md">labeled estimates</span> built from national figures × GTA share; a couple of inputs (laundromat counts, consumer frequency) are <span class="conf c-lo">low</span>. Treat the sizing as a decision-grade frame, not audited figures.</div>
+</section>
+<!-- RISKS -->
+<section id="risks">
+  <h2><span class="ix">9</span> Risks &amp; what to watch</h2>
+  <p class="lead">Honest risks, with how each is handled. None is a deal-breaker; together they define what to de-risk early.</p>
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0">Market &amp; commercial</h3>
+      <ul class="src" style="list-style:none;display:grid;gap:9px">
+        <li>&#129702; <b>Focus.</b> The consumer base is a strength to build from; the durable margins are in commercial, so v1 deliberately leads with specialty rather than spreading thin.</li>
+        <li>&#128176; <b>Damage / loss liability</b> on high-value rugs — handled by mandatory intake photos, acknowledged pre-existing damage, a claims process, and written contract terms.</li>
+        <li>&#127970; <b>Incumbent consolidation</b> (Cintas acquiring UniFirst) raises prices at the top — which helps a transparent challenger winning the tail.</li>
+        <li>&#128100; <b>Single-anchor concentration</b> — land a second commercial reference account early.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Execution &amp; data</h3>
+      <ul class="src" style="list-style:none;display:grid;gap:9px">
+        <li>&#128225; <b>In-house live tracking is the hard part.</b> Prototype it in week 1 before committing the full build — it's the riskiest and most differentiating piece.</li>
+        <li>&#128241; <b>Background GPS reliability</b> across phones — budget real device testing; the system degrades gracefully to last-known position + status.</li>
+        <li>&#128202; <b>The dollar sizing is decision-grade, not audited.</b> GTA splits are national figures × labeled GTA share; validate with a paid Ontario data pull before underwriting anything large.</li>
+        <li>&#128736; <b>Hardware &amp; process change</b> — the field apps need real-device testing and brief staff onboarding; plan a short parallel-run before full cutover.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section id="roadmap">
+  <h2><span class="ix">10</span> Roadmap &amp; next steps</h2>
+  <p class="lead">Each release de-risks and funds the next. Start narrow, prove the tracking + custody wedge, then expand vertical by vertical.</p>
+  <div class="phase"><div class="when">v1<small>~1 month · app</small></div><div><h4>Specialty app + live tracking</h4><p>The carpet/rug/drape operation, app-first: the core booking-to-delivery loop with live tracking both ways, payments and notifications. The fastest way to put a tracked, modern experience in customers&#39; hands.</p><div class="wn">&#10003; Exit: specialty jobs booked, tracked and paid in-app, every truck on the live map</div></div></div>
+  <div class="phase"><div class="when">v2<small>next</small></div><div><h4>Elderly-care + hotel linens (together)</h4><p>The recurring B2B linen engine: contracts and par levels · recurring routes · soil-by-weight intake · pack-to-par + consolidated manifests · cost-center billing · tracked, auditable delivery with proof on every drop · a B2B portal for the account.</p><div class="wn">&#10003; Exit: first care-home or hotel linen contract live, fully tracked and auditable</div></div></div>
+  <div class="phase"><div class="when">v3<small>later</small></div><div><h4>Hardening: RFID, full plant, BI</h4><p>RFID linen pooling for shrinkage · full production module · business-intelligence dashboards · French localization for institutional RFPs.</p><div class="wn">&#10003; Exit: shrinkage controlled, plant instrumented, enterprise-ready</div></div></div>
+  <div class="phase"><div class="when">v4<small>optional</small></div><div><h4>Sell it as a platform (only if you choose)</h4><p>Flip the single-operator foundation to multi-tenant; add packaging, pricing and self-serve onboarding so other operators can buy it. Additive, not a rewrite — this is where the $2–4.6M ARR upside lives.</p><div class="wn">&#10003; Exit: a product other laundries pay for</div></div></div>
+
+  <div class="callout teal" style="margin-top:14px"><b>Next steps:</b> (1) lock the v1 app scope; (2) prototype the live-tracking engine and prove it on a real route; (3) migrate the specialty book; (4) line up one care-home or hotel pilot to start the moment v2 begins.</div>
+</section>
+
+<!-- SOURCES -->
+<section id="sources">
+  <h2><span class="ix">11</span> Sources &amp; confidence</h2>
+  <p class="lead">This document blends three things: published market data, live competitor research (June 2026), and the product/go-to-market plan. Numbers are labeled by confidence so nothing is taken on faith.</p>
+  <div class="two">
+    <div class="card">
+      <h3 style="margin-top:0">Market data</h3>
+      <p class="src">Grand View Research (carpet/upholstery; hospital linen), IBISWorld (industrial laundry $1.9B; dry cleaners $833M), Statistics Canada / ISED (coin laundromats), OLTCA &amp; RHRA (care + retirement homes), GTHA (hotels), Inside Airbnb. National figures are <span class="conf c-hi">High</span> confidence; GTA dollar splits are computed (national × GTA share) and are <span class="conf c-md">labeled estimates</span>.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Competitor &amp; product research</h3>
+      <p class="src">Competitor app mechanics researched live (June 2026): CleanCloud, Cents, Starchup (consumer/delivery); LinenTech (B2B linen, par/RFID/cost-center billing); Ruggy, Area Rug Management System, Fieldd (specialty intake); SimSort (care-home clothing labeling). Client reference: <a href="https://www.thebluebee.ca/">thebluebee.ca</a>.</p>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:14px"><b>Confidence summary:</b> national market sizes &amp; competitor facts — <span class="conf c-hi">High</span>. Competitor facts &amp; the consumer landscape — <span class="conf c-hi">High</span>. GTA dollar sizing, ARPU, frequency, laundromat counts — <span class="conf c-md">Low–Med (labeled estimates)</span>. Build cost/timeline — <span class="conf c-md">decision-grade estimate, validate before budgeting</span>.</div>
+</section>
+
+</div>
+
+<div class="footer"><div class="wrap">
+  <b>The Blue Bee — Market Opportunity &amp; Product Plan.</b> Confidential · Prepared June 2026 · All figures CAD (USD→CAD 1.36) · Decision-grade estimates, not audited financials.<br>
+  Blends the GTA laundry market analysis with the product blueprint and go-to-market. Market sizing describes the opportunity; the committed v1 is a single-operator app for The Blue Bee.
+</div></div>
+
+<script>
+var palette={navy:'#0b2138',navy2:'#15436b',teal:'#0fa3a3',teal2:'#15c2bd',blue:'#2563eb',green:'#15a36a',red:'#d64545',amber:'#e08a1e',gold:'#e6a817',mut:'#9aa7b6'};
+
+/* ---- charts (guarded) ---- */
+if(window.Chart){
+  Chart.defaults.font.family="-apple-system,Segoe UI,Roboto,sans-serif";Chart.defaults.font.size=12;Chart.defaults.color='#5b6979';
+  var grid={color:'#eef2f7'};
+  new Chart(document.getElementById('cMarket'),{type:'bar',
+    data:{labels:[['Specialty','cleaning'],['Healthcare','linen'],['Industrial','linen'],['Dry','cleaners'],['Coin','laundromats']],
+      datasets:[{data:[2839,2275,1900,833,229],backgroundColor:[palette.green,palette.green,palette.amber,palette.red,palette.red],borderRadius:6}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:function(c){return '$'+c.raw+'M  ·  '+['+6.2% CAGR','+9% CAGR','~flat','-4.8% CAGR','declining'][c.dataIndex];}}}},
+      scales:{y:{ticks:{callback:function(v){return '$'+(v/1000).toFixed(1)+'B';}},grid:grid},x:{grid:{display:false},ticks:{font:{size:11}}}}}});
+
+  var arpuRange=['$150–300','$300–600','$720–960','$960–1,200','$13K–$110K'];
+  new Chart(document.getElementById('cArpu'),{type:'bar',
+    data:{labels:['Rugs / blinds','Dry cleaning','Wash-&-fold','Laundromat','B2B linen account'],
+      datasets:[{data:[225,450,840,1080,40000],backgroundColor:[palette.gold,palette.blue,palette.amber,palette.teal,palette.green],borderRadius:6}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:function(c){return '~'+arpuRange[c.dataIndex]+' / yr';}}}},
+      scales:{x:{type:'logarithmic',ticks:{callback:function(v){return '$'+v;}},grid:grid},y:{grid:{display:false}}}}});
+
+  new Chart(document.getElementById('cFunnel'),{type:'bar',
+    data:{labels:['TAM (GTA spend)','SAM (serviceable)','SOM (3-yr GMV)'],
+      datasets:[{data:[1323,606,17],backgroundColor:[palette.navy,palette.blue,palette.teal],borderRadius:7,barThickness:46}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:function(c){return '$'+c.raw+'M';}}}},
+      scales:{x:{ticks:{callback:function(v){return '$'+v+'M';}},grid:grid},y:{grid:{display:false}}}}});
+}
+
+/* ---- live tracking demo ---- */
+var steps=['Scheduled','Driver assigned','On the way','Arriving','Arrived','Completed'];
+var tl=document.getElementById('trackTl');
+function paintTl(active){tl.innerHTML='';steps.forEach(function(s,i){var e=document.createElement('span');
+  e.className='st'+(i<active?' done':(i===active?' now':''));e.textContent=s;tl.appendChild(e);});}
+paintTl(2);
+var playing=false;
+document.getElementById('trackBtn').onclick=function(){
+  if(playing)return;playing=true;
+  var truck=document.getElementById('truck'),eta=document.getElementById('etaVal'),st=document.getElementById('trackStatus');
+  var pct=6,mins=8;truck.style.left=pct+'%';paintTl(2);eta.textContent='8 min';st.textContent='Driver Sam is on the way to you';
+  var timer=setInterval(function(){
+    pct+=4.7;mins=Math.max(0,Math.round(8*(1-(pct-6)/88)));
+    truck.style.left=Math.min(pct,94)+'%';eta.textContent=mins+' min';
+    if(pct>=70&&pct<88){paintTl(3);st.textContent='Sam is arriving — about '+mins+' min away';}
+    if(pct>=94){clearInterval(timer);paintTl(4);eta.textContent='Arrived';st.textContent='Sam has arrived for pickup';
+      setTimeout(function(){paintTl(6);eta.textContent='Done';st.textContent='Picked up · 1 rug scanned & photographed';playing=false;},1200);}
+  },420);
+};
+
+/* ---- wrap any bare tables for mobile scroll ---- */
+document.querySelectorAll('table').forEach(function(t){if(t.parentNode&&t.parentNode.classList&&t.parentNode.classList.contains('tablewrap'))return;var w=document.createElement('div');w.className='tablewrap';t.parentNode.insertBefore(w,t);w.appendChild(t);});
+
+/* ---- nav scroll-spy ---- */
+var links=[].slice.call(document.querySelectorAll('nav.tabs a'));
+var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});
+window.addEventListener('scroll',function(){var i=secs.length-1;for(var j=0;j<secs.length;j++){if(secs[j]&&secs[j].getBoundingClientRect().top<120)i=j;}
+  links.forEach(function(a,k){a.classList.toggle('on',k===i);});},{passive:true});
+links.forEach(function(a){a.onclick=function(e){e.preventDefault();var el=document.querySelector(a.getAttribute('href'));if(el)el.scrollIntoView({behavior:'smooth'});};});
+</script>
+</body>
+</html>

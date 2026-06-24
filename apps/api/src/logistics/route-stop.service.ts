@@ -8,6 +8,7 @@ import {
   RouteStatus,
   RouteStopKind,
   RouteStopStatus,
+  type ChannelClosedReason,
   type ListStopsQuery,
   type PatchStopDto,
   type StopActionDto,
@@ -17,6 +18,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from '../orders/audit.service';
 import { OrderStateMachine } from '../orders/state-machine.service';
+import { RealtimePublisher } from '../realtime/realtime-publisher.service';
 import { LogisticsAccessService } from './logistics-access.service';
 import { RouteStopStateMachine } from './route-stop-state-machine.service';
 
@@ -32,6 +34,7 @@ export class RouteStopService {
     private readonly access: LogisticsAccessService,
     private readonly orderStateMachine: OrderStateMachine,
     private readonly stopStateMachine: RouteStopStateMachine,
+    private readonly realtime: RealtimePublisher,
   ) {}
 
   // ─────────────────────────────── reads ───────────────────────────────
@@ -90,6 +93,16 @@ export class RouteStopService {
       if (to === RouteStopStatus.IN_PROGRESS) await this.maybeStartRoute(tx, stop.routeId, stop.orgId, principal.userId);
       if (TERMINAL_STOP.has(to)) await this.maybeCompleteRoute(tx, stop.routeId, stop.orgId, principal.userId);
     });
+
+    // Realtime teardown (Increment 6): once the stop is terminal, the customer must not keep
+    // tracking (no tracking after delivery, §6.2). Done AFTER the tx commits so a rolled-back
+    // transition never tears a live channel down. The signed token is also self-invalidating —
+    // a reconnect re-checks live stop state — so this closes existing sockets, that blocks new ones.
+    if (TERMINAL_STOP.has(to)) {
+      const reason: ChannelClosedReason =
+        to === RouteStopStatus.COMPLETED ? 'stop_completed' : to === RouteStopStatus.FAILED ? 'stop_failed' : 'stop_skipped';
+      await this.realtime.closeStopChannel(stop.orgId, stop.id, stop.route.vehicleId ?? '', reason);
+    }
     return this.getStop(principal, stopId);
   }
 
@@ -138,6 +151,7 @@ export class RouteStopService {
 
   async patch(principal: RequestPrincipal, stopId: string, dto: PatchStopDto) {
     const stop = await this.access.requireStop(principal, stopId);
+    let reassignedFromVehicle: string | null = null;
 
     await this.prisma.$transaction(async (tx) => {
       let routeId = stop.routeId;
@@ -147,6 +161,13 @@ export class RouteStopService {
         const maxSeq = (await tx.routeStop.aggregate({ where: { routeId: target.id, orgId: principal.orgId }, _max: { seq: true } }))._max.seq ?? 0;
         await tx.routeStop.update({ where: { id: stopId, orgId: principal.orgId }, data: { routeId: target.id, seq: maxSeq + 1 } });
         routeId = target.id;
+        // If the stop moves to a route with a DIFFERENT vehicle, the customer's channel token
+        // (bound to the old vehicle) is now stale — tear it down so they re-mint a token for
+        // the new vehicle (Increment 6 privacy: the customer must only ever see the vehicle
+        // assigned to their order's active stop). Captured here, closed after the tx commits.
+        if ((target.vehicleId ?? null) !== (stop.route.vehicleId ?? null)) {
+          reassignedFromVehicle = stop.route.vehicleId ?? '';
+        }
         await this.audit.record({ orgId: principal.orgId, actorId: principal.userId, entity: 'RouteStop', entityId: stopId, action: 'STOP_REASSIGNED', before: { routeId: stop.routeId }, after: { routeId: target.id, driverId: target.driverId } }, tx);
       }
 
@@ -165,6 +186,12 @@ export class RouteStopService {
         await tx.routeStop.update({ where: { id: stopId, orgId: principal.orgId }, data: { timeWindow: dto.timeWindow as unknown as Prisma.InputJsonValue } });
       }
     });
+
+    // After the tx commits (never on a rolled-back reassign): if the vehicle changed, close
+    // the now-stale customer channel for the old vehicle's stop room.
+    if (reassignedFromVehicle !== null) {
+      await this.realtime.closeStopChannel(stop.orgId, stop.id, reassignedFromVehicle, 'stop_reassigned');
+    }
     return this.getStop(principal, stopId);
   }
 }

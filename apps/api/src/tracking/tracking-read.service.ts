@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { scopedPrisma } from '../prisma/scoped-prisma';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { OrderAccessService } from '../orders/order-access.service';
+import { ChannelTokenService } from '../realtime/channel-token.service';
 import { GpsHistoryService } from './gps-history.service';
 import { LastKnownStore } from './last-known.store';
 import { selectActiveStop } from './tracking-util';
@@ -15,6 +16,7 @@ export class TrackingReadService {
     private readonly lastKnown: LastKnownStore,
     private readonly history: GpsHistoryService,
     private readonly orderAccess: OrderAccessService,
+    private readonly channelTokens: ChannelTokenService,
   ) {}
 
   /**
@@ -61,7 +63,7 @@ export class TrackingReadService {
     });
 
     const active = selectActiveStop(stops);
-    if (!active) return { orderId, stop: null, vehicle: null };
+    if (!active) return { orderId, stop: null, vehicle: null, channelToken: null };
 
     const stopShape = {
       id: active.id,
@@ -71,11 +73,23 @@ export class TrackingReadService {
     };
 
     const vehicleId = active.route.vehicleId;
-    if (!vehicleId) return { orderId, stop: stopShape, vehicle: null };
+    if (!vehicleId) return { orderId, stop: stopShape, vehicle: null, channelToken: null };
 
     const vehicle =
       (await this.lastKnown.readOne(principal.orgId, vehicleId)) ??
       (await this.history.latestForVehicle(principal.orgId, vehicleId));
-    return { orderId, stop: stopShape, vehicle };
+
+    // Mint the short-lived signed capability to open the live WS channel for THIS one
+    // vehicle/stop (Increment 6, §6.2). The WS handshake re-checks live stop state, so the
+    // token cannot be used once the stop ends regardless of its exp.
+    const channelToken = this.channelTokens.mint({
+      orgId: principal.orgId,
+      vehicleId,
+      orderId,
+      stopId: active.id,
+      sub: principal.userId,
+    });
+
+    return { orderId, stop: stopShape, vehicle, channelToken };
   }
 }

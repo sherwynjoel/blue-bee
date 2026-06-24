@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { OrdersModule } from '../orders/orders.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { FleetController } from './fleet.controller';
 import { DriverService, ShiftService, VehicleService } from './fleet.service';
 import { LogisticsAccessService } from './logistics-access.service';
@@ -20,7 +21,7 @@ import { RoutesController } from './routes.controller';
  * GpsPing/GeofenceEvent/ProofOfDelivery stay modelled but unused.
  */
 @Module({
-  imports: [OrdersModule],
+  imports: [OrdersModule, RealtimeModule],
   controllers: [FleetController, RoutesController, RouteStopsController],
   providers: [
     VehicleService,

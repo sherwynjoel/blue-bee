@@ -30,5 +30,49 @@ Driver app emits **batched GPS pings** (adaptive duty cycle; faster near a stop,
 ## Phase-1 data slice (specialty MVP)
 Implement now: Organization/User/Role, Account/Site, Order/OrderLine/Item/Tag/Inspection/Photo/Quote/CustodyEvent, Vehicle/Driver/Shift/Route/RouteStop/GpsPing/GeofenceEvent/ProofOfDelivery, Invoice/Payment/Claim, Message/Notification/AuditLog/Device. Defer linen/resident/production tables to Phase 2 (you may model them but leave them unused).
 
+## Realtime WS contract (Increment 6 — Socket.IO scoped channels)
+The live push layer (PRD §6.2/§10.4) sits on top of the Increment-5 REST/store path. OpenAPI
+doesn't cover WebSockets, so the contract is documented here.
+
+**Transport:** Socket.IO mounted on the Nest HTTP server, with the **Redis adapter** (cross-instance
+fan-out, reusing the stack Redis) behind a thin `RealtimePublisher` abstraction (Ably/Pusher swap-in
+later). The WS is an **optimization** — the REST last-known (`GET /v1/fleet/live`,
+`GET /v1/orders/:id/tracking`) + the stop status timeline remain the **source of truth**; a dropped
+socket degrades to polling (§12.3).
+
+**"Paths" are Socket.IO namespaces** (Socket.IO has no REST path params, so the `:token` in
+`WS /live/vehicle/:token` is passed in the handshake `auth.token`, not the URL):
+
+| Namespace | Who | Handshake `auth.token` | Bound to (server-side) |
+|---|---|---|---|
+| `/live/vehicle` | customer (owns the order) | the **signed channel token** from `GET /v1/orders/:id/tracking` | exactly ONE vehicle room + its stop room |
+| `/live/fleet` | OWNER / DISPATCHER / CSR | the **access JWT** | the caller-org fleet room (all org vehicles) |
+
+**Subscription is server-bound** — there is **no client→server subscribe event**, so a client can
+never request another room (authorize-by-construction, on top of authorize-on-connect).
+
+**Server→client events:**
+- `position` → `LivePositionEvent { vehicleId, lat, lng, speed, heading, recordedAt }` — emitted ONLY
+  when last-known genuinely advances (Lua-CAS monotonicity: no regression on out-of-order pings, no
+  duplicate storms).
+- `channel:closed` → `ChannelClosedEvent { reason, vehicleId, stopId? }` — sent just before a
+  server-side disconnect. `reason ∈ { stop_completed, stop_failed, stop_skipped, shift_ended, token_expired }`.
+
+**Channel token (customer):** dedicated-secret HS256 JWT (`CHANNEL_TOKEN_SECRET`, never the auth JWT),
+`kind: 'vehicle-tracking'`, claims `{ org_id, vehicle_id, order_id, stop_id, sub, exp }`. Minted by
+`GET /v1/orders/:id/tracking` only when there's an active stop with an assigned vehicle. At the WS
+handshake the server verifies signature + expiry + kind **and re-checks live stop state** (route still
+PUBLISHED/IN_PROGRESS, stop non-terminal, route still points at the bound vehicle); any failure rejects
+the connection (`connect_error`). So a token for a completed/failed/skipped stop or a reassigned route
+is useless even before `exp`.
+
+**Lifecycle teardown (no leak after delivery):** a socket is force-disconnected on (1) token `exp`
+(per-socket timer), (2) stop terminal transition (`closeStopChannel` from the §5.4 state machine), and
+(3) shift end (`closeVehicleChannel`). Reconnect after any of these fails the live re-check.
+
+**Connection errors** (`connect_error.message`): `missing_channel_token` · `stop_not_active` ·
+`missing_access_token` · `token_revoked` · `forbidden_role` · plus JWT verify throws (bad signature /
+expired / wrong kind). The default `/` namespace is rejected (no unauthenticated surface).
+
 ## NFRs that shape the code (PRD §12)
 Live location end-to-end < 3s p95; map updates ≥ every 30s within 5 km of a stop. API reads < 300ms / writes < 800ms p95. TLS everywhere + encryption at rest. **PCI handled by tokenizing through Stripe (no raw PAN).** JWT short-lived + RBAC row-scoping. PIPEDA / PHIPA-adjacent care for resident + location data. Retention: pings hot 7d → downsampled 90d; POD 24mo; financial 7y.

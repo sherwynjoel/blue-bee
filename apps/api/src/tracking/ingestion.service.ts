@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { scopedPrisma } from '../prisma/scoped-prisma';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from '../orders/audit.service';
+import { RealtimePublisher } from '../realtime/realtime-publisher.service';
 import { GpsHistoryService, type HistoryRow } from './gps-history.service';
 import { LastKnownStore } from './last-known.store';
 import { dedupePings, newestPing } from './tracking-util';
@@ -43,6 +44,7 @@ export class IngestionService {
     private readonly history: GpsHistoryService,
     private readonly lastKnown: LastKnownStore,
     private readonly audit: AuditService,
+    private readonly realtime: RealtimePublisher,
   ) {}
 
   async ingest(principal: RequestPrincipal, dto: LocationBatchDto): Promise<LocationBatchResult> {
@@ -128,6 +130,24 @@ export class IngestionService {
     });
 
     const lastKnown = await this.lastKnown.readOne(principal.orgId, shift.vehicleId);
+
+    // ── Realtime fan-out (Increment 6) — keep the ON-THE-WIRE stream monotonic, not just the
+    // store. A stale/out-of-order batch (lastKnownUpdated=false) never emits. For an advancing
+    // batch we emit the AUTHORITATIVE readback head, and only if this batch is STILL the head
+    // (its recordedAt === the head's): under concurrent same-vehicle batches, a batch that
+    // advanced the store but was already superseded by a newer concurrent batch skips its now-
+    // stale emit — so the subscriber never sees a backwards jump (QC: publish ordering). ──
+    if (lastKnownUpdated && lastKnown && Date.parse(lastKnown.recordedAt) === newest.recordedAt.getTime()) {
+      this.realtime.publishPosition(principal.orgId, shift.vehicleId, {
+        vehicleId: shift.vehicleId,
+        lat: lastKnown.lat,
+        lng: lastKnown.lng,
+        speed: lastKnown.speed,
+        heading: lastKnown.heading,
+        recordedAt: lastKnown.recordedAt,
+      });
+    }
+
     return {
       vehicleId: shift.vehicleId,
       shiftId: shift.id,

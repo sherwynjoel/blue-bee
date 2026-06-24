@@ -13,6 +13,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from '../orders/audit.service';
+import { RealtimePublisher } from '../realtime/realtime-publisher.service';
 import { LogisticsAccessService } from './logistics-access.service';
 
 @Injectable()
@@ -91,6 +92,7 @@ export class ShiftService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly access: LogisticsAccessService,
+    private readonly realtime: RealtimePublisher,
   ) {}
 
   async create(principal: RequestPrincipal, dto: CreateShiftDto) {
@@ -108,9 +110,12 @@ export class ShiftService {
     return this.transition(principal, id, ShiftStatus.SCHEDULED, ShiftStatus.ACTIVE, { startedAt: new Date() }, 'SHIFT_STARTED', dto.note);
   }
 
-  /** ACTIVE → ENDED (atomic). */
-  end(principal: RequestPrincipal, id: string, dto: ShiftActionDto) {
-    return this.transition(principal, id, ShiftStatus.ACTIVE, ShiftStatus.ENDED, { endedAt: new Date() }, 'SHIFT_ENDED', dto.note);
+  /** ACTIVE → ENDED (atomic). Closes any live customer channels for the vehicle (Increment 6 —
+   * location stops emitting off-shift; no leak after the shift ends, §6.2/§12.2). */
+  async end(principal: RequestPrincipal, id: string, dto: ShiftActionDto) {
+    const shift = await this.transition(principal, id, ShiftStatus.ACTIVE, ShiftStatus.ENDED, { endedAt: new Date() }, 'SHIFT_ENDED', dto.note);
+    await this.realtime.closeVehicleChannel(principal.orgId, shift.vehicleId, 'shift_ended');
+    return shift;
   }
 
   list(principal: RequestPrincipal) {

@@ -19,6 +19,17 @@ export interface AuthConfig {
     ratePerIp: number;
     rateWindowSeconds: number;
   };
+  /**
+   * Short-lived signed capability token for the customer WS tracking channel (Increment 6,
+   * PRD §6.2). DEDICATED secret — never the auth JWT secret — so a tracking token can never
+   * be confused with or escalate to a session token. The token binds exactly one vehicle for
+   * one order's active stop; its real authorization is re-checked against live stop state at
+   * the WS handshake, so the TTL is only a coarse upper bound.
+   */
+  channelToken: {
+    secret: string;
+    ttlSeconds: number;
+  };
   sms: {
     transport: 'console' | 'twilio';
     twilio: { accountSid?: string; authToken?: string; from?: string };
@@ -95,6 +106,10 @@ export function loadAuthConfig(): AuthConfig {
       ratePerPhone: int('OTP_RATE_PER_PHONE', 5),
       ratePerIp: int('OTP_RATE_PER_IP', 20),
       rateWindowSeconds: int('OTP_RATE_WINDOW_SECONDS', 3600),
+    },
+    channelToken: {
+      secret: secret('CHANNEL_TOKEN_SECRET'),
+      ttlSeconds: int('CHANNEL_TOKEN_TTL_SECONDS', 600),
     },
     sms: {
       transport,

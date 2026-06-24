@@ -86,12 +86,83 @@ export interface FleetLiveResult {
  * last-known of EXACTLY the one vehicle assigned to the order's active stop, scoped to the
  * owning customer (§6.2 privacy: one vehicle, never any other). `vehicle` is null when no
  * stop is currently active / no vehicle is assigned / it has no position yet.
+ *
+ * `channelToken` (Increment 6) is the short-lived, server-signed capability to open the live
+ * WS channel `WS /live/vehicle` for THIS one vehicle/stop (PRD §11.1). Null when there is no
+ * active stop / no assigned vehicle to track. The token is the ONLY way a customer opens a
+ * live channel; its scope (one vehicle) and lifetime (the active-stop window) are enforced
+ * server-side at the WS handshake.
  */
 export interface OrderTrackingResult {
   orderId: string;
   /** The order's active route stop (the one being worked / next up), if any. */
   stop: { id: string; status: string; kind: string; eta: string | null } | null;
   vehicle: LastKnownPosition | null;
+  channelToken: string | null;
+}
+
+// ───────────────────────────── realtime WS contract (Increment 6) ─────────────────────────────
+
+/**
+ * WS "paths" map to Socket.IO NAMESPACES (Socket.IO has no REST-style path params, so the
+ * `:token` in `WS /live/vehicle/:token` is passed in the handshake `auth.token`, not the URL).
+ *  • VEHICLE — customer channel; connect with `auth: { token: <channelToken> }`; the socket is
+ *    server-bound to exactly the one vehicle's room (no client-side subscribe). PRD §6.2.
+ *  • FLEET   — owner/dispatch channel; connect with `auth: { token: <access JWT> }`; bound to
+ *    the caller-org fleet room (all org vehicles). PRD §6.1(b).
+ */
+export const WS_NAMESPACES = {
+  VEHICLE: '/live/vehicle',
+  FLEET: '/live/fleet',
+} as const;
+
+/** Server→client events on both channels. Subscription is server-bound; clients never emit. */
+export const WS_EVENTS = {
+  /** A new last-known position (emitted only on a genuine recorded_at advance). */
+  POSITION: 'position',
+  /** The channel was closed server-side (stop ended / shift ended / token expired). */
+  CHANNEL_CLOSED: 'channel:closed',
+} as const;
+
+/** Payload of a `position` event — one vehicle's live position. */
+export interface LivePositionEvent {
+  vehicleId: string;
+  lat: number;
+  lng: number;
+  speed: number | null;
+  heading: number | null;
+  recordedAt: string;
+}
+
+export type ChannelClosedReason =
+  | 'stop_completed'
+  | 'stop_failed'
+  | 'stop_skipped'
+  | 'stop_reassigned'
+  | 'shift_ended'
+  | 'token_expired';
+
+/** Payload of a `channel:closed` event sent just before a server-side disconnect. */
+export interface ChannelClosedEvent {
+  reason: ChannelClosedReason;
+  vehicleId: string;
+  stopId?: string;
+}
+
+/**
+ * Claims in the signed customer channel token (dedicated secret; HS256 JWT). `kind` pins it
+ * to the tracking capability so it can never be confused with an auth/session token.
+ */
+export interface ChannelTokenClaims {
+  kind: 'vehicle-tracking';
+  org_id: string;
+  vehicle_id: string;
+  order_id: string;
+  stop_id: string;
+  /** The principal who minted it (audit). */
+  sub: string;
+  iat?: number;
+  exp?: number;
 }
 
 // ───────────────────────────── error codes (problem+json title) ─────────────────────────────

@@ -3,12 +3,27 @@ import { Logger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import Redis from 'ioredis';
 import { AppModule } from './app.module';
 import { ProblemJsonFilter } from './common/problem-json.filter';
+import { RedisIoAdapter } from './realtime/redis-io.adapter';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableShutdownHooks();
+
+  // Socket.IO realtime gateway (Increment 6) with the Redis adapter — emits/disconnects fan
+  // out cluster-wide (PRD §10.4). Dedicated pub/sub connections, reusing the same Redis.
+  const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+  const pubClient = new Redis(redisUrl, { maxRetriesPerRequest: null });
+  const subClient = pubClient.duplicate();
+  app.useWebSocketAdapter(new RedisIoAdapter(app, pubClient, subClient));
+  // Close the adapter's dedicated pub/sub connections on graceful shutdown (no leaked
+  // sockets / unclean SIGTERM). enableShutdownHooks() above drives this via beforeExit.
+  process.on('beforeExit', () => {
+    void pubClient.quit().catch(() => undefined);
+    void subClient.quit().catch(() => undefined);
+  });
 
   // Behind a load balancer/proxy, set TRUST_PROXY (e.g. "1") so req.ip is the real
   // client IP (used for per-IP OTP rate limiting) and not spoofable. Off by default (local dev).

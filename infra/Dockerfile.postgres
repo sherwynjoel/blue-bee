@@ -1,0 +1,27 @@
+# Blue Bee local-dev Postgres: PostGIS + TimescaleDB on Postgres 16.
+#
+# Why this exists: the prebuilt `timescale/timescaledb-ha` image (which bundles
+# both extensions) runs a Patroni-based HA entrypoint that the Prisma connector
+# rejects with a spurious P1010 "denied access" on every connection — confirmed
+# not a privilege issue (raw psql DDL works; Prisma connects fine to vanilla
+# Postgres). This image uses the stock postgres entrypoint (Prisma-compatible)
+# and layers TimescaleDB onto the official PostGIS image, keeping the locked
+# stack: Postgres 16 + PostGIS + TimescaleDB. Local dev only.
+FROM postgis/postgis:16-3.4
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends gnupg lsb-release wget ca-certificates; \
+    echo "deb https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -cs) main" \
+      > /etc/apt/sources.list.d/timescaledb.list; \
+    wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
+      | gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends timescaledb-2-postgresql-16; \
+    apt-get purge -y --auto-remove wget gnupg lsb-release; \
+    rm -rf /var/lib/apt/lists/*
+
+# TimescaleDB must be preloaded; docker-compose passes
+#   command: postgres -c shared_preload_libraries=timescaledb
+# The PostGIS base auto-creates the postgis extension on first init; the Prisma
+# migration additionally runs CREATE EXTENSION IF NOT EXISTS for both (idempotent).

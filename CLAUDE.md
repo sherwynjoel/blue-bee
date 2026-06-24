@@ -41,6 +41,7 @@ docs                                        — PRD, visual blueprint, market in
 - **Offline-first** for driver + plant surfaces (PRD §8.6): local queue + sync; **stop status is authoritative over raw GPS**.
 - **Privacy** (PRD §12.2): location emits **only during an active shift**, consent-gated, with a visible "sharing on" indicator; a customer's live channel is scoped by a **short-lived signed token to exactly one vehicle for the active stop**; resident data (care homes) is least-privilege + audited.
 - **Honesty firewall:** never fabricate capacity, counts, certifications, or claims — in code, seed data, or copy. High-value liability is explicit (intake photos + acknowledged pre-existing damage + the claims object).
+- **No stubs — ever.** Every increment ships real, working code: real DB and queries, real migrations + seed, real endpoints, real integrations (test/sandbox keys are fine). No mocked data layers, placeholder returns, fake fixtures, or TODO stubs. A capability is either built and **verifiably working in this increment**, or it is not in this increment at all (deferred features stay modeled-for, never faked). An increment ends only when it actually runs and is proven — show the evidence.
 - **TypeScript strict** everywhere; share types via `packages/shared` — never redefine an enum in two places.
 - **API conventions** (PRD §11.1): versioned (`/v1`), idempotency keys on mutations, cursor pagination, problem+json errors, OpenAPI published for app teams.
 
@@ -57,3 +58,4 @@ Suggested sequence: `infra:up` → `apps/api` (Nest → Prisma schema from §9 P
 - The folder name has a space ("Blue Bee") and sits on an external APFS drive — quote paths in scripts.
 - Build **Phase 1 only**. If you believe something needs a stack deviation, say so before doing it.
 - **Log every build.** After each build increment (a feature, module, migration, or fix), append a dated line to `CHANGELOG.md` (newest on top). Non-negotiable — it's the honest record of what shipped. Material milestones also roll up to the founder's master log at `Projects/CHANGELOG.md` under the tag `[BLUE BEE]`.
+- **Save every handoff and key output.** Context handoffs go in `handoffs/` (dated; newest = latest) — never leave a handoff, decision, or important prompt only in chat. Prompts live in `START-HERE.md`; build/decision history in `CHANGELOG.md`; specs in `docs/`.

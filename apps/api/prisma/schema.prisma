@@ -1,0 +1,985 @@
+// Blue Bee — Prisma schema (Phase-1 specialty slice).
+// Models & fields follow PRD §9; enums mirror @blue-bee/shared (single source of
+// truth) and the §5 state machines EXACTLY. Phase-2 entities (linen/resident/
+// production/contracts/cost-centers/manifests) are intentionally NOT modeled here
+// (PRD §14.1 cut line). `Service` is the one catalog model included beyond the
+// owner's slice list because OrderLine requires it for a real specialty order.
+//
+// Conventions:
+//  • Every row carries: id (uuid), org_id, created_at, updated_at, created_by (PRD §9).
+//  • org_id is a scalar scoping column (no FK) present on EVERY table, including
+//    Organization (where it equals its own id) — enables RBAC row-scoping (§8.1).
+//  • PostGIS geography(Point,4326) columns use Prisma `Unsupported(...)` (queried
+//    via raw SQL). The CREATE EXTENSION, GpsPing hypertable, and the append-only
+//    triggers for CustodyEvent + AuditLog are injected into the migration SQL.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, timescaledb]
+}
+
+// ─────────────────────────────── enums (mirror @blue-bee/shared) ───────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum RoleType {
+  OWNER
+  DISPATCHER
+  CSR
+  PLANT_OP
+  DRIVER
+  FINANCE
+  ACCOUNT_ADMIN
+  ACCOUNT_STAFF
+  RESIDENTIAL_CUSTOMER
+}
+
+enum RoleScope {
+  ORG
+  ACCOUNT
+  SITE
+}
+
+enum AccountType {
+  RESIDENTIAL
+  BUSINESS
+}
+
+enum ServiceVertical {
+  SPECIALTY
+  LINEN
+  WASHFOLD
+}
+
+enum ServiceUnit {
+  SQFT
+  PIECE
+  LB
+  ITEM
+}
+
+enum OrderVertical {
+  SPECIALTY
+  LINEN
+  WASHFOLD
+}
+
+enum OrderType {
+  JOB
+  ROUTE_STOP_ORDER
+}
+
+// PRD §5.1 — specialty job lifecycle (NORMATIVE).
+enum OrderStatus {
+  REQUESTED
+  SCHEDULED_PICKUP
+  PICKUP_EN_ROUTE
+  PICKED_UP
+  INTAKE_INSPECTED
+  QUOTED
+  QUOTE_APPROVED
+  QUOTE_DECLINED
+  IN_CLEANING
+  QC
+  READY
+  SCHEDULED_DELIVERY
+  DELIVERY_EN_ROUTE
+  DELIVERED
+  INVOICED
+  CLOSED
+  CLOSED_NO_WORK
+  DAMAGE_PREEXISTING_FLAGGED
+  ON_HOLD
+  REWASH
+  CLAIM_OPENED
+  CLAIM_RESOLVED
+}
+
+enum ItemKind {
+  RUG
+  CARPET
+  BLIND
+  UPHOLSTERY
+  GARMENT
+  LINEN
+}
+
+enum ItemStatus {
+  RECEIVED
+  INSPECTED
+  IN_CLEANING
+  QC
+  READY
+  DELIVERED
+}
+
+enum TagType {
+  QR
+  BARCODE
+  RFID
+}
+
+enum TagBinding {
+  ITEM
+  CART
+  CONTAINER
+  RESIDENT
+}
+
+enum PhotoKind {
+  INTAKE
+  BEFORE
+  AFTER
+  POD
+  CLAIM
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  DECLINED
+  EXPIRED
+}
+
+enum CustodyStage {
+  PICKED_UP
+  INTAKE
+  INSPECTED
+  DUSTING
+  WASH
+  DRY
+  FINISH
+  QC
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+}
+
+enum VehicleStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum ShiftStatus {
+  SCHEDULED
+  ACTIVE
+  ENDED
+}
+
+enum RouteStatus {
+  PLANNED
+  PUBLISHED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum RouteStopKind {
+  PICKUP
+  DELIVERY
+  BOTH
+}
+
+// PRD §5.4 — RouteStop lifecycle (NORMATIVE).
+enum RouteStopStatus {
+  PENDING
+  EN_ROUTE
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum GeofenceEventType {
+  APPROACHING
+  ARRIVED
+  DEPARTED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum PaymentMethod {
+  CARD
+  APPLE_PAY
+  GOOGLE_PAY
+  ACH
+  PAD
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum ClaimType {
+  DAMAGE
+  LOSS
+  SERVICE
+}
+
+enum ClaimStatus {
+  OPEN
+  APPROVED
+  DENIED
+  RESOLVED
+}
+
+enum CommsChannel {
+  PUSH
+  SMS
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+// ─────────────────────────────── identity & accounts (§9.1) ───────────────────────────────
+
+model Organization {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid // self-reference (== id)
+  name          String
+  settings      Json     @default("{}")
+  billingConfig Json     @default("{}") @map("billing_config")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdBy     String?  @map("created_by") @db.Uuid
+
+  @@index([orgId])
+}
+
+model User {
+  id            String     @id @default(uuid()) @db.Uuid
+  orgId         String     @map("org_id") @db.Uuid
+  name          String
+  email         String?
+  phone         String?
+  authProviders String[]   @default([]) @map("auth_providers")
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  createdBy     String?    @map("created_by") @db.Uuid
+
+  roles         UserRole[]
+  driver        Driver?
+  devices       Device[]
+  notifications Notification[]
+  messagesFrom  Message[]      @relation("MessageFrom")
+  messagesTo    Message[]      @relation("MessageTo")
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+
+  @@unique([orgId, email])
+  @@index([orgId])
+}
+
+model UserRole {
+  id        String    @id @default(uuid()) @db.Uuid
+  orgId     String    @map("org_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  role      RoleType
+  scope     RoleScope @default(ORG)
+  scopeId   String?   @map("scope_id") @db.Uuid // account_id or site_id when scope != ORG
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role, scope, scopeId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+model Account {
+  id           String      @id @default(uuid()) @db.Uuid
+  orgId        String      @map("org_id") @db.Uuid
+  type         AccountType
+  name         String
+  billingTerms Json        @default("{}") @map("billing_terms")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  createdBy    String?     @map("created_by") @db.Uuid
+
+  sites      Site[]
+  orders     Order[]
+  invoices   Invoice[]
+  routeStops RouteStop[]
+  priceLists PriceList[]
+
+  @@index([orgId])
+}
+
+model Site {
+  id             String                                 @id @default(uuid()) @db.Uuid
+  orgId          String                                 @map("org_id") @db.Uuid
+  accountId      String                                 @map("account_id") @db.Uuid
+  name           String
+  address        String?
+  // PostGIS geography(Point,4326); set/queried via raw SQL (ST_MakePoint/ST_AsText).
+  geo            Unsupported("geography(Point, 4326)")?
+  serviceWindows Json                                   @default("[]") @map("service_windows")
+  createdAt      DateTime                               @default(now()) @map("created_at")
+  updatedAt      DateTime                               @updatedAt @map("updated_at")
+  createdBy      String?                                @map("created_by") @db.Uuid
+
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  orders     Order[]
+  routeStops RouteStop[]
+
+  @@index([orgId])
+  @@index([accountId])
+}
+
+// ─────────────────────────────── catalog (§9.2 — specialty only this phase) ───────────────────────────────
+
+model Service {
+  id        String          @id @default(uuid()) @db.Uuid
+  orgId     String          @map("org_id") @db.Uuid
+  vertical  ServiceVertical @default(SPECIALTY)
+  name      String
+  unit      ServiceUnit
+  baseRate  Decimal         @map("base_rate") @db.Decimal(12, 4)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  createdBy String?         @map("created_by") @db.Uuid
+
+  orderLines     OrderLine[]
+  priceListItems PriceListItem[]
+
+  @@index([orgId])
+}
+
+// PRD §9.2 — PriceList / PriceListItem (catalog pricing with per-account overrides).
+// Added in Increment 3: the quote engine resolves a rate as
+//   per-account override → org default price-list rate → Service.base_rate.
+// A PriceList with account_id = NULL is the org default; one bound to an account
+// is that account's rate card. (Increment-1 modeled only `Service`; this closes the
+// §9.2 catalog gap the quote engine needs — additive, no change to existing rows.)
+model PriceList {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  name      String
+  accountId String?  @map("account_id") @db.Uuid // NULL = org default; set = account-specific rate card
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  account Account?        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  items   PriceListItem[]
+
+  @@index([orgId])
+  @@index([accountId])
+}
+
+model PriceListItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
+  priceListId     String   @map("price_list_id") @db.Uuid
+  serviceId       String   @map("service_id") @db.Uuid
+  rate            Decimal  @db.Decimal(12, 4)
+  // Optional per-account override rate (PRD §9.2 `account_override?`). When set on an
+  // account-bound price list it supersedes `rate` for that account; resolution order:
+  // account_override → account list rate → org-default list rate → Service.base_rate.
+  accountOverride Decimal? @map("account_override") @db.Decimal(12, 4)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdBy       String?  @map("created_by") @db.Uuid
+
+  priceList PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  service   Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([priceListId, serviceId])
+  @@index([orgId])
+  @@index([serviceId])
+}
+
+// ─────────────────────────────── orders, items & custody (§9.3) ───────────────────────────────
+
+model Order {
+  id                      String        @id @default(uuid()) @db.Uuid
+  orgId                   String        @map("org_id") @db.Uuid
+  accountId               String        @map("account_id") @db.Uuid
+  siteId                  String?       @map("site_id") @db.Uuid
+  vertical                OrderVertical @default(SPECIALTY)
+  type                    OrderType     @default(JOB)
+  status                  OrderStatus   @default(REQUESTED)
+  // When an order goes ON_HOLD, the state it was paused in is recorded here so a
+  // resume returns to it (or a legal successor) per §5.1 "any → ON_HOLD → resumes".
+  // Cleared on resume. (Increment 3 — needed by canTransitionOrder's heldFrom arg.)
+  heldFrom                OrderStatus?  @map("held_from")
+  scheduledPickupWindow   Json?         @map("scheduled_pickup_window")
+  scheduledDeliveryWindow Json?         @map("scheduled_delivery_window")
+  totals                  Json          @default("{}")
+  createdAt               DateTime      @default(now()) @map("created_at")
+  updatedAt               DateTime      @updatedAt @map("updated_at")
+  createdBy               String?       @map("created_by") @db.Uuid
+
+  account    Account     @relation(fields: [accountId], references: [id])
+  site       Site?       @relation(fields: [siteId], references: [id])
+  lines      OrderLine[]
+  items      Item[]
+  quotes     Quote[]
+  photos     Photo[]
+  routeStops RouteStop[]
+  payments   Payment[]
+  claims     Claim[]
+  messages   Message[]
+
+  @@index([orgId])
+  @@index([accountId])
+  @@index([status])
+}
+
+model OrderLine {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  orderId   String   @map("order_id") @db.Uuid
+  serviceId String?  @map("service_id") @db.Uuid
+  // The specialty item this line prices (one line per item). Nullable for ad-hoc
+  // charges with no physical item. (Increment 3 — links §9.3 Item ↔ OrderLine so the
+  // quote engine can pull measured values per item; PRD §9.7 hangs both off Order.)
+  itemId    String?  @map("item_id") @db.Uuid
+  qty       Int      @default(1)
+  measure   Float?
+  rate      Decimal  @db.Decimal(12, 4)
+  amount    Decimal  @db.Decimal(12, 2)
+  // Per-line upcharges applied on top of measure × rate (PRD §8.3 "+ upcharges").
+  // Array of { code, label, amount }. Empty for a plain line. amount above is inclusive.
+  upcharges Json     @default("[]")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  service Service? @relation(fields: [serviceId], references: [id])
+  item    Item?    @relation(fields: [itemId], references: [id])
+
+  @@index([orgId])
+  @@index([orderId])
+  @@index([itemId])
+}
+
+model Item {
+  id           String     @id @default(uuid()) @db.Uuid
+  orgId        String     @map("org_id") @db.Uuid
+  orderId      String     @map("order_id") @db.Uuid
+  tagId        String?    @unique @map("tag_id") @db.Uuid
+  kind         ItemKind
+  status       ItemStatus @default(RECEIVED)
+  measurements Json       @default("{}")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  createdBy    String?    @map("created_by") @db.Uuid
+
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tag           Tag?           @relation(fields: [tagId], references: [id])
+  inspections   Inspection[]
+  photos        Photo[]
+  custodyEvents CustodyEvent[]
+  claims        Claim[]
+  orderLines    OrderLine[]
+
+  @@index([orgId])
+  @@index([orderId])
+}
+
+model Tag {
+  id        String     @id @default(uuid()) @db.Uuid
+  orgId     String     @map("org_id") @db.Uuid
+  code      String
+  type      TagType    @default(QR)
+  boundTo   TagBinding @default(ITEM) @map("bound_to")
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  createdBy String?    @map("created_by") @db.Uuid
+
+  item Item?
+
+  @@unique([orgId, code])
+  @@index([orgId])
+}
+
+model Inspection {
+  id                String    @id @default(uuid()) @db.Uuid
+  orgId             String    @map("org_id") @db.Uuid
+  itemId            String    @map("item_id") @db.Uuid
+  conditionCodes    String[]  @default([]) @map("condition_codes")
+  notes             String?
+  preexistingDamage Boolean   @default(false) @map("preexisting_damage")
+  ackBy             String?   @map("ack_by") @db.Uuid
+  ackAt             DateTime? @map("ack_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdBy         String?   @map("created_by") @db.Uuid
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([itemId])
+}
+
+model Photo {
+  id        String                                 @id @default(uuid()) @db.Uuid
+  orgId     String                                 @map("org_id") @db.Uuid
+  itemId    String?                                @map("item_id") @db.Uuid
+  orderId   String?                                @map("order_id") @db.Uuid
+  podId     String?                                @map("pod_id") @db.Uuid
+  claimId   String?                                @map("claim_id") @db.Uuid
+  kind      PhotoKind
+  url       String
+  geo       Unsupported("geography(Point, 4326)")?
+  takenAt   DateTime                               @default(now()) @map("taken_at")
+  createdAt DateTime                               @default(now()) @map("created_at")
+  updatedAt DateTime                               @updatedAt @map("updated_at")
+  createdBy String?                                @map("created_by") @db.Uuid
+
+  item  Item?            @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  order Order?           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pod   ProofOfDelivery? @relation(fields: [podId], references: [id], onDelete: Cascade)
+  claim Claim?           @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([itemId])
+  @@index([orderId])
+}
+
+model Quote {
+  id          String      @id @default(uuid()) @db.Uuid
+  orgId       String      @map("org_id") @db.Uuid
+  orderId     String      @map("order_id") @db.Uuid
+  lines       Json        @default("[]")
+  subtotal    Decimal     @db.Decimal(12, 2)
+  tax         Decimal     @db.Decimal(12, 2)
+  total       Decimal     @db.Decimal(12, 2)
+  // Audit trail of manual adjustments (PRD §8.3 "audit of manual adjustments").
+  // Array of { reason, actorId, before, after, at }. Also mirrored to AuditLog.
+  adjustments Json        @default("[]")
+  status      QuoteStatus @default(DRAFT)
+  expiresAt   DateTime?   @map("expires_at")
+  approvedBy  String?     @map("approved_by") @db.Uuid
+  approvedAt  DateTime?   @map("approved_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  createdBy   String?     @map("created_by") @db.Uuid
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orderId])
+}
+
+// Append-only (PRD §8.2/§8.6) — a DB trigger blocks UPDATE/DELETE (injected in migration SQL).
+model CustodyEvent {
+  id         String                                 @id @default(uuid()) @db.Uuid
+  orgId      String                                 @map("org_id") @db.Uuid
+  itemId     String?                                @map("item_id") @db.Uuid // cart custody is Phase 2
+  stage      CustodyStage
+  actorId    String?                                @map("actor_id") @db.Uuid
+  geo        Unsupported("geography(Point, 4326)")?
+  deviceId   String?                                @map("device_id")
+  occurredAt DateTime                               @default(now()) @map("occurred_at")
+  createdAt  DateTime                               @default(now()) @map("created_at")
+  updatedAt  DateTime                               @updatedAt @map("updated_at")
+  createdBy  String?                                @map("created_by") @db.Uuid
+
+  item Item? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([itemId])
+  @@index([occurredAt])
+}
+
+// ─────────────────────────────── logistics & tracking (§9.5) ───────────────────────────────
+
+model Vehicle {
+  id        String        @id @default(uuid()) @db.Uuid
+  orgId     String        @map("org_id") @db.Uuid
+  label     String
+  capacity  Int?
+  plate     String?
+  status    VehicleStatus @default(ACTIVE)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdBy String?       @map("created_by") @db.Uuid
+
+  shifts            Shift[]
+  routes            Route[]
+  gpsPings          GpsPing[]
+  defaultForDrivers Driver[]
+
+  @@index([orgId])
+}
+
+model Driver {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  license          String?
+  defaultVehicleId String?  @map("default_vehicle_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdBy        String?  @map("created_by") @db.Uuid
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultVehicle Vehicle? @relation(fields: [defaultVehicleId], references: [id])
+  shifts         Shift[]
+  routes         Route[]
+
+  @@index([orgId])
+}
+
+model Shift {
+  id        String      @id @default(uuid()) @db.Uuid
+  orgId     String      @map("org_id") @db.Uuid
+  driverId  String      @map("driver_id") @db.Uuid
+  vehicleId String      @map("vehicle_id") @db.Uuid
+  startedAt DateTime?   @map("started_at")
+  endedAt   DateTime?   @map("ended_at")
+  status    ShiftStatus @default(SCHEDULED)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  createdBy String?     @map("created_by") @db.Uuid
+
+  driver   Driver    @relation(fields: [driverId], references: [id])
+  vehicle  Vehicle   @relation(fields: [vehicleId], references: [id])
+  gpsPings GpsPing[]
+
+  @@index([orgId])
+  @@index([driverId])
+}
+
+model Route {
+  id        String      @id @default(uuid()) @db.Uuid
+  orgId     String      @map("org_id") @db.Uuid
+  date      DateTime    @db.Date
+  driverId  String?     @map("driver_id") @db.Uuid
+  vehicleId String?     @map("vehicle_id") @db.Uuid
+  status    RouteStatus @default(PLANNED)
+  optimized Boolean     @default(false)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  createdBy String?     @map("created_by") @db.Uuid
+
+  driver  Driver?     @relation(fields: [driverId], references: [id])
+  vehicle Vehicle?    @relation(fields: [vehicleId], references: [id])
+  stops   RouteStop[]
+
+  @@index([orgId])
+  @@index([date])
+}
+
+model RouteStop {
+  id          String          @id @default(uuid()) @db.Uuid
+  orgId       String          @map("org_id") @db.Uuid
+  routeId     String          @map("route_id") @db.Uuid
+  seq         Int
+  accountId   String?         @map("account_id") @db.Uuid
+  siteId      String?         @map("site_id") @db.Uuid
+  orderId     String?         @map("order_id") @db.Uuid
+  kind        RouteStopKind   @default(PICKUP)
+  timeWindow  Json?           @map("time_window")
+  status      RouteStopStatus @default(PENDING)
+  eta         DateTime?
+  arrivedAt   DateTime?       @map("arrived_at")
+  completedAt DateTime?       @map("completed_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  createdBy   String?         @map("created_by") @db.Uuid
+
+  route          Route            @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  account        Account?         @relation(fields: [accountId], references: [id])
+  site           Site?            @relation(fields: [siteId], references: [id])
+  order          Order?           @relation(fields: [orderId], references: [id])
+  geofenceEvents GeofenceEvent[]
+  pod            ProofOfDelivery?
+
+  @@unique([routeId, seq])
+  @@index([orgId])
+  @@index([routeId])
+}
+
+// Time-series (PostGIS/Timescale). Converted to a hypertable on `recorded_at`
+// via raw SQL in the migration. Composite PK [id, recorded_at] so the unique
+// index includes the partitioning column (Timescale requirement).
+model GpsPing {
+  id         String                                 @default(uuid()) @db.Uuid
+  orgId      String                                 @map("org_id") @db.Uuid
+  shiftId    String                                 @map("shift_id") @db.Uuid
+  vehicleId  String                                 @map("vehicle_id") @db.Uuid
+  geo        Unsupported("geography(Point, 4326)")?
+  speed      Float?
+  heading    Float?
+  recordedAt DateTime                               @map("recorded_at")
+  createdAt  DateTime                               @default(now()) @map("created_at")
+  updatedAt  DateTime                               @updatedAt @map("updated_at")
+  createdBy  String?                                @map("created_by") @db.Uuid
+
+  shift   Shift   @relation(fields: [shiftId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@id([id, recordedAt])
+  @@index([orgId])
+  @@index([shiftId])
+  @@index([vehicleId])
+  @@index([recordedAt])
+}
+
+model GeofenceEvent {
+  id          String            @id @default(uuid()) @db.Uuid
+  orgId       String            @map("org_id") @db.Uuid
+  routeStopId String            @map("route_stop_id") @db.Uuid
+  type        GeofenceEventType
+  occurredAt  DateTime          @default(now()) @map("occurred_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  createdBy   String?           @map("created_by") @db.Uuid
+
+  routeStop RouteStop @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([routeStopId])
+}
+
+model ProofOfDelivery {
+  id           String                                 @id @default(uuid()) @db.Uuid
+  orgId        String                                 @map("org_id") @db.Uuid
+  routeStopId  String                                 @unique @map("route_stop_id") @db.Uuid
+  signatureUrl String?                                @map("signature_url")
+  capturedBy   String?                                @map("captured_by") @db.Uuid
+  geo          Unsupported("geography(Point, 4326)")?
+  capturedAt   DateTime                               @default(now()) @map("captured_at")
+  createdAt    DateTime                               @default(now()) @map("created_at")
+  updatedAt    DateTime                               @updatedAt @map("updated_at")
+  createdBy    String?                                @map("created_by") @db.Uuid
+
+  routeStop RouteStop @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
+  photos    Photo[]
+
+  @@index([orgId])
+}
+
+// ─────────────────────────────── billing, comms & system (§9.6) ───────────────────────────────
+
+model Invoice {
+  id                  String        @id @default(uuid()) @db.Uuid
+  orgId               String        @map("org_id") @db.Uuid
+  accountId           String        @map("account_id") @db.Uuid
+  period              String?
+  lines               Json          @default("[]")
+  subtotal            Decimal       @db.Decimal(12, 2)
+  tax                 Decimal       @db.Decimal(12, 2)
+  total               Decimal       @db.Decimal(12, 2)
+  status              InvoiceStatus @default(DRAFT)
+  costCenterBreakdown Json          @default("{}") @map("cost_center_breakdown")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  createdBy           String?       @map("created_by") @db.Uuid
+
+  account  Account   @relation(fields: [accountId], references: [id])
+  payments Payment[]
+
+  @@index([orgId])
+  @@index([accountId])
+}
+
+model Payment {
+  id        String        @id @default(uuid()) @db.Uuid
+  orgId     String        @map("org_id") @db.Uuid
+  invoiceId String?       @map("invoice_id") @db.Uuid
+  orderId   String?       @map("order_id") @db.Uuid
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(12, 2)
+  stripeRef String?       @map("stripe_ref")
+  status    PaymentStatus @default(PENDING)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdBy String?       @map("created_by") @db.Uuid
+
+  invoice Invoice? @relation(fields: [invoiceId], references: [id])
+  order   Order?   @relation(fields: [orderId], references: [id])
+
+  @@index([orgId])
+  @@index([invoiceId])
+}
+
+model Claim {
+  id         String      @id @default(uuid()) @db.Uuid
+  orgId      String      @map("org_id") @db.Uuid
+  orderId    String?     @map("order_id") @db.Uuid
+  itemId     String?     @map("item_id") @db.Uuid
+  type       ClaimType
+  amount     Decimal?    @db.Decimal(12, 2)
+  status     ClaimStatus @default(OPEN)
+  approvedBy String?     @map("approved_by") @db.Uuid
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  createdBy  String?     @map("created_by") @db.Uuid
+
+  order  Order?  @relation(fields: [orderId], references: [id])
+  item   Item?   @relation(fields: [itemId], references: [id])
+  photos Photo[]
+
+  @@index([orgId])
+}
+
+model Message {
+  id         String       @id @default(uuid()) @db.Uuid
+  orgId      String       @map("org_id") @db.Uuid
+  threadId   String       @map("thread_id") @db.Uuid
+  orderId    String?      @map("order_id") @db.Uuid
+  fromUserId String?      @map("from_user") @db.Uuid
+  toUserId   String?      @map("to_user") @db.Uuid
+  channel    CommsChannel @default(IN_APP)
+  body       String
+  sentAt     DateTime     @default(now()) @map("sent_at")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  createdBy  String?      @map("created_by") @db.Uuid
+
+  order    Order? @relation(fields: [orderId], references: [id])
+  fromUser User?  @relation("MessageFrom", fields: [fromUserId], references: [id])
+  toUser   User?  @relation("MessageTo", fields: [toUserId], references: [id])
+
+  @@index([orgId])
+  @@index([threadId])
+}
+
+model Notification {
+  id        String             @id @default(uuid()) @db.Uuid
+  orgId     String             @map("org_id") @db.Uuid
+  userId    String             @map("user_id") @db.Uuid
+  eventType String             @map("event_type")
+  channel   CommsChannel
+  payload   Json               @default("{}")
+  status    NotificationStatus @default(PENDING)
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+  createdBy String?            @map("created_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([userId])
+}
+
+// Immutable (PRD §8.7/§9.6) — a DB trigger blocks UPDATE/DELETE (injected in migration SQL).
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  entity    String
+  entityId  String   @map("entity_id") @db.Uuid
+  action    String
+  before    Json?
+  after     Json?
+  at        DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([orgId])
+  @@index([entity, entityId])
+}
+
+model Device {
+  id        String         @id @default(uuid()) @db.Uuid
+  orgId     String         @map("org_id") @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  pushToken String?        @map("push_token")
+  platform  DevicePlatform
+  lastSeen  DateTime?      @map("last_seen")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+  createdBy String?        @map("created_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([userId])
+}
+
+// ─────────────────────────────── auth (Increment 2 — item 4) ───────────────────────────────
+
+// Phone-OTP challenge. Stores only a HASH of the code (never plaintext), with
+// expiry + attempt accounting (PRD §8.1, §12.1). Rate-limit counters live in Redis.
+model OtpChallenge {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @map("org_id") @db.Uuid
+  phone       String
+  codeHash    String    @map("code_hash")
+  expiresAt   DateTime  @map("expires_at")
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5) @map("max_attempts")
+  consumedAt  DateTime? @map("consumed_at")
+  requestIp   String?   @map("request_ip")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdBy   String?   @map("created_by") @db.Uuid
+
+  @@index([orgId])
+  @@index([phone])
+}
+
+// Server-side refresh token (rotation + reuse detection + revocation, PRD §8.1/§12.1).
+// Only a hash of the opaque token is stored. Tokens form a `familyId` chain; presenting
+// a rotated/revoked token revokes the whole family (reuse = theft signal).
+model RefreshToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @map("org_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  familyId    String    @map("family_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  rotatedToId String?   @map("rotated_to_id") @db.Uuid
+  reusedAt    DateTime? @map("reused_at")
+  userAgent   String?   @map("user_agent")
+  createdByIp String?   @map("created_by_ip")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdBy   String?   @map("created_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([userId])
+  @@index([familyId])
+}

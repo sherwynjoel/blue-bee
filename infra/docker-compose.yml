@@ -2,8 +2,15 @@
 # Postgres (PostGIS + TimescaleDB) and Redis. Local only — not production config.
 services:
   postgres:
-    image: timescale/timescaledb-ha:pg16
+    # Custom PG16 + PostGIS + TimescaleDB image (vanilla postgres entrypoint).
+    # NOT timescale/timescaledb-ha — Prisma fails P1010 against the -ha image (see README).
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: bluebee-postgres:local
     container_name: bluebee-postgres
+    # TimescaleDB must be preloaded.
+    command: ["postgres", "-c", "shared_preload_libraries=timescaledb"]
     environment:
       POSTGRES_USER: bluebee
       POSTGRES_PASSWORD: bluebee
@@ -11,7 +18,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - bluebee_pg:/home/postgres/pgdata/data
+      - bluebee_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bluebee"]
       interval: 10s
@@ -25,6 +32,11 @@ services:
       - "6379:6379"
     volumes:
       - bluebee_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   bluebee_pg:

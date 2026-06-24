@@ -1,11 +1,17 @@
 import { Module } from '@nestjs/common';
 import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
+import { TRACKING_CONFIG, loadTrackingConfig } from '../config/tracking.config';
 import { OrdersModule } from '../orders/orders.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { GpsHistoryService } from './gps-history.service';
 import { IngestionService } from './ingestion.service';
 import { LastKnownStore } from './last-known.store';
 import { TrackingReadService } from './tracking-read.service';
+import { EtaService } from './eta.service';
+import { GeofenceService } from './geofence.service';
+import { TrackingPredictionService } from './tracking-prediction.service';
+import { PostgisEtaEstimator } from './postgis-eta.estimator';
+import { ETA_ESTIMATOR } from './eta-estimator';
 import { FleetLiveController } from './fleet-live.controller';
 import { LocationsController } from './locations.controller';
 import { OrderTrackingController } from './order-tracking.controller';
@@ -18,11 +24,29 @@ import { OrderTrackingController } from './order-tracking.controller';
  * JwtAuthGuard→RolesGuard (Increment 2), and OrdersModule's OrderAccessService (customer
  * order scoping) + AuditService. Imports RealtimeModule (Increment 6): ingestion publishes
  * each genuine last-known advance to the Socket.IO fan-out, and the order-tracking read mints
- * the signed per-vehicle channel token. STOPS BEFORE server-side ETA + geofence (Increment 7).
+ * the signed per-vehicle channel token.
+ *
+ * Increment 7 — the predictive layer: on each genuine advance the IngestionService calls
+ * `TrackingPredictionService`, which recomputes the active-stop ETA (`EtaService`, behind the
+ * in-house `ETA_ESTIMATOR` seam bound to `PostgisEtaEstimator` — NO external maps API) and
+ * evaluates geofence (`GeofenceService` → durable `GeofenceEvent` rows + realtime emit). All ETA/
+ * geofence tunables come from `TRACKING_CONFIG`.
  */
 @Module({
   imports: [OrdersModule, RealtimeModule],
   controllers: [LocationsController, FleetLiveController, OrderTrackingController],
-  providers: [IngestionService, GpsHistoryService, LastKnownStore, TrackingReadService, IdempotencyInterceptor],
+  providers: [
+    IngestionService,
+    GpsHistoryService,
+    LastKnownStore,
+    TrackingReadService,
+    IdempotencyInterceptor,
+    { provide: TRACKING_CONFIG, useFactory: loadTrackingConfig },
+    PostgisEtaEstimator,
+    { provide: ETA_ESTIMATOR, useExisting: PostgisEtaEstimator },
+    EtaService,
+    GeofenceService,
+    TrackingPredictionService,
+  ],
 })
 export class TrackingModule {}

@@ -4,6 +4,8 @@ import {
   WS_EVENTS,
   WS_NAMESPACES,
   type ChannelClosedReason,
+  type LiveEtaEvent,
+  type LiveGeofenceEvent,
   type LivePositionEvent,
 } from '@blue-bee/shared';
 
@@ -52,6 +54,30 @@ export class RealtimePublisher {
     if (!this.server) return; // gateway not initialised (e.g. very early boot) — REST stays source of truth
     this.server.of(WS_NAMESPACES.VEHICLE).to(this.vehicleRoom(orgId, vehicleId)).emit(WS_EVENTS.POSITION, payload);
     this.server.of(WS_NAMESPACES.FLEET).to(this.fleetRoom(orgId)).emit(WS_EVENTS.POSITION, payload);
+  }
+
+  /**
+   * Push a refreshed ETA range (Increment 7) for one stop. Scoped to the customer's STOP room —
+   * NOT the shared vehicle room — because an ETA is stop-specific: a different customer co-routed
+   * on the SAME vehicle (a different stop) must never see this stop's ETA. The org fleet room
+   * gets it too (ops). Call only on a genuine advance, after smoothing.
+   */
+  publishEta(orgId: string, stopId: string, payload: LiveEtaEvent): void {
+    if (!this.server) return; // gateway not initialised — REST eta remains source of truth
+    this.server.of(WS_NAMESPACES.VEHICLE).to(this.stopRoom(orgId, stopId)).emit(WS_EVENTS.ETA, payload);
+    this.server.of(WS_NAMESPACES.FLEET).to(this.fleetRoom(orgId)).emit(WS_EVENTS.ETA, payload);
+  }
+
+  /**
+   * Push a geofence crossing (Increment 7) for one stop — `approaching`/`arrived`. Same scoping as
+   * the ETA emit (stop-specific customer room + org fleet room). Call ONLY when a durable
+   * `GeofenceEvent` row was actually written (once per stop per type), so the wire mirrors the
+   * idempotent persistence — no alert spam on jitter/re-entry.
+   */
+  publishGeofence(orgId: string, stopId: string, payload: LiveGeofenceEvent): void {
+    if (!this.server) return;
+    this.server.of(WS_NAMESPACES.VEHICLE).to(this.stopRoom(orgId, stopId)).emit(WS_EVENTS.GEOFENCE, payload);
+    this.server.of(WS_NAMESPACES.FLEET).to(this.fleetRoom(orgId)).emit(WS_EVENTS.GEOFENCE, payload);
   }
 
   /**

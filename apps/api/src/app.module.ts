@@ -17,7 +17,9 @@ import { RealtimeModule } from './realtime/realtime.module';
  * Route/RouteStop backbone + §5.4 stop state machine) + tracking (Increment 5 —
  * location ingestion + Redis last-known + Timescale history + scoped reads) + realtime
  * (Increment 6 — Socket.IO scoped channels + signed per-vehicle customer token + fleet
- * channel). Server-side ETA + geofence (Increment 7) and billing land later.
+ * channel) + server-side ETA + geofence (Increment 7 — in-house ETA range behind the
+ * EtaEstimator seam + geofence events on the realtime channels). Notification delivery +
+ * the driver app and billing land later.
  */
 @Module({
   imports: [

@@ -4,10 +4,12 @@
  * location path, §9.5 GpsPing/Shift, §11.1 `POST /locations:batch`, `GET /fleet/live`,
  * `GET /orders/:id/tracking`, §12.2 privacy scoping).
  *
- * Scope of this increment is INGESTION + STORAGE + scoped REST reads only — NO realtime
- * channels (Socket.IO/WS), NO server-side ETA, NO geofence evaluation, NO notifications.
- * Those are Increment 6. The customer "tracking" read here is a scoped poll of last-known
- * (the short-lived signed channel token + live WS stream land in Increment 6).
+ * Scope of Increment 5 here is INGESTION + STORAGE + scoped REST reads. Increment 6 added the
+ * realtime channels (Socket.IO/WS) + the signed channel token. Increment 7 (this file's `eta`/
+ * `geofence` WS events, `StopEta`, and the ETA-range fields on the REST reads) adds server-side
+ * ETA + geofence evaluation — computed in-house behind an estimator seam, NO external maps API,
+ * NO notification delivery (the durable GeofenceEvent row + the WS event ARE the triggers a later
+ * notifications increment consumes).
  */
 import { z } from 'zod';
 
@@ -74,9 +76,37 @@ export interface LocationBatchResult {
   lastKnown: LastKnownPosition | null;
 }
 
+/**
+ * A computed server-side ETA snapshot for one stop (PRD §6.2 — "server-computed from current
+ * position → next stop … smoothed … surfaced as a RANGE"). Computed in-house behind the
+ * `EtaEstimator` seam (Increment 7); NO external maps/routing API.
+ *
+ * `eta` is the smoothed point ("mid") arrival time; `low`/`high` bound the surfaced range. All
+ * three are ISO-8601 ABSOLUTE target arrival times (so a client renders them without a clock
+ * skew assumption). `etaSeconds` is the mid seconds-remaining at `computedAt` (>= 0, capped).
+ */
+export interface StopEta {
+  stopId: string;
+  /** Smoothed point ("mid") arrival — ISO-8601 absolute time. */
+  eta: string;
+  /** Lower bound of the surfaced range — ISO-8601 absolute time. */
+  low: string;
+  /** Upper bound of the surfaced range — ISO-8601 absolute time. */
+  high: string;
+  /** Mid seconds-remaining at compute time (>= 0, capped to the configured max). */
+  etaSeconds: number;
+  /** When the estimate was computed — ISO-8601. */
+  computedAt: string;
+}
+
 /** GET /v1/fleet/live result — all the caller-org's vehicles' last-known (owner/dispatch/CSR). */
 export interface FleetLiveResult {
-  vehicles: Array<LastKnownPosition & { label: string }>;
+  /**
+   * Each positioned vehicle's last-known + its `nextStopEta` (the persisted ETA for the vehicle's
+   * current active EN_ROUTE/ARRIVED stop, Increment 7) — `null` when the vehicle has no active
+   * stop with a computed ETA.
+   */
+  vehicles: Array<LastKnownPosition & { label: string; nextStopEta: StopEta | null }>;
   /** Vehicles in the org with no position yet (never pinged). */
   withoutPosition: Array<{ vehicleId: string; label: string }>;
 }
@@ -95,8 +125,22 @@ export interface FleetLiveResult {
  */
 export interface OrderTrackingResult {
   orderId: string;
-  /** The order's active route stop (the one being worked / next up), if any. */
-  stop: { id: string; status: string; kind: string; eta: string | null } | null;
+  /**
+   * The order's active route stop (the one being worked / next up), if any. `eta` is the
+   * smoothed point ETA and `etaLow`/`etaHigh`/`etaComputedAt` the surfaced range + freshness
+   * (Increment 7, ISO-8601) — all null until an ETA has been computed (stop EN_ROUTE/ARRIVED with
+   * a geo destination). Served on the REST read so the customer gets a first ETA paint before the
+   * socket connects.
+   */
+  stop: {
+    id: string;
+    status: string;
+    kind: string;
+    eta: string | null;
+    etaLow: string | null;
+    etaHigh: string | null;
+    etaComputedAt: string | null;
+  } | null;
   vehicle: LastKnownPosition | null;
   channelToken: string | null;
 }
@@ -120,6 +164,21 @@ export const WS_NAMESPACES = {
 export const WS_EVENTS = {
   /** A new last-known position (emitted only on a genuine recorded_at advance). */
   POSITION: 'position',
+  /**
+   * A refreshed server-side ETA range for the customer's active stop (Increment 7). Emitted on
+   * each genuine last-known advance, after EWMA smoothing. To the customer's STOP room (stop-
+   * specific — never the shared vehicle room, so a co-routed customer on a different stop never
+   * sees this stop's ETA) and the org fleet room. Payload: `LiveEtaEvent`.
+   */
+  ETA: 'eta',
+  /**
+   * A geofence crossing for the customer's active stop (Increment 7): `APPROACHING` (within the
+   * configured radius OR ETA ≤ threshold) or `ARRIVED` (within the tight radius). Fires exactly
+   * once per stop per type (idempotent). Advisory only — does NOT transition the §5.4 stop (the
+   * driver stays authoritative). To the customer STOP room + org fleet room. Payload:
+   * `LiveGeofenceEvent`.
+   */
+  GEOFENCE: 'geofence',
   /** The channel was closed server-side (stop ended / shift ended / token expired). */
   CHANNEL_CLOSED: 'channel:closed',
 } as const;
@@ -132,6 +191,28 @@ export interface LivePositionEvent {
   speed: number | null;
   heading: number | null;
   recordedAt: string;
+}
+
+/**
+ * Payload of an `eta` event (Increment 7) — the smoothed ETA range for one vehicle's active stop.
+ * Extends `StopEta` with the vehicle/order context the fleet console needs to attribute it.
+ */
+export interface LiveEtaEvent extends StopEta {
+  vehicleId: string;
+  orderId: string | null;
+}
+
+/**
+ * Payload of a `geofence` event (Increment 7) — one geofence crossing. `type` is the §9.5
+ * `GeofenceEventType` (only `APPROACHING`/`ARRIVED` are emitted this phase; `DEPARTED` is modeled
+ * but not emitted). `occurredAt` is when the crossing was detected (ISO-8601).
+ */
+export interface LiveGeofenceEvent {
+  vehicleId: string;
+  stopId: string;
+  orderId: string | null;
+  type: 'APPROACHING' | 'ARRIVED';
+  occurredAt: string;
 }
 
 export type ChannelClosedReason =

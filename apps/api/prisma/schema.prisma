@@ -722,7 +722,14 @@ model RouteStop {
   // Reason code recorded when a stop is FAILED or SKIPPED (PRD §5.4/§6.3 exceptions).
   // Required by the API on those transitions. Increment 4 — additive, nullable.
   exceptionReason String?         @map("exception_reason")
+  // Server-side ETA (Increment 7, PRD §6.2) — computed in-house behind the EtaEstimator seam,
+  // smoothed (EWMA) and surfaced as a RANGE. `eta` is the smoothed point ("mid") arrival; eta_low
+  // / eta_high bound the surfaced range; eta_computed_at is the freshness stamp (and the EWMA
+  // memory — the next recompute ages the prior `eta` by the elapsed time). All additive/nullable.
   eta             DateTime?
+  etaLow          DateTime?       @map("eta_low")
+  etaHigh         DateTime?       @map("eta_high")
+  etaComputedAt   DateTime?       @map("eta_computed_at")
   arrivedAt       DateTime?       @map("arrived_at")
   completedAt     DateTime?       @map("completed_at")
   createdAt       DateTime        @default(now()) @map("created_at")
@@ -785,6 +792,10 @@ model GeofenceEvent {
 
   routeStop RouteStop @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
 
+  // Idempotency (Increment 7, §6.4): each geofence type fires EXACTLY once per stop. The unique
+  // (route_stop_id, type) + INSERT … ON CONFLICT DO NOTHING makes a re-entry after GPS/traffic
+  // jitter (or a concurrent same-vehicle batch) a no-op — no duplicate rows, no alert spam.
+  @@unique([routeStopId, type])
   @@index([orgId])
   @@index([routeStopId])
 }

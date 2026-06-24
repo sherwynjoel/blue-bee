@@ -14,6 +14,7 @@ import { AuditService } from '../orders/audit.service';
 import { RealtimePublisher } from '../realtime/realtime-publisher.service';
 import { GpsHistoryService, type HistoryRow } from './gps-history.service';
 import { LastKnownStore } from './last-known.store';
+import { TrackingPredictionService } from './tracking-prediction.service';
 import { dedupePings, newestPing } from './tracking-util';
 
 /**
@@ -45,6 +46,7 @@ export class IngestionService {
     private readonly lastKnown: LastKnownStore,
     private readonly audit: AuditService,
     private readonly realtime: RealtimePublisher,
+    private readonly prediction: TrackingPredictionService,
   ) {}
 
   async ingest(principal: RequestPrincipal, dto: LocationBatchDto): Promise<LocationBatchResult> {
@@ -146,6 +148,12 @@ export class IngestionService {
         heading: lastKnown.heading,
         recordedAt: lastKnown.recordedAt,
       });
+
+      // Increment 7 — predictive layer on the SAME genuine-advance gate (the §10.4 ping cluster):
+      // recompute the active-stop ETA + evaluate geofence off the AUTHORITATIVE head position.
+      // Degradation-wrapped inside the service (it never throws), so it cannot fail this ingest;
+      // awaited so the persisted ETA is fresh for the immediately-following REST tracking read.
+      await this.prediction.onLastKnownAdvance(principal.orgId, shift.vehicleId, { lat: lastKnown.lat, lng: lastKnown.lng });
     }
 
     return {

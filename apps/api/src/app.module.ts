@@ -11,6 +11,8 @@ import { TrackingModule } from './tracking/tracking.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DriverModule } from './driver/driver.module';
+import { StorageModule } from './media/storage/storage.module';
+import { MediaModule } from './media/media.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -24,16 +26,20 @@ import { DriverModule } from './driver/driver.module';
  * (Increment 8 — matrix-driven engine + outbox delivering customer alerts across the
  * SMS/email/push transport seam, plus device-token registration) + the driver duty-loop
  * surface (Increment 9 — `/v1/driver/*`, the DRIVER-self-scoped read + shift + §5.4 actions
- * the Expo driver app consumes, delegating to the proven logistics services). Billing lands later.
+ * the Expo driver app consumes, delegating to the proven logistics services) + the presigned
+ * media/storage path (Increment 10 — `StorageModule` global seam over AWS S3/MinIO + `MediaModule`'s
+ * `/v1/media/presign|confirm` real upload→confirm→signed-read). Billing lands later.
  */
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     RedisModule,
+    StorageModule,
     SmsModule,
     AuthModule,
     OrdersModule,
+    MediaModule,
     RealtimeModule,
     NotificationsModule,
     TrackingModule,

@@ -34,3 +34,15 @@ process.env.NOTIF_KICK_ON_DISPATCH = 'false';
 // urgent-bypass (approaching) and the quiet-hours-defer (arrived) paths. Production keeps both
 // geofence alerts urgent (the config default).
 process.env.NOTIF_URGENT_EVENT_TYPES = 'geofence.approaching';
+
+// ── Media / storage (Increment 10) ── point at the REAL local MinIO (infra/docker-compose) so the
+// e2e exercises the exact AWS-SDK S3 path with real bytes. The app creates the bucket on boot.
+process.env.S3_ENDPOINT = 'http://localhost:9000';
+process.env.S3_FORCE_PATH_STYLE = 'true';
+process.env.S3_BUCKET = 'bluebee-media';
+process.env.AWS_REGION = 'ca-central-1';
+process.env.AWS_ACCESS_KEY_ID = 'minioadmin';
+process.env.AWS_SECRET_ACCESS_KEY = 'minioadmin';
+process.env.MEDIA_ENSURE_BUCKET = 'true';
+// Small enough to exercise the too-large path cheaply (declare a byteSize over this → rejected).
+process.env.MEDIA_MAX_BYTES = '5242880';

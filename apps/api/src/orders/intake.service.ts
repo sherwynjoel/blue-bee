@@ -6,16 +6,13 @@ import {
   ItemStatus,
   OrderStatus,
   ORDER_ERRORS,
-  PhotoKind,
   type InspectionDto,
-  type ItemPhotoDto,
   type ReceivedAtPlantDto,
   type SchedulePickupDto,
 } from '@blue-bee/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from './audit.service';
-import { MediaService } from './media';
 import { OrderAccessService } from './order-access.service';
 import { OrderStateMachine } from './state-machine.service';
 import { OrdersService } from './orders.service';
@@ -41,7 +38,6 @@ export class IntakeService {
     private readonly access: OrderAccessService,
     private readonly stateMachine: OrderStateMachine,
     private readonly audit: AuditService,
-    private readonly media: MediaService,
     private readonly orders: OrdersService,
   ) {}
 
@@ -123,7 +119,18 @@ export class IntakeService {
         message: `Inspection requires the order at/after PICKED_UP and before QUOTED (current: ${order.status})`,
       });
     }
-    const damageUrl = dto.preexistingDamage && dto.damagePhotoUrl ? this.media.requireValidUrl(dto.damagePhotoUrl) : null;
+    // §5.1 damage evidence: when flagged, the customer's damagePhotoId must be a Photo already
+    // uploaded for THIS item via the real presigned-upload flow (POST /v1/media/* — Increment 10).
+    if (dto.preexistingDamage && dto.damagePhotoId) {
+      const damagePhoto = await this.prisma.photo.findFirst({
+        where: { id: dto.damagePhotoId, itemId, orgId: order.orgId },
+        select: { id: true },
+      });
+      if (!damagePhoto) {
+        throw new ConflictException({ error: ORDER_ERRORS.ITEM_NOT_FOUND, message: 'damagePhotoId is not an uploaded photo for this item' });
+      }
+    }
+    const hasDamagePhoto = !!(dto.preexistingDamage && dto.damagePhotoId);
 
     await this.prisma.$transaction(async (tx) => {
       // Custody: arrival at intake station.
@@ -146,13 +153,6 @@ export class IntakeService {
         },
       });
 
-      // Persist the damage-evidence photo (real reference; intake kind).
-      if (damageUrl) {
-        await tx.photo.create({
-          data: { orgId: order.orgId, itemId, orderId, kind: PhotoKind.INTAKE, url: damageUrl, createdBy: principal.userId },
-        });
-      }
-
       // Merge measured values into Item.measurements; mark the item inspected.
       const mergedMeasurements = { ...((item.measurements as Record<string, unknown>) ?? {}), ...dto.measurements };
       await tx.item.update({
@@ -172,7 +172,7 @@ export class IntakeService {
           entity: 'Inspection',
           entityId: inspection.id,
           action: 'INSPECTION_RECORDED',
-          after: { itemId, conditionCodes: dto.conditionCodes, preexistingDamage: dto.preexistingDamage, ackBy, hasDamagePhoto: !!damageUrl },
+          after: { itemId, conditionCodes: dto.conditionCodes, preexistingDamage: dto.preexistingDamage, ackBy, hasDamagePhoto },
         },
         tx,
       );
@@ -199,43 +199,5 @@ export class IntakeService {
       }
     });
     return this.orders.getOrder(principal, orderId);
-  }
-
-  // ─────────────────────── photos (per item) ───────────────────────
-
-  async addPhoto(principal: RequestPrincipal, orderId: string, itemId: string, dto: ItemPhotoDto) {
-    const { order } = await this.access.requireItemForWrite(principal, orderId, itemId);
-    if (!INTAKE_WINDOW.includes(order.status as unknown as OrderStatus)) {
-      throw new ConflictException({
-        error: ORDER_ERRORS.ILLEGAL_TRANSITION,
-        message: `Photos can be attached during intake (PICKED_UP…DAMAGE_PREEXISTING_FLAGGED); current: ${order.status}`,
-      });
-    }
-    const url = this.media.requireValidUrl(dto.url);
-
-    const photo = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.photo.create({
-        data: {
-          orgId: order.orgId,
-          itemId,
-          orderId,
-          kind: dto.kind,
-          url,
-          ...(dto.takenAt ? { takenAt: new Date(dto.takenAt) } : {}),
-          createdBy: principal.userId,
-        },
-      });
-      if (dto.geo) {
-        await tx.$executeRaw`
-          UPDATE "Photo" SET geo = ST_SetSRID(ST_MakePoint(${dto.geo.lng}, ${dto.geo.lat}), 4326)::geography
-          WHERE id = ${created.id}::uuid`;
-      }
-      await this.audit.record(
-        { orgId: order.orgId, actorId: principal.userId, entity: 'Photo', entityId: created.id, action: 'PHOTO_ADDED', after: { itemId, kind: dto.kind, url } },
-        tx,
-      );
-      return created;
-    });
-    return photo;
   }
 }

@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { AuditService } from './audit.service';
 import { IntakeService } from './intake.service';
-import { MediaService } from './media';
 import { OrderAccessService } from './order-access.service';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
@@ -26,7 +25,6 @@ import { OrderStateMachine } from './state-machine.service';
     OrderStateMachine,
     OrderAccessService,
     AuditService,
-    MediaService,
     IdempotencyInterceptor,
   ],
   // Reused by the logistics module (Increment 4): the order state machine + parent-ownership

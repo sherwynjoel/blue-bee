@@ -1,0 +1,210 @@
+import { randomUUID } from 'node:crypto';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, type Photo } from '@prisma/client';
+import {
+  MEDIA_ERRORS,
+  MediaUploadStatus,
+  PhotoKind,
+  type ConfirmMediaDto,
+  type MediaResult,
+  type PresignMediaDto,
+  type PresignMediaResult,
+} from '@blue-bee/shared';
+import { PrismaService } from '../prisma/prisma.service';
+import type { RequestPrincipal } from '../auth/rbac/types';
+import { OrderAccessService } from '../orders/order-access.service';
+import { AuditService } from '../orders/audit.service';
+import { MEDIA_CONFIG, type MediaConfig } from '../config/media.config';
+import { STORAGE_PROVIDER, type StorageProvider } from './storage/storage-provider';
+import { MediaSigner } from './storage/media-signer';
+
+/** content-type → file extension (cosmetic; the key is what matters). */
+const EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+};
+
+/**
+ * The real presigned media path (Increment 10). Two phases:
+ *   • presign — authorize the target (the caller must own the order/item), validate content-type +
+ *     size against config, mint an org-namespaced unguessable key, record a PENDING MediaUpload
+ *     intent, and return a short-lived presigned PUT URL. The client uploads bytes directly.
+ *   • confirm — load the intent (proving the caller presigned THIS key in THEIR org), HEAD-verify the
+ *     real object (exists + content-type + size match the declared values), then create the Photo and
+ *     flip the intent CONFIRMED. Idempotent on the key.
+ * Reads return a freshly-minted, short-lived signed GET URL (§14) — never a raw key or public link.
+ */
+@Injectable()
+export class MediaService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: OrderAccessService,
+    private readonly audit: AuditService,
+    @Inject(MEDIA_CONFIG) private readonly config: MediaConfig,
+    @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly signer: MediaSigner,
+  ) {}
+
+  // ───────────────────────────── presign ─────────────────────────────
+
+  async presign(principal: RequestPrincipal, dto: PresignMediaDto): Promise<PresignMediaResult> {
+    this.assertContentType(dto.contentType);
+    if (dto.byteSize > this.config.maxBytes) {
+      throw new BadRequestException({ error: MEDIA_ERRORS.TOO_LARGE, message: `declared size ${dto.byteSize} exceeds max ${this.config.maxBytes}` });
+    }
+    // Authorize the target: the caller must own the order (and the item, if given). Throws 403/404.
+    if (dto.itemId) await this.access.requireItemForWrite(principal, dto.orderId, dto.itemId);
+    else await this.access.requireOrderForWrite(principal, dto.orderId);
+
+    const storageKey = this.newKey(principal.orgId, dto.kind, dto.contentType);
+    await this.prisma.mediaUpload.create({
+      data: {
+        orgId: principal.orgId,
+        storageKey,
+        kind: dto.kind,
+        contentType: dto.contentType,
+        byteSize: dto.byteSize,
+        orderId: dto.orderId,
+        itemId: dto.itemId ?? null,
+        createdBy: principal.userId,
+      },
+    });
+    const uploadUrl = await this.storage.presignPut(storageKey, dto.contentType, dto.byteSize, this.config.presignPutTtlSec);
+    return { uploadUrl, storageKey, contentType: dto.contentType, expiresInSec: this.config.presignPutTtlSec, maxBytes: this.config.maxBytes };
+  }
+
+  // ───────────────────────────── confirm (standalone) ─────────────────────────────
+
+  /** Confirm a presigned upload → create the Photo. Idempotent: re-confirming a key returns the same row. */
+  async confirm(principal: RequestPrincipal, dto: ConfirmMediaDto): Promise<MediaResult> {
+    const intent = await this.requireIntent(principal, dto.storageKey);
+
+    // Idempotency: already confirmed → return the existing photo (no duplicate, no re-upload).
+    if (intent.status === MediaUploadStatus.CONFIRMED && intent.photoId) {
+      const existing = await this.prisma.photo.findFirst({ where: { id: intent.photoId, orgId: principal.orgId } });
+      if (existing) return this.toMediaResult(existing);
+    }
+
+    await this.reauthorize(principal, intent);
+    const verified = await this.headVerify(intent);
+
+    let photo: Photo;
+    try {
+      photo = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.photo.create({
+          data: {
+            orgId: intent.orgId,
+            itemId: intent.itemId,
+            orderId: intent.orderId,
+            kind: intent.kind,
+            storageKey: intent.storageKey,
+            contentType: verified.contentType,
+            sizeBytes: verified.sizeBytes,
+            ...(dto.takenAt ? { takenAt: new Date(dto.takenAt) } : {}),
+            createdBy: principal.userId,
+          },
+        });
+        if (dto.geo) await this.writeGeo(tx, created.id, dto.geo.lat, dto.geo.lng);
+        await this.markConfirmed(intent.id, created.id, tx);
+        await this.audit.record(
+          { orgId: intent.orgId, actorId: principal.userId, entity: 'Photo', entityId: created.id, action: 'PHOTO_ADDED', after: { kind: intent.kind, storageKey: intent.storageKey, sizeBytes: verified.sizeBytes } },
+          tx,
+        );
+        return created;
+      });
+    } catch (err) {
+      // Concurrent double-confirm: the unique storage_key makes the loser's create fail (P2002).
+      // That's the idempotency guarantee — return the Photo the winner created (no duplicate, no 500).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const existing = await this.prisma.photo.findFirst({ where: { storageKey: intent.storageKey, orgId: principal.orgId } });
+        if (existing) return this.toMediaResult(existing);
+      }
+      throw err;
+    }
+    return this.toMediaResult(photo);
+  }
+
+  private async markConfirmed(intentId: string, photoId: string, tx: Prisma.TransactionClient): Promise<void> {
+    await tx.mediaUpload.updateMany({ where: { id: intentId, status: MediaUploadStatus.PENDING }, data: { status: MediaUploadStatus.CONFIRMED, photoId } });
+  }
+
+  // ───────────────────────────── signed reads (§14) ─────────────────────────────
+
+  /** Build the response shape with a freshly-minted short-lived signed GET URL (via MediaSigner). */
+  async toMediaResult(photo: Photo): Promise<MediaResult> {
+    return {
+      id: photo.id,
+      kind: photo.kind as unknown as PhotoKind,
+      storageKey: photo.storageKey,
+      contentType: photo.contentType,
+      sizeBytes: photo.sizeBytes,
+      downloadUrl: await this.signer.signedGet(photo),
+      orderId: photo.orderId,
+      itemId: photo.itemId,
+      takenAt: photo.takenAt.toISOString(),
+      createdAt: photo.createdAt.toISOString(),
+    };
+  }
+
+  // ───────────────────────────── internals ─────────────────────────────
+
+  private assertContentType(contentType: string): void {
+    if (!this.config.allowedContentTypes.includes(contentType.toLowerCase())) {
+      throw new BadRequestException({ error: MEDIA_ERRORS.UNSUPPORTED_CONTENT_TYPE, message: `content type ${contentType} is not allowed` });
+    }
+  }
+
+  private newKey(orgId: string, kind: PhotoKind, contentType: string): string {
+    const ext = EXT[contentType.toLowerCase()] ?? 'bin';
+    return `org/${orgId}/${kind.toLowerCase()}/${randomUUID()}.${ext}`;
+  }
+
+  /** Load the intent, asserting it exists AND belongs to the caller's org (can't confirm another org's key). */
+  private async requireIntent(principal: RequestPrincipal, storageKey: string) {
+    const intent = await this.prisma.mediaUpload.findUnique({ where: { storageKey } });
+    if (!intent || intent.orgId !== principal.orgId) {
+      throw new NotFoundException({ error: MEDIA_ERRORS.UPLOAD_NOT_FOUND, message: 'no presigned upload for this key' });
+    }
+    return intent;
+  }
+
+  /** Re-check ownership at confirm time (the caller must still own the target order/item). */
+  private async reauthorize(principal: RequestPrincipal, intent: { orderId: string | null; itemId: string | null }): Promise<void> {
+    if (intent.orderId && intent.itemId) await this.access.requireItemForWrite(principal, intent.orderId, intent.itemId);
+    else if (intent.orderId) await this.access.requireOrderForWrite(principal, intent.orderId);
+  }
+
+  /**
+   * HEAD the real object and verify it matches the declared content-type + size. Any object that
+   * fails verification is DELETED (immediate orphan cleanup) before the request is rejected. Missing
+   * server-reported content-type or size is itself a failure — we never persist an unverified object.
+   */
+  private async headVerify(intent: { storageKey: string; contentType: string; byteSize: number }): Promise<{ contentType: string; sizeBytes: number }> {
+    const head = await this.storage.head(intent.storageKey);
+    if (!head.exists) {
+      throw new NotFoundException({ error: MEDIA_ERRORS.OBJECT_NOT_FOUND, message: 'the object was never uploaded' });
+    }
+    const reject = async (err: Error): Promise<never> => {
+      await this.storage.delete(intent.storageKey).catch(() => undefined); // best-effort cleanup of the bad object
+      throw err;
+    };
+    if (!head.contentType || head.contentType.toLowerCase() !== intent.contentType.toLowerCase()) {
+      return reject(new BadRequestException({ error: MEDIA_ERRORS.OBJECT_MISMATCH, message: `uploaded content-type ${head.contentType ?? '(none)'} != declared ${intent.contentType}` }));
+    }
+    if (head.size == null) {
+      return reject(new BadRequestException({ error: MEDIA_ERRORS.OBJECT_MISMATCH, message: 'uploaded object size could not be determined' }));
+    }
+    if (head.size > this.config.maxBytes || head.size > intent.byteSize) {
+      return reject(new BadRequestException({ error: MEDIA_ERRORS.TOO_LARGE, message: `uploaded size ${head.size} exceeds the declared/configured limit` }));
+    }
+    return { contentType: head.contentType, sizeBytes: head.size };
+  }
+
+  private async writeGeo(tx: Prisma.TransactionClient, photoId: string, lat: number, lng: number): Promise<void> {
+    await tx.$executeRaw`
+      UPDATE "Photo" SET geo = ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+      WHERE id = ${photoId}::uuid`;
+  }
+}

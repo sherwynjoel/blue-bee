@@ -161,6 +161,14 @@ export enum PhotoKind {
   CLAIM = 'CLAIM',
 }
 
+/** Presigned-upload intent lifecycle (Increment 10): a presign creates PENDING; confirm (after a real
+ *  HEAD verification) flips it CONFIRMED and links the created Photo. PENDING rows whose object never
+ *  landed are the reconciliation/orphan-cleanup set. */
+export enum MediaUploadStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+}
+
 /** [§9 LITERAL] Quote.status (§9.3: draft|sent|approved|declined|expired). */
 export enum QuoteStatus {
   DRAFT = 'DRAFT',

@@ -34,8 +34,8 @@ export const bookItemSchema = z.object({
   notes: z.string().max(1000).optional(),
   /** Optional pre-printed tag code; otherwise the server mints one. */
   tagCode: z.string().min(1).max(64).optional(),
-  /** Optional customer reference photo (already-hosted object reference; origin-validated). */
-  photoUrl: z.string().url().optional(),
+  // Reference/BEFORE photos attach AFTER booking via the real presigned-upload flow
+  // (POST /v1/media/presign → PUT → /v1/media/confirm, Increment 10) — no register-a-URL at book time.
 });
 export type BookItemDto = z.infer<typeof bookItemSchema>;
 
@@ -78,30 +78,19 @@ export const inspectionSchema = z
     customerAck: z.boolean().optional(),
     /** Who acknowledged (defaults to the acting principal if omitted). */
     ackBy: z.string().uuid().optional(),
-    /** Damage evidence photo (origin-validated already-hosted reference). Required when flagged. */
-    damagePhotoUrl: z.string().url().optional(),
+    /** Damage evidence photo: the id of a Photo already uploaded for this item via the real
+     *  presigned-upload flow (POST /v1/media/presign → PUT → /v1/media/confirm). Required when flagged. */
+    damagePhotoId: z.string().uuid().optional(),
   })
   .refine((d) => Object.keys(d.measurements).length > 0, {
     message: 'measurements must capture at least one measured value at intake',
     path: ['measurements'],
   })
-  .refine((d) => !d.preexistingDamage || (d.customerAck === true && !!d.damagePhotoUrl), {
-    message: 'preexistingDamage requires customerAck=true and a damagePhotoUrl (photo + ack per §5.1)',
+  .refine((d) => !d.preexistingDamage || (d.customerAck === true && !!d.damagePhotoId), {
+    message: 'preexistingDamage requires customerAck=true and a damagePhotoId (uploaded photo + ack per §5.1)',
     path: ['preexistingDamage'],
   });
 export type InspectionDto = z.infer<typeof inspectionSchema>;
-
-// ───────────────────── photos (POST …/items/:itemId/photos) ─────────────────────
-
-export const itemPhotoSchema = z.object({
-  /** URL of an already-uploaded object in the configured media store (origin-validated server-side). */
-  url: z.string().url(),
-  storageKey: z.string().max(512).optional(),
-  kind: z.nativeEnum(PhotoKind).default(PhotoKind.INTAKE),
-  geo: geoPointSchema.optional(),
-  takenAt: z.string().datetime().optional(),
-});
-export type ItemPhotoDto = z.infer<typeof itemPhotoSchema>;
 
 // ───────────────────── quote build (POST …/quote) ─────────────────────
 

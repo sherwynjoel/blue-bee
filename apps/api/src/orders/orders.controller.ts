@@ -7,7 +7,6 @@ import {
   declineQuoteSchema,
   holdOrderSchema,
   inspectionSchema,
-  itemPhotoSchema,
   listOrdersQuerySchema,
   quoteBuildSchema,
   receivedAtPlantSchema,
@@ -18,7 +17,6 @@ import {
   type DeclineQuoteDto,
   type HoldOrderDto,
   type InspectionDto,
-  type ItemPhotoDto,
   type ListOrdersQuery,
   type QuoteBuildDto,
   type ReceivedAtPlantDto,
@@ -105,18 +103,9 @@ export class OrdersController {
     return this.intake.inspect(p, id, itemId, dto);
   }
 
-  @Post(':id/items/:itemId/photos')
-  @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP)
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Attach an intake photo (validated already-hosted object reference; binary upload deferred to storage increment).' })
-  addPhoto(
-    @CurrentUser() p: RequestPrincipal,
-    @Param('id') id: string,
-    @Param('itemId') itemId: string,
-    @Body(new ZodBody(itemPhotoSchema)) dto: ItemPhotoDto,
-  ) {
-    return this.intake.addPhoto(p, id, itemId, dto);
-  }
+  // Item photos (intake / before / after) are uploaded via the real presigned flow —
+  // POST /v1/media/presign → PUT → POST /v1/media/confirm (Increment 10). The legacy
+  // register-a-URL endpoint here is retired.
 
   @Post(':id/quote')
   @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP)

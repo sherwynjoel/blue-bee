@@ -144,6 +144,11 @@ enum PhotoKind {
   CLAIM
 }
 
+enum MediaUploadStatus {
+  PENDING
+  CONFIRMED
+}
+
 enum QuoteStatus {
   DRAFT
   SENT
@@ -566,7 +571,12 @@ model Photo {
   podId     String?                                @map("pod_id") @db.Uuid
   claimId   String?                                @map("claim_id") @db.Uuid
   kind      PhotoKind
-  url       String
+  // Increment 10: real uploaded objects store an org-namespaced object KEY (signed GET minted on
+  // read). `url` is now nullable — retained only for the legacy external-reference fallback.
+  storageKey  String?                              @unique @map("storage_key")
+  contentType String?                              @map("content_type")
+  sizeBytes   Int?                                 @map("size_bytes")
+  url       String?
   geo       Unsupported("geography(Point, 4326)")?
   takenAt   DateTime                               @default(now()) @map("taken_at")
   createdAt DateTime                               @default(now()) @map("created_at")
@@ -581,6 +591,29 @@ model Photo {
   @@index([orgId])
   @@index([itemId])
   @@index([orderId])
+}
+
+// Presigned-upload intent (Increment 10). A /media/presign records WHO is uploading WHAT to WHICH
+// target + the declared content-type/size; /media/confirm verifies the object (HEAD) against this
+// intent and creates the Photo. So "the caller presigned this key" is provable, and PENDING rows
+// whose object never landed are the orphan-reconciliation set. Org-scoped; key is globally unique.
+model MediaUpload {
+  id          String            @id @default(uuid()) @db.Uuid
+  orgId       String            @map("org_id") @db.Uuid
+  storageKey  String            @unique @map("storage_key")
+  kind        PhotoKind
+  contentType String            @map("content_type")
+  byteSize    Int               @map("byte_size")
+  orderId     String?           @map("order_id") @db.Uuid
+  itemId      String?           @map("item_id") @db.Uuid
+  status      MediaUploadStatus @default(PENDING)
+  photoId     String?           @map("photo_id") @db.Uuid
+  createdBy   String            @map("created_by") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  @@index([orgId])
+  @@index([status])
 }
 
 model Quote {
@@ -809,6 +842,9 @@ model ProofOfDelivery {
   orgId        String                                 @map("org_id") @db.Uuid
   routeStopId  String                                 @unique @map("route_stop_id") @db.Uuid
   signatureUrl String?                                @map("signature_url")
+  // Increment 10: the POD signature as a real uploaded object key (signed GET on read), parallel to
+  // Photo.storageKey. Populated by the driver POD-capture flow (a later increment); column added now.
+  signatureKey String?                                @map("signature_key")
   capturedBy   String?                                @map("captured_by") @db.Uuid
   geo          Unsupported("geography(Point, 4326)")?
   capturedAt   DateTime                               @default(now()) @map("captured_at")

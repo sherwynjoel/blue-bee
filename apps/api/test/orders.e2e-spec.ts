@@ -10,7 +10,7 @@ const ACCOUNT_A = '44444444-4444-4444-8444-444444444444';
 const ACCOUNT_B = 'e0000000-0000-4000-8000-0000000000b0';
 const SERVICE = '66666666-6666-4666-8666-666666666666';
 const ORDER_O2 = 'e0000000-0000-4000-8000-0000000000c1'; // Org-2 order (cross-org target)
-const MEDIA = 'https://bluebee-media.s3.ca-central-1.amazonaws.com/intake/test-rug.jpg';
+const ORG1 = '11111111-1111-4111-8111-111111111111';
 
 const PHONES = {
   owner: '+14165550001',
@@ -44,6 +44,15 @@ describe('Orders e2e — Increment 3 (book → intake → quote → approve · �
 
   const bookItem = (over: Record<string, unknown> = {}) => ({ kind: 'RUG', serviceId: SERVICE, estimatedMeasure: 40, ...over });
 
+  // A damage-evidence Photo, as if uploaded via the real /media flow (Increment 10). Returns its id
+  // to pass as `damagePhotoId` (the §5.1 damage branch now references an uploaded photo, not a URL).
+  async function makeDamagePhoto(itemId: string, orderId: string): Promise<string> {
+    const p = await prisma.photo.create({
+      data: { orgId: ORG1, itemId, orderId, kind: 'INTAKE', storageKey: `org/${ORG1}/intake/${itemId}-dmg.jpg`, contentType: 'image/jpeg', sizeBytes: 100, createdBy: userId.owner },
+    });
+    return p.id;
+  }
+
   // NOTE: not `async` — returns the supertest Test (a thenable) so callers can chain
   // `.expect(...)` before awaiting (an async fn would unwrap the Test into a Response).
   function book(who: string, accountId: string, items = [bookItem()], key?: string) {
@@ -62,9 +71,13 @@ describe('Orders e2e — Increment 3 (book → intake → quote → approve · �
       conditionCodes: ['MINOR_FRINGE_WEAR'],
       measurements: opts.measurements ?? { sqft: 40 },
     };
-    if (opts.damage) Object.assign(insp, { preexistingDamage: true, customerAck: true, damagePhotoUrl: MEDIA });
     for (const item of order.items) {
-      await post(`/v1/orders/${orderId}/items/${item.id}/inspection`, 'plant', insp).expect(201);
+      const perItem: Record<string, unknown> = { ...insp };
+      if (opts.damage) {
+        const damagePhotoId = await makeDamagePhoto(item.id, orderId);
+        Object.assign(perItem, { preexistingDamage: true, customerAck: true, damagePhotoId });
+      }
+      await post(`/v1/orders/${orderId}/items/${item.id}/inspection`, 'plant', perItem).expect(201);
     }
     return post(`/v1/orders/${orderId}/quote`, 'csr', opts.quoteBody ?? {}).expect(201);
   }
@@ -169,10 +182,6 @@ describe('Orders e2e — Increment 3 (book → intake → quote → approve · �
     expect(stages).toHaveLength(3);
     expect(stages[0]).toBe('PICKED_UP');
 
-    const photo = await post(`/v1/orders/${order.id}/items/${itemId}/photos`, 'plant', { url: MEDIA, kind: 'INTAKE' }).expect(201);
-    expect(photo.body.url).toBe(MEDIA);
-    expect(photo.body.kind).toBe('INTAKE');
-
     const quoted = await post(`/v1/orders/${order.id}/quote`, 'csr', {}).expect(201);
     expect(quoted.body.order.status).toBe('QUOTED');
     const o = quoted.body.order;
@@ -244,12 +253,13 @@ describe('Orders e2e — Increment 3 (book → intake → quote → approve · �
     await post(`/v1/orders/${order.id}/schedule-pickup`, 'owner', { pickupWindow: futureWindow() }).expect(200);
     const received = await post(`/v1/orders/${order.id}/received-at-plant`, 'owner', {}).expect(200);
     const itemId = received.body.items[0].id;
+    const damagePhotoId = await makeDamagePhoto(itemId, order.id); // uploaded via the real /media flow
     const insp = await post(`/v1/orders/${order.id}/items/${itemId}/inspection`, 'plant', {
       conditionCodes: ['STAIN', 'PREEXISTING_TEAR'],
       measurements: { sqft: 40 },
       preexistingDamage: true,
       customerAck: true,
-      damagePhotoUrl: MEDIA,
+      damagePhotoId,
     }).expect(201);
     expect(insp.body.status).toBe('DAMAGE_PREEXISTING_FLAGGED');
     const item = insp.body.items.find((i: { id: string }) => i.id === itemId);

@@ -13,7 +13,6 @@ import {
   OrderType,
   OrderVertical,
   ORDER_ERRORS,
-  PhotoKind,
   TagBinding,
   TagType,
   type BookOrderDto,
@@ -25,11 +24,23 @@ import { PrismaService } from '../prisma/prisma.service';
 import { isOrgWide } from '../auth/rbac/policy';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from './audit.service';
-import { MediaService } from './media';
+import { MediaSigner } from '../media/storage/media-signer';
 import { OrderAccessService } from './order-access.service';
 import { PricingService } from './pricing.service';
 import { OrderStateMachine } from './state-machine.service';
 import { roundCents, centsToMoney } from './money';
+
+/** The photo columns the order read selects (for signing without leaking the raw key). */
+type PhotoRow = {
+  id: string;
+  kind: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  takenAt: Date;
+  createdAt: Date;
+  storageKey: string | null;
+  url: string | null;
+};
 
 const FULL_INCLUDE = {
   lines: { orderBy: { createdAt: 'asc' as const } },
@@ -55,7 +66,7 @@ export class OrdersService {
     private readonly pricing: PricingService,
     private readonly stateMachine: OrderStateMachine,
     private readonly audit: AuditService,
-    private readonly media: MediaService,
+    private readonly signer: MediaSigner,
   ) {}
 
   // ─────────────────────────────── book (REQUESTED) ───────────────────────────────
@@ -93,11 +104,6 @@ export class OrdersService {
     const missing = serviceIds.filter((id) => !known.has(id));
     if (missing.length > 0) {
       throw new BadRequestException({ error: ORDER_ERRORS.INVALID_BOOKING, message: `Unknown service(s): ${missing.join(', ')}` });
-    }
-
-    // Validate any booking photo URLs up-front (fail fast, before writes).
-    for (const item of dto.items) {
-      if (item.photoUrl) this.media.requireValidUrl(item.photoUrl);
     }
 
     // Pre-resolve rates and build a rough estimate range (PRD §7A A2.1 — pre-intake).
@@ -185,18 +191,6 @@ export class OrdersService {
               createdBy: principal.userId,
             },
           });
-          if (item.photoUrl) {
-            await tx.photo.create({
-              data: {
-                orgId,
-                itemId: createdItem.id,
-                orderId,
-                kind: PhotoKind.BEFORE,
-                url: this.media.requireValidUrl(item.photoUrl),
-                createdBy: principal.userId,
-              },
-            });
-          }
         }
 
         await this.audit.record(
@@ -232,6 +226,29 @@ export class OrdersService {
       .order.findUnique({ where: { id: orderId }, include: FULL_INCLUDE });
     if (!order) {
       throw new NotFoundException({ error: ORDER_ERRORS.ORDER_NOT_FOUND, message: `Order ${orderId} not found` });
+    }
+    return this.signOrderPhotos(order);
+  }
+
+  /**
+   * Replace each item-photo's stored object KEY with a freshly-minted short-lived signed GET URL
+   * (§14) — and DON'T leak the raw key/internal columns to the client. Newly-uploaded photos
+   * (storageKey) get a presigned GET; legacy external-reference photos (url) return that url.
+   */
+  private async signOrderPhotos<O extends { items: Array<{ photos: PhotoRow[] }> }>(order: O): Promise<O> {
+    for (const item of order.items) {
+      const signed = await Promise.all(
+        item.photos.map(async (p) => ({
+          id: p.id,
+          kind: p.kind,
+          contentType: p.contentType,
+          sizeBytes: p.sizeBytes,
+          takenAt: p.takenAt,
+          createdAt: p.createdAt,
+          downloadUrl: await this.signer.signedGet(p),
+        })),
+      );
+      (item as { photos: unknown }).photos = signed;
     }
     return order;
   }

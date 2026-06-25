@@ -11,3 +11,4 @@ export * from './logistics';
 export * from './tracking';
 export * from './notifications';
 export * from './driver';
+export * from './media';

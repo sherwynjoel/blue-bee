@@ -216,5 +216,47 @@ pickup-leg wiring + audit + atomic transitions) — no duplication, the ops endp
   background task firing, and a push physically arriving are the founder's on-device run (no simulator/device in
   the build env) — the same split as Increment 8's credentialed provider proof.
 
+## Presigned media / storage path (Increment 10 — real object storage)
+Replaces the Increment-3 interim (a photo registered a *reference* to an already-hosted object) with a real
+**presigned upload → confirm → signed read** flow (PRD §10/§11.2 S3, §14 signed expiring URLs). It unblocks
+the driver POD (deferred in Inc 9) and the customer before/after photos (Inc 11).
+
+- **The `StorageProvider` seam (global `StorageModule`).** `presignPut`/`presignGet`/`head`/`delete` behind one
+  interface; the only impl, `S3StorageProvider`, speaks `@aws-sdk/client-s3` + the presigner. It serves prod
+  **AWS S3** (region ca-central-1) and local/test **MinIO** (a real S3 server, selected by `S3_ENDPOINT` +
+  path-style) from the SAME code — so MinIO **fully proves the S3 protocol path** without an AWS account (this is
+  the in-house-real-local-impl pattern from Inc 7–8, but here speaking real S3). A `MediaSigner` mints signed
+  GETs; the module is `@Global` so both the upload path and any read path sign without an import cycle.
+- **Two endpoints.** `POST /v1/media/presign` — authorizes the target via the proven `OrderAccessService`
+  (the caller must own the order/item), validates content-type (allow-list, signed into the PUT) + size
+  (≤ `MEDIA_MAX_BYTES`), mints an **org-namespaced unguessable key** `org/{orgId}/{kind}/{uuid}.ext`, records a
+  **PENDING `MediaUpload` intent**, and returns a short-lived presigned PUT URL. The client PUTs bytes directly to
+  S3/MinIO. `POST /v1/media/confirm` — loads the intent (proving the caller presigned THIS key in THEIR org),
+  re-authorizes, **`head()`-verifies the real object** (exists + content-type + size match the declared values),
+  creates the `Photo` with the key, and flips the intent `CONFIRMED`. Idempotent on the unique `storage_key`.
+- **Signed, expiring reads (§14).** `Photo` stores the object **key**, never a public URL. Every read mints a
+  fresh short-lived presigned GET (`OrdersService.signOrderPhotos` strips the raw key + returns a `downloadUrl`).
+- **Schema (additive migration `20260625120000_media_storage_inc10`, reversible):** `Photo.+storage_key (unique)`,
+  `+content_type`, `+size_bytes`, `url` → nullable (legacy external-reference fallback only); new `MediaUpload`
+  intent table (the "caller-presigned-it" proof + the orphan-reconciliation set: PENDING intents whose object
+  never landed); `ProofOfDelivery.+signature_key` (POD capture is a later increment — column added now).
+- **Intake retrofit.** Booking no longer registers a `photoUrl` (BEFORE photos attach post-book via `/media`),
+  the `POST …/items/:itemId/photos` register-a-URL endpoint is retired (item photos go through `/media`), and the
+  §5.1 damage evidence is now a `damagePhotoId` (a Photo already uploaded for that item via `/media`).
+
+**As-built ↔ PRD reconciliations (Increment 10).**
+- *MinIO proves it; AWS needs creds, but it's not a deferral.* MinIO is a real S3 server exercising the exact
+  AWS SDK path with real bytes (PUT → confirm-HEAD → signed GET → byte-for-byte match in the e2e). Executing
+  against a real AWS account needs creds (a credentialed run), but the S3 **protocol** path is fully proven — so
+  the capability is complete, not deferred.
+- *Size enforcement.* Content-type is cryptographically bound to the PUT; size is declared at presign and the
+  **real gate is the confirm `head()`** (no oversized object ever becomes a Photo) — robust and MinIO-portable.
+- *Encryption at rest.* The prod bucket carries S3 **default encryption** (the standard IaC/bucket-policy way),
+  keeping the presigned PUT a clean single-header upload; `MEDIA_SSE` can sign an explicit SSE header if preferred.
+- *Slash routes* (`/media/presign`, not `:presign`) per the Inc-9 path-to-regexp lesson.
+- *Deferred (own next steps):* CloudFront/CDN signed URLs, image processing / **EXIF-PII strip** (flagged),
+  virus scanning, and **automated S3 lifecycle** for the §12.4 24-month POD retention (policy documented; the
+  lifecycle rule is a follow-up). The POD/customer **capture surfaces** consume this capability later (Inc 11+).
+
 ## NFRs that shape the code (PRD §12)
 Live location end-to-end < 3s p95; map updates ≥ every 30s within 5 km of a stop. API reads < 300ms / writes < 800ms p95. TLS everywhere + encryption at rest. **PCI handled by tokenizing through Stripe (no raw PAN).** JWT short-lived + RBAC row-scoping. PIPEDA / PHIPA-adjacent care for resident + location data. Retention: pings hot 7d → downsampled 90d; POD 24mo; financial 7y.

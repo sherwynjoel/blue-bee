@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Blue Bee Driver",
+    "slug": "blue-bee-driver",
+    "scheme": "bluebeedriver",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.bluebee.driver",
+      "infoPlist": {
+        "UIBackgroundModes": ["location", "fetch", "remote-notification"],
+        "NSLocationWhenInUseUsageDescription": "Blue Bee shares your location with dispatch and the customer ONLY while your shift is active, so they can track the delivery.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Blue Bee streams your location in the background ONLY while your shift is active, so customers see the truck approaching. It stops the moment you end your shift."
+      }
+    },
+    "android": {
+      "package": "com.bluebee.driver",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Blue Bee streams your location in the background ONLY while your shift is active.",
+          "locationWhenInUsePermission": "Blue Bee shares your location with dispatch ONLY while your shift is active.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1f6feb"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000"
+    }
+  }
+}

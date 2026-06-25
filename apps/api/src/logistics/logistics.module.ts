@@ -35,5 +35,8 @@ import { RoutesController } from './routes.controller';
     LogisticsAccessService,
     IdempotencyInterceptor,
   ],
+  // Exported so the Increment-9 DriverModule can reuse the proven §5.4 + shift-lifecycle services
+  // behind a driver-self-ownership boundary (no duplication of the state machines).
+  exports: [ShiftService, RouteStopService],
 })
 export class LogisticsModule {}

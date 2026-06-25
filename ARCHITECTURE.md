@@ -167,5 +167,54 @@ wrapped) to `NotificationService.dispatchGeofence`, which runs this pipeline per
   `push_token` for session tracking; Increment 8 adds the purpose-built `DeviceToken` (unique token, `active`
   flag, platform) as the real registration surface rather than overload `Device`, which is left untouched.
 
+## Driver app — core duty loop (Increment 9 — the first client surface)
+`apps/driver` is a real **React Native + Expo (SDK 51) + TypeScript** app in the npm-workspaces + Turborepo
+monorepo (imports `@blue-bee/shared` for every contract). It is the GPS/scan source that powers all the
+tracking built in Increments 5–8 (PRD §4.4/§7D/§6.2). The duty loop: **login → start shift → my route today
+→ background GPS → walk a stop (§5.4) → push token**. Structured as testable seams:
+
+- **`ApiClient`** — a thin typed wrapper over the proven `/v1` endpoints (auth, `/v1/driver/*`,
+  `POST /v1/locations:batch`, `/v1/device-tokens`). Pure `fetch` + an INJECTED token store, so the exact same
+  client logic runs in the app (keychain) and in the headless integration proof (memory). A 401 transparently
+  refreshes (**single-flight** — concurrent 401s share one `/auth/refresh`) and replays once; a failed refresh
+  clears the session; non-2xx → a typed `ApiError` (problem+json; `.isConflict` for a §5.4 409).
+- **`SessionProvider`** — OTP login → tokens in `expo-secure-store` (NEVER AsyncStorage, §8.1) → `/me` hydrate;
+  logout drops the local session even if the server revoke is offline.
+- **Background location** — pure `LocationOutbox`/`toPing`/duty-cycle (unit-tested) behind an
+  `expo-task-manager` task wired to `expo-location`. Privacy gate (US-T5/§6.2): emits ONLY while the shift is
+  ACTIVE, consent-gated, with a **visible "sharing location" indicator**; stops on shift end/logout (binding
+  cleared first so a late OS callback can't reuse an ended shift). A **bounded, idempotent retry buffer** keeps
+  pings across a transient network blip (the Inc-5 `ON CONFLICT (vehicle_id, recorded_at)` makes re-sends safe).
+- **Push** — a real Expo push token (`expo-notifications`) registered via `POST /v1/device-tokens` on login,
+  deactivated on logout — the increment that finally proves Increment 8's real-device push.
+- **§5.4 actions** — the available buttons are derived from the SHARED `canTransitionStop` graph (the same the
+  server enforces); fail/skip require a reason; a 409 is the server's authority → the app re-syncs.
+
+**The `/v1/driver/*` backend surface (additive, no schema/migration).** Increment 4 shipped the route/stop/
+shift endpoints "DRIVER-ready" but authorized them to OWNER/DISPATCHER (ops) only — so a driver couldn't
+actually run the loop. Increment 9 adds a thin, strictly **DRIVER-self-scoped** module:
+`GET /v1/driver/assignment` (my shift + assigned route + ordered stops, Site geo joined via PostGIS),
+`POST /v1/driver/shifts/:id/start|end`, `POST /v1/driver/stops/:id/{depart,arrive,start,complete,fail,skip}`.
+It **verifies the caller's driver profile OWNS the shift/stop** (org-scoped base-prisma + `route.driverId`),
+then **delegates to the proven `ShiftService`/`RouteStopService`** (the real §5.4 state machine + order
+pickup-leg wiring + audit + atomic transitions) — no duplication, the ops endpoints untouched.
+
+**As-built ↔ PRD reconciliations (Increment 9).**
+- *Route shape.* The driver action routes use **slash sub-paths** (`/driver/stops/:id/depart`), not the ops
+  `:action` colon style — the deeper 3-segment `:id\:action` pattern doesn't match under platform-express's
+  path-to-regexp, so the new surface uses the robust, version-proof shape. The proven ops endpoints keep theirs.
+- *`asOrgScoped`.* The delegated ops call runs with the driver's principal but org-wide read-scope (userId +
+  orgId preserved, so the org boundary + audit actor are unchanged), applied ONLY AFTER the ownership gate
+  passes. It is a read-scope widener so the ops service can resolve the org's row, NOT a privilege grant — a
+  driver still can't reach another driver's or another org's data (QC-verified, e2e-locked).
+- *Deferred (own next increments).* **POD (geo-photo + signature) + scan/tally** wait on the **presigned
+  media-upload/storage path still outstanding since Increment 3** (no fake uploads). The **full offline-first
+  queue** is deferred — only the basic location-upload retry buffer is in scope. In-app turn-by-turn is a
+  native-maps hand-off.
+- *On-device proof.* The app is typecheck/lint clean, unit-tested, bundles (`expo export`), and its client is
+  proven end-to-end against the live API by a headless integration script. The UI rendered on a device, the OS
+  background task firing, and a push physically arriving are the founder's on-device run (no simulator/device in
+  the build env) — the same split as Increment 8's credentialed provider proof.
+
 ## NFRs that shape the code (PRD §12)
 Live location end-to-end < 3s p95; map updates ≥ every 30s within 5 km of a stop. API reads < 300ms / writes < 800ms p95. TLS everywhere + encryption at rest. **PCI handled by tokenizing through Stripe (no raw PAN).** JWT short-lived + RBAC row-scoping. PIPEDA / PHIPA-adjacent care for resident + location data. Retention: pings hot 7d → downsampled 90d; POD 24mo; financial 7y.

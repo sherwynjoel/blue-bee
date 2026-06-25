@@ -10,6 +10,7 @@ import { LogisticsModule } from './logistics/logistics.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { DriverModule } from './driver/driver.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -21,8 +22,9 @@ import { NotificationsModule } from './notifications/notifications.module';
  * channel) + server-side ETA + geofence (Increment 7 — in-house ETA range behind the
  * EtaEstimator seam + geofence events on the realtime channels) + notifications
  * (Increment 8 — matrix-driven engine + outbox delivering customer alerts across the
- * SMS/email/push transport seam, plus device-token registration). The driver app and
- * billing land later.
+ * SMS/email/push transport seam, plus device-token registration) + the driver duty-loop
+ * surface (Increment 9 — `/v1/driver/*`, the DRIVER-self-scoped read + shift + §5.4 actions
+ * the Expo driver app consumes, delegating to the proven logistics services). Billing lands later.
  */
 @Module({
   imports: [
@@ -36,6 +38,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     NotificationsModule,
     TrackingModule,
     LogisticsModule,
+    DriverModule,
     HealthModule,
   ],
 })

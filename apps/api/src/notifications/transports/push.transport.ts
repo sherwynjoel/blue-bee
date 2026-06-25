@@ -41,13 +41,20 @@ export class PushNotificationTransport implements NotificationTransport {
 
   /** REAL local transport (Increment-2 pattern): logs + returns a synthetic ticket. Not a mock. */
   private async sendViaConsole(msg: OutgoingMessage): Promise<TransportResult> {
-    this.logger.log(`PUSH → ${msg.recipients.length} token(s) :: ${msg.title ?? this.config.appName} :: ${msg.body}`);
+    const deepLink = msg.data?.orderId ? ` :: data.orderId=${msg.data.orderId}` : '';
+    this.logger.log(`PUSH → ${msg.recipients.length} token(s) :: ${msg.title ?? this.config.appName} :: ${msg.body}${deepLink}`);
     return { providerMessageId: `console-push-${msg.recipients.length}` };
   }
 
   /** REAL Expo Push send — one message per token; returns the first accepted ticket id. */
   private async sendViaExpo(msg: OutgoingMessage): Promise<TransportResult> {
-    const messages = msg.recipients.map((to) => ({ to, title: msg.title ?? this.config.appName, body: msg.body }));
+    // `data` rides along so a tapped notification deep-links to the order's tracking (Increment 11).
+    const messages = msg.recipients.map((to) => ({
+      to,
+      title: msg.title ?? this.config.appName,
+      body: msg.body,
+      ...(msg.data ? { data: msg.data } : {}),
+    }));
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
     if (this.config.push.accessToken) headers.Authorization = `Bearer ${this.config.push.accessToken}`;
 

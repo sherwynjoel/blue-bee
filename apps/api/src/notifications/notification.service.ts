@@ -131,7 +131,9 @@ export class NotificationService {
           dedupeKey: `${ev.geofenceEventId}:${r.userId}:${channel}`,
           scheduledFor,
           lastError,
-          payload: { recipients: addresses, subject: rendered.subject, title: rendered.title, body: rendered.body, eventType },
+          // `orderId` is persisted so the PUSH transport can deep-link a tapped notification to the
+          // owning order's tracking screen (Increment 11); SMS/email ignore it.
+          payload: { recipients: addresses, subject: rendered.subject, title: rendered.title, body: rendered.body, eventType, orderId: ev.orderId },
         });
         if (insertedId && dueNow) anyDue = true;
       }

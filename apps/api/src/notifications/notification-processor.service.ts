@@ -11,6 +11,8 @@ interface StoredPayload {
   title?: string;
   body?: string;
   eventType?: string;
+  /** Owning order id — delivered as PUSH `data` so a tapped notification deep-links to tracking. */
+  orderId?: string | null;
 }
 
 /** Extra hold (ms) added to the send timeout when leasing a row, so a crashed sender's row becomes
@@ -100,7 +102,10 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const msg: OutgoingMessage = { recipients, subject: payload.subject, title: payload.title, body: payload.body ?? '' };
+      // Deep-link data for PUSH (ignored by SMS/email): a tapped notification opens THAT order's
+      // tracking screen (Increment 11). Only attach when we have an order to point at.
+      const data = payload.orderId ? { orderId: payload.orderId, type: payload.eventType ?? '' } : undefined;
+      const msg: OutgoingMessage = { recipients, subject: payload.subject, title: payload.title, body: payload.body ?? '', data };
       try {
         const result = await this.withTimeout(transport.send(msg), this.config.retry.sendTimeoutMs);
         await this.prisma.notification.updateMany({

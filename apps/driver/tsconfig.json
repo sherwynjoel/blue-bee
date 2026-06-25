@@ -10,7 +10,8 @@
     "skipLibCheck": true,
     "types": ["jest", "node"],
     "paths": {
-      "@blue-bee/shared": ["../../packages/shared/src/index.ts"]
+      "@blue-bee/shared": ["../../packages/shared/src/index.ts"],
+      "@blue-bee/api-client": ["../../packages/api-client/src/index.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"],

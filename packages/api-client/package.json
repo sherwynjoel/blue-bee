@@ -1,0 +1,46 @@
+{
+  "name": "@blue-bee/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Blue Bee shared client seam — the typed transport (fetch + injectable token store + single-flight 401→refresh→retry, problem+json→ApiError) and the headless auth/session core (OTP → keychain → /me → logout-even-offline). Imported by BOTH the driver and customer Expo apps so the transport+session is written once. PURE TypeScript: no native imports in this package's entry, so it also loads under Node for the headless integration proofs (each app keeps its own native SecureTokenStore impl of the TokenStore interface).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --ext .ts --max-warnings=0",
+    "test": "jest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@blue-bee/shared": "*"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/react": "~18.2.79",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "react": "18.2.0",
+    "ts-jest": "^29.1.5",
+    "typescript": "~5.5.4"
+  }
+}

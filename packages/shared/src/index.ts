@@ -12,3 +12,4 @@ export * from './tracking';
 export * from './notifications';
 export * from './driver';
 export * from './media';
+export * from './catalog';

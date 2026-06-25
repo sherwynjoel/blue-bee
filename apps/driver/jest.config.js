@@ -9,5 +9,6 @@ module.exports = {
   collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts'],
   moduleNameMapper: {
     '^@blue-bee/shared$': '<rootDir>/../../packages/shared/dist/index.js',
+    '^@blue-bee/api-client$': '<rootDir>/../../packages/api-client/dist/index.js',
   },
 };

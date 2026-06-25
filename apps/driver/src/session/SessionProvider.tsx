@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ShiftStatus, type DriverAssignment, type DriverStopAction, type MeResponse, type StopActionDto, type StopExceptionDto } from '@blue-bee/shared';
+import { useAuthSession } from '@blue-bee/api-client';
 import { ApiClient } from '../api/client';
 import { SecureTokenStore } from '../api/secure-token-store';
 import { ApiError } from '../api/problem';
@@ -33,21 +34,19 @@ export function useSession(): SessionValue {
   return value;
 }
 
+/**
+ * The driver session — the app-agnostic auth lifecycle (OTP → keychain → /me → logout-even-offline)
+ * is the shared `useAuthSession` from `@blue-bee/api-client`; this provider layers the driver-specific
+ * domain on top: the assignment (shift/route), the GPS-sharing privacy gate (tracking streams only
+ * while the shift is ACTIVE), push registration, and the §5.4 stop transitions.
+ */
 export function SessionProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const clientRef = useRef<ApiClient>(new ApiClient(API_BASE_URL, new SecureTokenStore()));
   const pushTokenRef = useRef<string | null>(null);
   const client = clientRef.current;
 
-  const [status, setStatus] = useState<Status>('loading');
-  const [me, setMe] = useState<MeResponse | null>(null);
   const [assignment, setAssignment] = useState<DriverAssignment | null>(null);
   const [sharingLocation, setSharingLocation] = useState(false);
-
-  // Mirror the tracker's sharing state into the UI + configure the foreground push handler once.
-  useEffect(() => {
-    configureNotificationHandler();
-    return onTrackingChange(setSharingLocation);
-  }, []);
 
   // Load the assignment AND reconcile background tracking with the shift state (the privacy gate:
   // GPS streams only while the shift is ACTIVE).
@@ -61,61 +60,30 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
     }
   }, [client]);
 
-  // Hydrate on launch: a stored token → /me succeeds → signed in; otherwise signed out.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const profile = await client.me();
-        if (cancelled) return;
-        setMe(profile);
-        setStatus('signedIn');
-        pushTokenRef.current = await registerForPush(client).catch(() => null);
-        await loadAssignment();
-      } catch {
-        if (!cancelled) setStatus('signedOut');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [client, loadAssignment]);
-
-  const requestOtp = useCallback(
-    async (phone: string) => {
-      const result = await client.requestOtp(phone);
-      return { devCode: result.devCode };
-    },
-    [client],
-  );
-
-  const login = useCallback(
-    async (phone: string, code: string): Promise<void> => {
-      await client.verifyOtp(phone, code); // stores tokens in the keychain
-      const profile = await client.me();
-      setMe(profile);
-      setStatus('signedIn');
-      pushTokenRef.current = await registerForPush(client).catch(() => null);
+  // The shared auth core; the driver plugs its side effects into onSignedIn / onSignOut.
+  const session = useAuthSession<ApiClient>({
+    client,
+    onSignedIn: async (c, _me) => {
+      pushTokenRef.current = await registerForPush(c).catch(() => null);
       await loadAssignment();
     },
-    [client, loadAssignment],
-  );
+    onSignOut: async (c) => {
+      await stopTracking().catch(() => undefined);
+      await unregisterFromPush(c, pushTokenRef.current).catch(() => undefined);
+      pushTokenRef.current = null;
+    },
+  });
+
+  // Mirror the tracker's sharing state into the UI + configure the foreground push handler once.
+  useEffect(() => {
+    configureNotificationHandler();
+    return onTrackingChange(setSharingLocation);
+  }, []);
 
   const logout = useCallback(async (): Promise<void> => {
-    await stopTracking().catch(() => undefined);
-    await unregisterFromPush(client, pushTokenRef.current).catch(() => undefined);
-    pushTokenRef.current = null;
-    // Drop the LOCAL session even if the server logout can't be reached (offline) — the client
-    // clears its stored tokens regardless, so the device must not stay "signed in". Never throws.
-    try {
-      await client.logout();
-    } catch {
-      // best-effort server revoke; tokens are already cleared in client.logout()'s finally
-    }
-    setMe(null);
+    await session.logout(); // runs onSignOut (stop tracking + unregister) then clears the session
     setAssignment(null);
-    setStatus('signedOut');
-  }, [client]);
+  }, [session]);
 
   const refreshAssignment = useCallback(() => loadAssignment(), [loadAssignment]);
 
@@ -151,12 +119,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
   );
 
   const value: SessionValue = {
-    status,
-    me,
+    status: session.status,
+    me: session.me,
     assignment,
     sharingLocation,
-    requestOtp,
-    login,
+    requestOtp: session.requestOtp,
+    login: session.login,
     logout,
     refreshAssignment,
     startShift,

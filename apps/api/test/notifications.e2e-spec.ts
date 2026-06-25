@@ -164,6 +164,10 @@ describe('Notifications e2e — Increment 8 (matrix-driven engine + outbox + tra
     // (only the real Twilio transport returns a SID — see the SmsSendResult reconciliation).
     expect(rows.find((r) => r.channel === CommsChannel.EMAIL)?.providerMessageId).toBeTruthy();
     expect(rows.find((r) => r.channel === CommsChannel.PUSH)?.providerMessageId).toBeTruthy();
+    // Increment 11: the PUSH payload carries the owning orderId so a tapped notification deep-links
+    // to THAT order's tracking (scoped — it's the customer's own order). SMS/email ignore it.
+    const pushPayload = rows.find((r) => r.channel === CommsChannel.PUSH)?.payload as { orderId?: string } | undefined;
+    expect(pushPayload?.orderId).toBe(sc.orderId);
 
     // Outbox idempotency: re-dispatching the SAME geofence event (concurrently) appends ZERO rows.
     const ev = await prisma.geofenceEvent.findFirstOrThrow({ where: { routeStopId: sc.stopId, type: 'APPROACHING' } });

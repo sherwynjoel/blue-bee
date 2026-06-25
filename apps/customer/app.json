@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Blue Bee",
+    "slug": "blue-bee-customer",
+    "scheme": "bluebee",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bluebee.customer",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "NSCameraUsageDescription": "Blue Bee uses your camera so you can add before/after photos of your items to your order.",
+        "NSPhotoLibraryUsageDescription": "Blue Bee lets you attach photos from your library to your order."
+      }
+    },
+    "android": {
+      "package": "com.bluebee.customer",
+      "permissions": ["CAMERA", "READ_MEDIA_IMAGES"]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Blue Bee lets you attach photos of your items to your order.",
+          "cameraPermission": "Blue Bee uses your camera so you can add before/after photos of your items."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1f6feb"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000"
+    }
+  }
+}

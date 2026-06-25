@@ -18,6 +18,13 @@ export interface OutgoingMessage {
   title?: string;
   /** The message body (all channels). */
   body: string;
+  /**
+   * Optional structured data delivered alongside a PUSH (ignored by SMS/email). Carries the
+   * `orderId` (+ event `type`) so a tapped push deep-links the customer app to THAT order's tracking
+   * (Increment 11) — the push payload is the only channel that can carry it (the realtime WS
+   * `geofence` event carries it while the app is foregrounded). Values are strings (Expo data shape).
+   */
+  data?: Record<string, string>;
 }
 
 /** What a transport returns on a successful accept. */

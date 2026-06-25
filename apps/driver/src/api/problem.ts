@@ -1,51 +1,6 @@
 /**
- * RFC 7807 problem+json shape the API returns on errors, plus a typed Error wrapper so screens can
- * branch on `status` / `code` (e.g. a §5.4 409 illegal-transition is treated as the SERVER's
- * authority — the app re-syncs rather than assuming its optimistic guess was right).
+ * Re-export of the shared problem+json / ApiError from `@blue-bee/api-client` (extracted in
+ * Increment 11). Kept as a thin barrel so existing driver imports (`./problem`) are unchanged.
  */
-export interface ProblemDetails {
-  type?: string;
-  title?: string;
-  status?: number;
-  detail?: string;
-  /** Some endpoints use `error` as the stable machine code; others `title`. */
-  error?: string;
-  message?: string;
-  [key: string]: unknown;
-}
-
-export class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly problem: ProblemDetails,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-
-  /** Stable machine code (problem `error` or `title`), if any. */
-  get code(): string | undefined {
-    return this.problem.error ?? this.problem.title;
-  }
-
-  get isUnauthorized(): boolean {
-    return this.status === 401;
-  }
-
-  /** A §5.4 illegal stop transition (the server rejecting our action) — treat as authority. */
-  get isConflict(): boolean {
-    return this.status === 409;
-  }
-
-  static async from(res: Response): Promise<ApiError> {
-    let problem: ProblemDetails = {};
-    try {
-      problem = (await res.json()) as ProblemDetails;
-    } catch {
-      // non-JSON body — keep an empty problem
-    }
-    const message = problem.detail ?? problem.message ?? problem.title ?? problem.error ?? `HTTP ${res.status}`;
-    return new ApiError(res.status, problem, message);
-  }
-}
+export { ApiError } from '@blue-bee/api-client';
+export type { ProblemDetails } from '@blue-bee/api-client';

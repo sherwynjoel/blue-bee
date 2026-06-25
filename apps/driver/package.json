@@ -14,6 +14,7 @@
     "integration": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/integration-proof.ts"
   },
   "dependencies": {
+    "@blue-bee/api-client": "*",
     "@blue-bee/shared": "*",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",

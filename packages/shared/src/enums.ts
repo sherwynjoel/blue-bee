@@ -197,6 +197,30 @@ export enum CustodyStage {
   DELIVERED = 'DELIVERED',
 }
 
+// Track-B (care homes) — the resident personal-clothing lifecycle (PRD §5.2-B). Values map the PRD
+// states EXACTLY; used as both the garment's denormalized status (Item.garmentStatus) and the
+// append-only custody checkpoint (CustodyEvent.garmentStage). Mirrors the Prisma `GarmentStatus`.
+export enum GarmentStatus {
+  GARMENT_ENROLLED = 'GARMENT_ENROLLED',
+  SOIL_PICKUP = 'SOIL_PICKUP',
+  INTAKE_SORT = 'INTAKE_SORT',
+  WASH = 'WASH',
+  RETURN_SORT = 'RETURN_SORT',
+  DELIVERED_TO_RESIDENT = 'DELIVERED_TO_RESIDENT',
+  LOST_FOUND_POOL = 'LOST_FOUND_POOL',
+  RECONCILE = 'RECONCILE',
+}
+
+export enum ResidentStatus {
+  ACTIVE = 'ACTIVE',
+  DISCHARGED = 'DISCHARGED',
+}
+
+export enum LostFoundStatus {
+  OPEN = 'OPEN',
+  RECONCILED = 'RECONCILED',
+}
+
 // ─────────────────────────── Logistics & tracking ──────────────────────────
 
 /** [DERIVED] Vehicle.status (§9.5). */

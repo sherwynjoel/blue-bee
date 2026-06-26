@@ -171,6 +171,30 @@ enum CustodyStage {
   DELIVERED
 }
 
+// Track-B (care homes) — the resident personal-clothing lifecycle (PRD §5.2-B, lines ~187-193). Values
+// map the PRD states EXACTLY (no invented states); used both as the garment's denormalized current
+// status (Item.garmentStatus) and as the append-only custody checkpoint (CustodyEvent.garmentStage).
+enum GarmentStatus {
+  GARMENT_ENROLLED
+  SOIL_PICKUP
+  INTAKE_SORT
+  WASH
+  RETURN_SORT
+  DELIVERED_TO_RESIDENT
+  LOST_FOUND_POOL
+  RECONCILE
+}
+
+enum ResidentStatus {
+  ACTIVE
+  DISCHARGED
+}
+
+enum LostFoundStatus {
+  OPEN
+  RECONCILED
+}
+
 enum VehicleStatus {
   ACTIVE
   INACTIVE
@@ -420,6 +444,8 @@ model Site {
   orders         Order[]
   routeStops     RouteStop[]
   standingOrders StandingOrder[]
+  residents      Resident[]
+  lostFoundItems LostFoundItem[]
 
   @@index([orgId])
   @@index([accountId])
@@ -560,27 +586,84 @@ model OrderLine {
 }
 
 model Item {
-  id           String     @id @default(uuid()) @db.Uuid
-  orgId        String     @map("org_id") @db.Uuid
-  orderId      String     @map("order_id") @db.Uuid
-  tagId        String?    @unique @map("tag_id") @db.Uuid
-  kind         ItemKind
-  status       ItemStatus @default(RECEIVED)
-  measurements Json       @default("{}")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-  createdBy    String?    @map("created_by") @db.Uuid
+  id            String         @id @default(uuid()) @db.Uuid
+  orgId         String         @map("org_id") @db.Uuid
+  // Track-B (care homes): a resident's personal garment is owned by the RESIDENT, not an order, so
+  // order_id is now optional. Existing specialty items always carry an order; garments carry a
+  // residentId instead (and join an order only if/when they go through a specialty cycle).
+  orderId       String?        @map("order_id") @db.Uuid
+  // Track-B: the care-home resident who owns this garment (Item.kind = GARMENT). PRD §9.3 resident_id?.
+  residentId    String?        @map("resident_id") @db.Uuid
+  tagId         String?        @unique @map("tag_id") @db.Uuid
+  kind          ItemKind
+  status        ItemStatus     @default(RECEIVED)
+  // Track-B: the resident-garment lifecycle position (§5.2-B). Null for non-garment items.
+  garmentStatus GarmentStatus? @map("garment_status")
+  measurements  Json           @default("{}")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  createdBy     String?        @map("created_by") @db.Uuid
 
-  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  tag           Tag?           @relation(fields: [tagId], references: [id])
-  inspections   Inspection[]
-  photos        Photo[]
-  custodyEvents CustodyEvent[]
-  claims        Claim[]
-  orderLines    OrderLine[]
+  order          Order?          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  resident       Resident?       @relation(fields: [residentId], references: [id])
+  tag            Tag?            @relation(fields: [tagId], references: [id])
+  inspections    Inspection[]
+  photos         Photo[]
+  custodyEvents  CustodyEvent[]
+  claims         Claim[]
+  orderLines     OrderLine[]
+  lostFoundItems LostFoundItem[]
 
   @@index([orgId])
   @@index([orderId])
+  @@index([residentId])
+}
+
+// Track-B (care homes) — a resident is the OWNER of personal garments (PRD §9 line ~413). PII is
+// sensitive (§12.2): least-privilege + every READ audited. Cost-center linkage (wing/floor/funding
+// line) stays DEFERRED — no CostCenter model in this slice (modeled-for, not faked).
+model Resident {
+  id        String         @id @default(uuid()) @db.Uuid
+  orgId     String         @map("org_id") @db.Uuid
+  siteId    String         @map("site_id") @db.Uuid
+  name      String
+  room      String?
+  status    ResidentStatus @default(ACTIVE)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+  createdBy String?        @map("created_by") @db.Uuid
+
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  garments       Item[]
+  lostFoundItems LostFoundItem[]
+
+  @@index([orgId])
+  @@index([siteId])
+}
+
+// Track-B (care homes) — an unmatched/odd garment dropped into the site's lost & found pool on return
+// sort (PRD §9 line ~425 / §5.2-B / B3.3). `reconcile` assigns a pooled item to a resident.
+model LostFoundItem {
+  id                  String          @id @default(uuid()) @db.Uuid
+  orgId               String          @map("org_id") @db.Uuid
+  siteId              String          @map("site_id") @db.Uuid // found_at_site
+  tagId               String?         @map("tag_id") @db.Uuid
+  itemId              String?         @map("item_id") @db.Uuid // the pooled garment Item
+  candidateResidentId String?         @map("candidate_resident_id") @db.Uuid
+  status              LostFoundStatus @default(OPEN)
+  notes               String?
+  reconciledAt        DateTime?       @map("reconciled_at")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  createdBy           String?         @map("created_by") @db.Uuid
+
+  site              Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  item              Item?     @relation(fields: [itemId], references: [id])
+  candidateResident Resident? @relation(fields: [candidateResidentId], references: [id])
+
+  @@index([orgId])
+  @@index([siteId])
+  @@index([status])
 }
 
 model Tag {
@@ -699,17 +782,20 @@ model Quote {
 
 // Append-only (PRD §8.2/§8.6) — a DB trigger blocks UPDATE/DELETE (injected in migration SQL).
 model CustodyEvent {
-  id         String                                 @id @default(uuid()) @db.Uuid
-  orgId      String                                 @map("org_id") @db.Uuid
-  itemId     String?                                @map("item_id") @db.Uuid // cart custody is Phase 2
-  stage      CustodyStage
-  actorId    String?                                @map("actor_id") @db.Uuid
-  geo        Unsupported("geography(Point, 4326)")?
-  deviceId   String?                                @map("device_id")
-  occurredAt DateTime                               @default(now()) @map("occurred_at")
-  createdAt  DateTime                               @default(now()) @map("created_at")
-  updatedAt  DateTime                               @updatedAt @map("updated_at")
-  createdBy  String?                                @map("created_by") @db.Uuid
+  id           String                                 @id @default(uuid()) @db.Uuid
+  orgId        String                                 @map("org_id") @db.Uuid
+  itemId       String?                                @map("item_id") @db.Uuid // cart custody is Phase 2
+  // Specialty cleaning checkpoint (null for a resident-garment event, which uses garmentStage instead).
+  stage        CustodyStage?
+  // Track-B: the resident-garment lifecycle checkpoint (§5.2-B). Null for a specialty custody event.
+  garmentStage GarmentStatus?                         @map("garment_stage")
+  actorId      String?                                @map("actor_id") @db.Uuid
+  geo          Unsupported("geography(Point, 4326)")?
+  deviceId     String?                                @map("device_id")
+  occurredAt   DateTime                               @default(now()) @map("occurred_at")
+  createdAt    DateTime                               @default(now()) @map("created_at")
+  updatedAt    DateTime                               @updatedAt @map("updated_at")
+  createdBy    String?                                @map("created_by") @db.Uuid
 
   item Item? @relation(fields: [itemId], references: [id], onDelete: Cascade)
 

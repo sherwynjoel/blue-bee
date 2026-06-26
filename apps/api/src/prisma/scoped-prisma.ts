@@ -30,20 +30,25 @@ const ACCOUNT_DIRECT: Record<string, string> = {
 /** Models whose account linkage is reachable via a relation path. */
 const ACCOUNT_VIA: Record<string, (filter: unknown) => Record<string, unknown>> = {
   OrderLine: (f) => ({ order: { accountId: f } }),
-  Item: (f) => ({ order: { accountId: f } }),
+  // Track-B: an item is account-linked via its order (specialty) OR via its resident's site (a
+  // care-home garment, which has no order). Existing specialty items match the order arm unchanged.
+  Item: (f) => ({ OR: [{ order: { accountId: f } }, { resident: { site: { accountId: f } } }] }),
   Quote: (f) => ({ order: { accountId: f } }),
   Payment: (f) => ({ order: { accountId: f } }),
   Claim: (f) => ({ order: { accountId: f } }),
   Photo: (f) => ({ order: { accountId: f } }),
   Inspection: (f) => ({ item: { order: { accountId: f } } }),
-  CustodyEvent: (f) => ({ item: { order: { accountId: f } } }),
+  CustodyEvent: (f) => ({ item: { OR: [{ order: { accountId: f } }, { resident: { site: { accountId: f } } }] } }),
   GeofenceEvent: (f) => ({ routeStop: { accountId: f } }),
   ProofOfDelivery: (f) => ({ routeStop: { accountId: f } }),
   StandingOrderOccurrence: (f) => ({ standingOrder: { accountId: f } }),
+  // Track-B (care homes): residents + lost&found are account-linked via their site.
+  Resident: (f) => ({ site: { accountId: f } }),
+  LostFoundItem: (f) => ({ site: { accountId: f } }),
 };
 
 /** Models that also carry a direct siteId (for SITE-scoped principals). */
-const SITE_DIRECT: Record<string, string> = { Order: 'siteId', RouteStop: 'siteId', Site: 'id' };
+const SITE_DIRECT: Record<string, string> = { Order: 'siteId', RouteStop: 'siteId', Site: 'id', Resident: 'siteId', LostFoundItem: 'siteId' };
 
 // Unique-where ops keep the unique field at the TOP level (Prisma requires it), so scope is
 // flat-merged as sibling filters (extendedWhereUnique). Filter ops AND-merge so a caller can't widen.

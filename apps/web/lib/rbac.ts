@@ -28,6 +28,10 @@ export const ACCOUNTS_READ_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE
 // Standing-order management (create/edit/delete/run): ops (OWNER/DISPATCHER).
 export const STANDING_ORDER_WRITE_ROLES: RoleType[] = [RoleType.OWNER, RoleType.DISPATCHER];
 // Billing terms + batch invoicing reuse the finance gate (FINANCE_ROLES = OWNER/FINANCE).
+// Track-B care homes (resident personal clothing) — MIRRORS the server @Roles on the residents routes.
+// Resident PII reads: ops + the account's own staff (their site only). Garment lifecycle ops: plant.
+export const RESIDENT_READ_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP, RoleType.ACCOUNT_ADMIN, RoleType.ACCOUNT_STAFF];
+export const GARMENT_OPS_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP];
 
 export function roleNames(me: MeResponse | null): RoleType[] {
   return me ? me.user.roles.map((r) => r.role) : [];
@@ -57,4 +61,7 @@ export const can = {
   // Track-A B2B accounts console.
   accounts: (me: MeResponse | null) => hasAnyRole(me, ACCOUNTS_READ_ROLES),
   standingOrderWrite: (me: MeResponse | null) => hasAnyRole(me, STANDING_ORDER_WRITE_ROLES),
+  // Track-B care homes — resident personal clothing.
+  residents: (me: MeResponse | null) => hasAnyRole(me, RESIDENT_READ_ROLES),
+  garmentOps: (me: MeResponse | null) => hasAnyRole(me, GARMENT_OPS_ROLES),
 };

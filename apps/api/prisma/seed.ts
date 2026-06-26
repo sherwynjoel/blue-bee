@@ -15,8 +15,11 @@ import {
   AccountType,
   BillingMode,
   CustodyStage,
+  GarmentStatus,
   ItemKind,
   ItemStatus,
+  LostFoundStatus,
+  ResidentStatus,
   OrderStatus,
   OrderType,
   OrderVertical,
@@ -751,12 +754,104 @@ async function seedTrackADemo(): Promise<void> {
   console.log('       2 amenity-linen items + a load-sheet manifest on the CONCIERGE pickup (Manifests tab demo).');
 }
 
+// ─────────────────────── Track-B (care homes) — resident personal-clothing demo ───────────────────────
+const B1 = {
+  careHome: 'b0000000-0000-4000-8000-0000000000a0',
+  site: 'b0000000-0000-4000-8000-0000000000a1',
+  adminUid: 'e1000000-0000-4000-8000-000000000010',
+  adminRid: 'e2000000-0000-4000-8000-000000000010',
+  r1: 'b0000000-0000-4000-8000-0000000000b1',
+  r2: 'b0000000-0000-4000-8000-0000000000b2',
+  lostFound: 'b0000000-0000-4000-8000-0000000000f1',
+} as const;
+
+// Five REAL enrolled garments across the §5.2-B lifecycle (no fabricated states): two residents,
+// one garment in lost & found. [id, tag, code, resident, status, description].
+const B1_GARMENTS = [
+  { id: 'b0000000-0000-4000-8000-0000000000c1', tag: 'b0000000-0000-4000-8000-0000000000d1', code: 'RES-204-01', resident: B1.r1, status: GarmentStatus.GARMENT_ENROLLED, desc: 'Blue knit cardigan' },
+  { id: 'b0000000-0000-4000-8000-0000000000c2', tag: 'b0000000-0000-4000-8000-0000000000d2', code: 'RES-204-02', resident: B1.r1, status: GarmentStatus.WASH, desc: 'Floral day blouse' },
+  { id: 'b0000000-0000-4000-8000-0000000000c3', tag: 'b0000000-0000-4000-8000-0000000000d3', code: 'RES-204-03', resident: B1.r1, status: GarmentStatus.DELIVERED_TO_RESIDENT, desc: 'Grey wool trousers' },
+  { id: 'b0000000-0000-4000-8000-0000000000c4', tag: 'b0000000-0000-4000-8000-0000000000d4', code: 'RES-112-01', resident: B1.r2, status: GarmentStatus.GARMENT_ENROLLED, desc: 'Navy fleece sweater' },
+  { id: 'b0000000-0000-4000-8000-0000000000c5', tag: 'b0000000-0000-4000-8000-0000000000d5', code: 'RES-LF-01', resident: B1.r2, status: GarmentStatus.LOST_FOUND_POOL, desc: 'Tartan wool scarf (unmatched on return sort)' },
+] as const;
+
+// The linear §5.2-B path; the lost-found branch leaves at RETURN_SORT. Used to seed a TRUTHFUL
+// append-only custody trail (origin → current) for each garment, not a single hardcoded stage.
+const GARMENT_LINEAR = [
+  GarmentStatus.GARMENT_ENROLLED,
+  GarmentStatus.SOIL_PICKUP,
+  GarmentStatus.INTAKE_SORT,
+  GarmentStatus.WASH,
+  GarmentStatus.RETURN_SORT,
+  GarmentStatus.DELIVERED_TO_RESIDENT,
+];
+function garmentPath(status: GarmentStatus): GarmentStatus[] {
+  if (status === GarmentStatus.LOST_FOUND_POOL) return [...GARMENT_LINEAR.slice(0, 5), GarmentStatus.LOST_FOUND_POOL];
+  const idx = GARMENT_LINEAR.indexOf(status);
+  return idx >= 0 ? GARMENT_LINEAR.slice(0, idx + 1) : [GarmentStatus.GARMENT_ENROLLED];
+}
+
+async function seedTrackBDemo(): Promise<void> {
+  // Care-home account + site (Org 1).
+  await prisma.account.upsert({
+    where: { id: B1.careHome },
+    update: {},
+    create: { id: B1.careHome, orgId: ID.org, type: AccountType.BUSINESS, name: 'Demo — Maple Grove Care Home', createdBy: ID.owner },
+  });
+  await prisma.site.upsert({
+    where: { id: B1.site },
+    update: {},
+    create: { id: B1.site, orgId: ID.org, accountId: B1.careHome, name: 'Maple Grove — West Wing', address: '88 Elm St, Toronto, ON', createdBy: ID.owner },
+  });
+
+  // A care-home ACCOUNT_ADMIN scoped to THIS account — proves "the account's own staff, their site only".
+  await prisma.user.upsert({
+    where: { id: B1.adminUid },
+    update: { phone: '+14165550030' },
+    create: { id: B1.adminUid, orgId: ID.org, name: 'Demo Care-Home Admin', phone: '+14165550030', email: 'admin@maplegrove.example', authProviders: ['phone'], status: UserStatus.ACTIVE, createdBy: ID.owner },
+  });
+  await prisma.userRole.upsert({
+    where: { id: B1.adminRid },
+    update: {},
+    create: { id: B1.adminRid, orgId: ID.org, userId: B1.adminUid, role: RoleType.ACCOUNT_ADMIN, scope: RoleScope.ACCOUNT, scopeId: B1.careHome, createdBy: ID.owner },
+  });
+
+  // Residents (PII — real demo names/rooms, clearly labelled "Demo").
+  await prisma.resident.upsert({ where: { id: B1.r1 }, update: {}, create: { id: B1.r1, orgId: ID.org, siteId: B1.site, name: 'Demo — Eleanor Whitfield', room: '204', status: ResidentStatus.ACTIVE, createdBy: ID.owner } });
+  await prisma.resident.upsert({ where: { id: B1.r2 }, update: {}, create: { id: B1.r2, orgId: ID.org, siteId: B1.site, name: 'Demo — Harold Banks', room: '112', status: ResidentStatus.ACTIVE, createdBy: ID.owner } });
+
+  // Idempotency guard for the heavier garment/lost-found block.
+  if (await prisma.item.findUnique({ where: { id: B1_GARMENTS[0].id } })) {
+    console.log('[seed] Track-B demo already present — skipping garments (idempotent).');
+    return;
+  }
+
+  // Resident-bound tags + the enrolled garments (real, at distinct lifecycle stages) + an opening custody event each.
+  await prisma.tag.createMany({ data: B1_GARMENTS.map((g) => ({ id: g.tag, orgId: ID.org, code: g.code, type: TagType.QR, boundTo: TagBinding.RESIDENT, active: true, createdBy: ID.owner })), skipDuplicates: true });
+  await prisma.item.createMany({ data: B1_GARMENTS.map((g) => ({ id: g.id, orgId: ID.org, residentId: g.resident, tagId: g.tag, kind: ItemKind.GARMENT, garmentStatus: g.status, measurements: { description: g.desc }, createdBy: ID.owner })), skipDuplicates: true });
+  await prisma.custodyEvent.createMany({
+    data: B1_GARMENTS.flatMap((g) => garmentPath(g.status).map((stage) => ({ orgId: ID.org, itemId: g.id, garmentStage: stage, actorId: ID.owner, createdBy: ID.owner }))),
+  });
+
+  // The odd garment is pooled — a real LostFoundItem (candidate = Harold, by room tag).
+  const lf = B1_GARMENTS[4];
+  await prisma.lostFoundItem.upsert({
+    where: { id: B1.lostFound },
+    update: {},
+    create: { id: B1.lostFound, orgId: ID.org, siteId: B1.site, itemId: lf.id, tagId: lf.tag, candidateResidentId: lf.resident, status: LostFoundStatus.OPEN, notes: 'Unmatched on return sort — candidate by room tag', createdBy: ID.owner },
+  });
+
+  console.log('[seed] Track-B ready: care home Maple Grove (West Wing) — ACCOUNT_ADMIN +14165550030;');
+  console.log('       2 residents, 5 enrolled garments across the §5.2-B lifecycle (enrolled/wash/delivered), 1 in lost & found.');
+}
+
 async function main(): Promise<void> {
   await seedDemoOrder();
   await seedAuthFixtures();
   await seedPricing();
   await seedLogistics();
   await seedTrackADemo();
+  await seedTrackBDemo();
 }
 
 main()

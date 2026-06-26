@@ -19,3 +19,4 @@ export * from './analytics';
 export * from './admin';
 export * from './recurring';
 export * from './accounts';
+export * from './residents';

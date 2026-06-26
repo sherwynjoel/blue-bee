@@ -51,16 +51,27 @@ import type {
   AccountManifestsResult,
   BatchInvoiceDto,
   BillingTermsView,
+  CreateResidentDto,
   CreateStandingOrderDto,
+  DropToLostFoundDto,
+  EnrollGarmentDto,
+  GarmentView,
   GeneratedForAccountView,
   GenerationResult,
   ListAccountsQuery,
   ListStandingOrdersQuery,
+  LostFoundPoolResult,
   OwnerExceptionsResult,
+  ReconcileDto,
+  ReconciliationReport,
+  ResidentClothingView,
+  ResidentListResult,
+  ResidentView,
   RunGenerationDto,
   SetBillingTermsDto,
   StandingOrderOccurrenceView,
   StandingOrderView,
+  TransitionGarmentDto,
   UpdateStandingOrderDto,
 } from '@blue-bee/shared';
 import type {
@@ -371,6 +382,45 @@ export class ConsoleApiClient extends ApiClient {
   /** The account's exceptions feed (failed/skipped stops, held orders, open disputes, failed payments). */
   getAccountExceptions(accountId: string): Promise<OwnerExceptionsResult> {
     return this.request('GET', `/accounts/${accountId}/exceptions`);
+  }
+
+  // ───────────── Track-B: resident personal clothing (care homes) ─────────────
+
+  /** A site's residents (audited server-side). */
+  listResidents(siteId: string): Promise<ResidentListResult> {
+    return this.request('GET', `/residents?siteId=${encodeURIComponent(siteId)}`);
+  }
+  getResident(residentId: string): Promise<ResidentView> {
+    return this.request('GET', `/residents/${residentId}`);
+  }
+  /** The A4.2 view — a resident's garments in the four buckets (audited). */
+  getResidentClothing(residentId: string): Promise<ResidentClothingView> {
+    return this.request('GET', `/residents/${residentId}/clothing`);
+  }
+  createResident(dto: CreateResidentDto): Promise<ResidentView> {
+    return this.request('POST', '/residents', { body: dto });
+  }
+  /** Enroll a garment to a resident (tag↔resident → GARMENT_ENROLLED). */
+  enrollGarment(residentId: string, dto: EnrollGarmentDto): Promise<GarmentView> {
+    return this.request('POST', `/residents/${residentId}/garments`, { body: dto });
+  }
+  /** Advance a garment one step along the §5.2-B lifecycle (409 on an illegal transition). */
+  transitionGarment(garmentId: string, dto: TransitionGarmentDto): Promise<GarmentView> {
+    return this.request('POST', `/garments/${garmentId}/transition`, { body: dto });
+  }
+  dropGarmentToLostFound(garmentId: string, dto: DropToLostFoundDto = {}): Promise<import('@blue-bee/shared').LostFoundItemView> {
+    return this.request('POST', `/garments/${garmentId}/lost-found`, { body: dto });
+  }
+  /** A site's OPEN lost & found pool (audited). */
+  getLostFoundPool(siteId: string): Promise<LostFoundPoolResult> {
+    return this.request('GET', `/lost-found?siteId=${encodeURIComponent(siteId)}`);
+  }
+  getReconciliationReport(siteId: string): Promise<ReconciliationReport> {
+    return this.request('GET', `/lost-found/report?siteId=${encodeURIComponent(siteId)}`);
+  }
+  /** Reconcile a pooled garment back to a resident (LOST_FOUND_POOL → RECONCILE). */
+  reconcileLostFound(lostFoundId: string, dto: ReconcileDto): Promise<GarmentView> {
+    return this.request('POST', `/lost-found/${lostFoundId}/reconcile`, { body: dto });
   }
 }
 

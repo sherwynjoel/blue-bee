@@ -316,7 +316,9 @@ export class AnalyticsService {
     to: Date,
   ): Promise<{ value: number | null; rowCount: number | null }> {
     const [totalItems, lossClaims] = await Promise.all([
-      db.item.count({ where: { createdAt: { gte: from, lt: to } } }),
+      // Specialty items only (order-bearing) — Track-B resident garments (orderId null) are NOT part of
+      // this B2B specialty items-lost denominator; the per-account lost-garment KPI is separate (deferred).
+      db.item.count({ where: { createdAt: { gte: from, lt: to }, orderId: { not: null } } }),
       db.claim.findMany({
         where: { type: ClaimType.LOSS, createdAt: { gte: from, lt: to }, itemId: { not: null } },
         select: { itemId: true },

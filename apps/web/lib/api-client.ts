@@ -48,6 +48,7 @@ import type {
 import type {
   AccountDetailView,
   AccountListResult,
+  AccountManifestsResult,
   BatchInvoiceDto,
   BillingTermsView,
   CreateStandingOrderDto,
@@ -55,6 +56,7 @@ import type {
   GenerationResult,
   ListAccountsQuery,
   ListStandingOrdersQuery,
+  OwnerExceptionsResult,
   RunGenerationDto,
   SetBillingTermsDto,
   StandingOrderOccurrenceView,
@@ -349,6 +351,26 @@ export class ConsoleApiClient extends ApiClient {
   }
   getGeneratedForAccount(accountId: string): Promise<GeneratedForAccountView> {
     return this.request('GET', `/accounts/${accountId}/generated`);
+  }
+
+  // account portal tabs — Orders / Manifests / Exceptions (read-only, account-scoped)
+
+  /** The account's orders (cursor-paginated; the server delegates to the proven order listing). */
+  getAccountOrders(accountId: string, query: ListOrdersQuery = { limit: 25 }): Promise<OrderListResult> {
+    const p = new URLSearchParams();
+    if (query.limit != null) p.set('limit', String(query.limit));
+    if (query.cursor) p.set('cursor', query.cursor);
+    if (query.status) p.set('status', query.status);
+    const qs = p.toString();
+    return this.request('GET', `/accounts/${accountId}/orders${qs ? `?${qs}` : ''}`);
+  }
+  /** The account's recent route-stop manifests (a read-only view — does not generate). */
+  getAccountManifests(accountId: string): Promise<AccountManifestsResult> {
+    return this.request('GET', `/accounts/${accountId}/manifests`);
+  }
+  /** The account's exceptions feed (failed/skipped stops, held orders, open disputes, failed payments). */
+  getAccountExceptions(accountId: string): Promise<OwnerExceptionsResult> {
+    return this.request('GET', `/accounts/${accountId}/exceptions`);
   }
 }
 

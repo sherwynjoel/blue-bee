@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import {
-  DisputeStatus,
   OrderStatus,
   PaymentStatus,
   QuoteStatus,
@@ -8,7 +7,6 @@ import {
   TERMINAL_ORDER_STATUSES,
   type OwnerApproval,
   type OwnerApprovalsResult,
-  type OwnerException,
   type OwnerExceptionsResult,
   type OwnerTodayResult,
 } from '@blue-bee/shared';
@@ -16,20 +14,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { scopedPrisma } from '../prisma/scoped-prisma';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { businessDayStart, formatMoney, onTimePercent, sumCents, windowEnd } from './owner-kpi';
+import {
+  EXCEPTION_FEED_LIMIT,
+  EXCEPTION_LOOKBACK_MS,
+  EXCEPTION_STOP_STATUSES,
+  OPEN_DISPUTE_STATUSES,
+  normalizeExceptions,
+} from '../common/exceptions-feed';
 
 /** The GTA business day (overridable for non-Toronto orgs / tests). */
 const BUSINESS_TZ = process.env.OWNER_BUSINESS_TZ ?? 'America/Toronto';
-/** Terminal/recent windows for the exception feed (terminal stop/payment rows beyond this are history). */
-const EXCEPTION_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
-/** Cap the exception feed (the `openExceptions` COUNT is still the truth; the list shows the newest). */
-const EXCEPTION_FEED_LIMIT = 100;
 /** Cap the pending-approvals list. */
 const APPROVALS_LIMIT = 100;
 
 const ACTIVE_EXCLUDED = [...TERMINAL_ORDER_STATUSES];
 const COMPLETED_TODAY_STATUSES = [OrderStatus.DELIVERED, OrderStatus.INVOICED, OrderStatus.CLOSED];
-const EXCEPTION_STOP_STATUSES = [RouteStopStatus.FAILED, RouteStopStatus.SKIPPED];
-const OPEN_DISPUTE_STATUSES = [DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW];
 
 /**
  * Owner cockpit reads (Increment 14a) — the thin, additive, OWNER-scoped aggregations the owner app
@@ -188,58 +187,7 @@ export class OwnerService {
       }),
     ]);
 
-    const items: OwnerException[] = [
-      ...stops.map((s): OwnerException => ({
-        id: s.id,
-        kind: s.status === RouteStopStatus.FAILED ? 'STOP_FAILED' : 'STOP_SKIPPED',
-        title: `Stop ${s.status === RouteStopStatus.FAILED ? 'failed' : 'skipped'}${s.site?.name ? ` — ${s.site.name}` : ''}`,
-        detail: s.exceptionReason ?? null,
-        orderId: s.orderId,
-        routeId: s.routeId,
-        stopId: s.id,
-        amount: null,
-        currency: null,
-        occurredAt: s.updatedAt.toISOString(),
-      })),
-      ...held.map((o): OwnerException => ({
-        id: o.id,
-        kind: 'ORDER_HELD',
-        title: `Order on hold${o.account?.name ? ` — ${o.account.name}` : ''}`,
-        detail: o.heldFrom ? `Paused from ${o.heldFrom}` : null,
-        orderId: o.id,
-        routeId: null,
-        stopId: null,
-        amount: null,
-        currency: null,
-        occurredAt: o.updatedAt.toISOString(),
-      })),
-      ...disputes.map((d): OwnerException => ({
-        id: d.id,
-        kind: 'PAYMENT_DISPUTE',
-        title: `Payment dispute (${d.status})`,
-        detail: d.reason ?? null,
-        orderId: d.orderId,
-        routeId: null,
-        stopId: null,
-        amount: d.amount.toFixed(2),
-        currency: d.currency,
-        occurredAt: d.openedAt.toISOString(),
-      })),
-      ...payments.map((p): OwnerException => ({
-        id: p.id,
-        kind: 'PAYMENT_FAILED',
-        title: 'Payment failed',
-        detail: p.lastError ?? null,
-        orderId: p.orderId,
-        routeId: null,
-        stopId: null,
-        amount: p.amount.toFixed(2),
-        currency: p.currency,
-        occurredAt: p.updatedAt.toISOString(),
-      })),
-    ];
-
-    items.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : 0));
-    return { exceptions: items.slice(0, EXCEPTION_FEED_LIMIT) };
+    // Normalize via the shared feed shaper (same status sets + shape the B2B portal reuses).
+    return { exceptions: normalizeExceptions({ stops, held, disputes, payments }) };
   }
 }

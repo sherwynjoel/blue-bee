@@ -256,7 +256,13 @@ export class OrdersService {
   /** Cursor-paginated, row-scoped order list (PRD §11.1 — cursor pagination). */
   async listOrders(principal: RequestPrincipal, query: ListOrdersQuery) {
     const db = this.access.scopedFor(principal);
-    const where: Prisma.OrderWhereInput = query.status ? { status: query.status as unknown as Prisma.OrderWhereInput['status'] } : {};
+    // Additive filters AND-merged on top of the unforgettable row-scope: status and (Track-A B2B
+    // portal) an optional single-account confinement. Cross-tenant is still impossible — the scoped
+    // client pins org (+ account for confined principals); accountId only narrows further.
+    const where: Prisma.OrderWhereInput = {
+      ...(query.status ? { status: query.status as unknown as Prisma.OrderWhereInput['status'] } : {}),
+      ...(query.accountId ? { accountId: query.accountId } : {}),
+    };
     const rows = await db.order.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

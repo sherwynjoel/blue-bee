@@ -54,6 +54,12 @@ export const listOrdersQuerySchema = z.object({
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   status: z.nativeEnum(OrderStatus).optional(),
+  /**
+   * Track-A B2B portal — optionally confine the listing to ONE account (additive; the existing
+   * row-scope + cursor are preserved). The account-scoped `GET /v1/accounts/:accountId/orders`
+   * delegates to the same service with this set, so there is no duplicated listing logic.
+   */
+  accountId: z.string().uuid().optional(),
 });
 export type ListOrdersQuery = z.infer<typeof listOrdersQuerySchema>;
 

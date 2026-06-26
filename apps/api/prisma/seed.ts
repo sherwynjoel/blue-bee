@@ -557,6 +557,11 @@ const A6 = {
     'a6000000-0000-4000-8000-000000000203',
     'a6000000-0000-4000-8000-000000000204',
   ],
+  // Two real amenity-linen items on the CONCIERGE pickup order + its load-sheet manifest (so the B2B
+  // portal's Manifests tab renders a REAL snapshot, not a fabricated one).
+  items: ['a6000000-0000-4000-8000-000000000301', 'a6000000-0000-4000-8000-000000000302'],
+  tags: ['a6000000-0000-4000-8000-000000000311', 'a6000000-0000-4000-8000-000000000312'],
+  manifest: 'a6000000-0000-4000-8000-000000000401',
 } as const;
 
 // CityPlace (downtown Toronto) condo — a real GTA coordinate for the demo condo building.
@@ -700,8 +705,50 @@ async function seedTrackADemo(): Promise<void> {
     skipDuplicates: true,
   });
 
+  // Two REAL amenity-linen items on the CONCIERGE pickup order (stop 1) + the load-sheet Manifest for
+  // that stop — exactly what ManifestService.generateForStop snapshots. This gives the B2B portal's
+  // Manifests tab a real (non-fabricated) row to show; no schema change, additive seed data.
+  await prisma.tag.createMany({
+    data: [
+      { id: A6.tags[0], orgId: ID.org, code: 'BB-AMENITY-01', type: TagType.QR, boundTo: TagBinding.ITEM, active: true, createdBy: ID.owner },
+      { id: A6.tags[1], orgId: ID.org, code: 'BB-AMENITY-02', type: TagType.QR, boundTo: TagBinding.ITEM, active: true, createdBy: ID.owner },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.item.createMany({
+    data: [
+      { id: A6.items[0], orgId: ID.org, orderId: A6.orders[0], tagId: A6.tags[0], kind: ItemKind.LINEN, status: ItemStatus.RECEIVED, measurements: { pieces: 24 }, createdBy: ID.owner },
+      { id: A6.items[1], orgId: ID.org, orderId: A6.orders[0], tagId: A6.tags[1], kind: ItemKind.LINEN, status: ItemStatus.RECEIVED, measurements: { pieces: 18 }, createdBy: ID.owner },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.manifest.create({
+    data: {
+      id: A6.manifest,
+      orgId: ID.org,
+      routeStopId: A6.stops[0], // a stop-level (pickup) manifest, like generateForStop
+      lines: [
+        {
+          stopId: A6.stops[0],
+          seq: 1,
+          kind: RouteStopKind.PICKUP,
+          orderId: A6.orders[0],
+          account: { id: ID2.accountB, name: 'Demo — Account B (business)' },
+          site: { id: A6.condoSite, name: 'Demo — Harbourview Condos (B2B building)', address: '10 CityPlace Dr, Toronto, ON' },
+          expectedItems: [
+            { itemId: A6.items[0], kind: ItemKind.LINEN, tagCode: 'BB-AMENITY-01', status: ItemStatus.RECEIVED },
+            { itemId: A6.items[1], kind: ItemKind.LINEN, tagCode: 'BB-AMENITY-02', status: ItemStatus.RECEIVED },
+          ],
+          expectedItemCount: 2,
+        },
+      ],
+      createdBy: ID.owner,
+    },
+  });
+
   console.log('[seed] Track-A ready: condo standing order (WEEKLY Mon, CONCIERGE); Account B = BATCH_PERIODIC net-30;');
-  console.log('       4 DELIVERED condo orders + a COMPLETED route with realistic on-site spans (analytics stops/hour ~1.44, dwell ~16min).');
+  console.log('       4 DELIVERED condo orders + a COMPLETED route with realistic on-site spans (analytics stops/hour ~1.44, dwell ~16min);');
+  console.log('       2 amenity-linen items + a load-sheet manifest on the CONCIERGE pickup (Manifests tab demo).');
 }
 
 async function main(): Promise<void> {

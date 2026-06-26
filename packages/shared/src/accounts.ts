@@ -46,3 +46,33 @@ export const ACCOUNTS_ERRORS = {
   ACCOUNT_NOT_FOUND: 'accounts.account_not_found',
 } as const;
 export type AccountsErrorCode = (typeof ACCOUNTS_ERRORS)[keyof typeof ACCOUNTS_ERRORS];
+
+// ───────────────────── account portal — Manifests tab (GET /v1/accounts/:id/manifests) ─────────────────────
+
+/**
+ * One account-scoped route-stop manifest (Track-A B2B portal — Manifests tab). A read-only VIEW of an
+ * already-generated manifest (generation stays on the route/stop endpoints — this never creates one).
+ * Summary fields only: the stop it snapshots + the expected item count (the load-sheet size).
+ */
+export interface AccountManifestView {
+  /** The Manifest row id. */
+  id: string;
+  /** When the manifest was snapshotted (ISO-8601). */
+  generatedAt: string;
+  routeId: string | null;
+  routeStopId: string | null;
+  /** The stop's sequence on its route. */
+  stopSeq: number | null;
+  /** RouteStopStatus of the snapshotted stop (PENDING…COMPLETED/FAILED/SKIPPED), or null. */
+  stopStatus: string | null;
+  /** RouteStopKind of the stop (PICKUP / DELIVERY), or null. */
+  stopKind: string | null;
+  orderId: string | null;
+  siteName: string | null;
+  /** Expected item count from the manifest lines (the driver's load-sheet size). */
+  expectedItemCount: number;
+}
+
+export interface AccountManifestsResult {
+  manifests: AccountManifestView[];
+}

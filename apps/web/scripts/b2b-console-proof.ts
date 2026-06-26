@@ -14,6 +14,7 @@ import { ConsoleApiClient } from '../lib/api-client';
 
 const API = process.env.API_BASE_URL ?? 'http://localhost:3000';
 const ACCOUNT_B = 'e0000000-0000-4000-8000-0000000000b0'; // Demo — Harbourview Condos (BUSINESS)
+const ACCOUNT_A = '44444444-4444-4444-8444-444444444444'; // Demo — Rita (residential) — isolation probe
 const PHONES = { owner: '+14165550001', driver: '+14165550006' };
 
 let passed = 0;
@@ -124,6 +125,29 @@ async function main(): Promise<void> {
     check('DRIVER blocked from the directory', false);
   } catch (e) {
     check('DRIVER → 403 on GET /v1/accounts', e instanceof ApiError && e.status === 403);
+  }
+
+  // ── [9] portal tabs — account-scoped reads (Orders / Manifests / Exceptions) ──
+  console.log('\n[9] portal tabs (orders / manifests / exceptions)');
+  const orders = await owner.getAccountOrders(ACCOUNT_B, { limit: 100 });
+  check('orders are account-scoped to B', orders.orders.every((o) => o.accountId === ACCOUNT_B), `${orders.orders.length} order(s)`);
+  check('orders include a seeded condo order', orders.orders.some((o) => o.id.startsWith('a6000000')));
+  const manifests = await owner.getAccountManifests(ACCOUNT_B);
+  const loadSheet = manifests.manifests.find((m) => m.stopKind === 'PICKUP' && m.expectedItemCount >= 1);
+  check('account has its real load-sheet manifest', !!loadSheet, loadSheet ? `${loadSheet.expectedItemCount} expected item(s)` : 'none');
+  const exceptions = await owner.getAccountExceptions(ACCOUNT_B);
+  check('exceptions feed returns an array (honest — may be empty)', Array.isArray(exceptions.exceptions), `${exceptions.exceptions.length} item(s)`);
+
+  // Cross-account isolation: A's orders never include B's.
+  const ordersA = await owner.getAccountOrders(ACCOUNT_A, { limit: 100 });
+  check("Account A's orders never include B's", ordersA.orders.every((o) => o.accountId === ACCOUNT_A));
+
+  // RBAC negative on a portal tab (server-authoritative).
+  try {
+    await driver.getAccountManifests(ACCOUNT_B);
+    check('DRIVER blocked from manifests', false);
+  } catch (e) {
+    check('DRIVER → 403 on GET /v1/accounts/:id/manifests', e instanceof ApiError && e.status === 403);
   }
 
   console.log(`\n✅ B2B account-console proof PASSED — ${passed} checks, all writes persisted against the real API.\n`);

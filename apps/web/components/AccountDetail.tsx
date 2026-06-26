@@ -8,8 +8,10 @@ import {
   RoleType,
   StandingOrderCadence,
   type AccountDetailView,
+  type AccountManifestView,
   type CreateStandingOrderDto,
   type Metric,
+  type OwnerException,
   type ServiceCatalogResult,
   type StandingOrderView,
 } from '@blue-bee/shared';
@@ -17,7 +19,8 @@ import { ApiError } from '@blue-bee/api-client';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
-import { formatNumber, humanize, money, shortDate } from '@/lib/format';
+import { formatNumber, humanize, money, orderRef, shortDate } from '@/lib/format';
+import type { OrderListResult, OrderSummary } from '@/lib/types';
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Loading, Select } from './ui';
 import { RequireCapability } from './AppShell';
 
@@ -42,9 +45,41 @@ export function AccountDetail({ accountId }: { accountId: string }): React.React
   );
 }
 
+type TabKey = 'overview' | 'orders' | 'manifests' | 'exceptions';
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'orders', label: 'Orders' },
+  { key: 'manifests', label: 'Manifests' },
+  { key: 'exceptions', label: 'Exceptions' },
+];
+
+/** Accessible in-page tab strip (local state, no new dependency). */
+function TabNav({ tab, onSelect }: { tab: TabKey; onSelect: (t: TabKey) => void }): React.ReactElement {
+  return (
+    <div role="tablist" aria-label="Account sections" className="flex flex-wrap gap-1 border-b border-bb-line">
+      {TABS.map((t) => (
+        <button
+          key={t.key}
+          role="tab"
+          id={`tab-${t.key}`}
+          aria-selected={tab === t.key}
+          aria-controls={`panel-${t.key}`}
+          onClick={() => onSelect(t.key)}
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+            tab === t.key ? 'border-bb-blue text-bb-blue' : 'border-transparent text-bb-sub hover:text-bb-ink'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AccountDetailInner({ accountId }: { accountId: string }): React.ReactElement {
   const { client, me } = useSession();
   const [nonce, setNonce] = useState(0);
+  const [tab, setTab] = useState<TabKey>('overview');
   const reloadHeader = (): void => setNonce((n) => n + 1);
   const state = useAsync<AccountDetailView>(() => client.getAccount(accountId), [accountId, nonce]);
 
@@ -73,10 +108,31 @@ function AccountDetailInner({ accountId }: { accountId: string }): React.ReactEl
             </span>
           </div>
 
-          {can.analyticsScorecard(me) && <ScorecardCard accountId={accountId} />}
-          <StandingOrdersCard account={state.data} onChanged={reloadHeader} />
-          <GeneratedCard accountId={accountId} reloadKey={nonce} />
-          {can.finance(me) && <BillingCard account={state.data} onChanged={reloadHeader} />}
+          <TabNav tab={tab} onSelect={setTab} />
+
+          {tab === 'overview' && (
+            <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" className="space-y-4">
+              {can.analyticsScorecard(me) && <ScorecardCard accountId={accountId} />}
+              <StandingOrdersCard account={state.data} onChanged={reloadHeader} />
+              <GeneratedCard accountId={accountId} reloadKey={nonce} />
+              {can.finance(me) && <BillingCard account={state.data} onChanged={reloadHeader} />}
+            </div>
+          )}
+          {tab === 'orders' && (
+            <div role="tabpanel" id="panel-orders" aria-labelledby="tab-orders">
+              <OrdersTab accountId={accountId} />
+            </div>
+          )}
+          {tab === 'manifests' && (
+            <div role="tabpanel" id="panel-manifests" aria-labelledby="tab-manifests">
+              <ManifestsTab accountId={accountId} />
+            </div>
+          )}
+          {tab === 'exceptions' && (
+            <div role="tabpanel" id="panel-exceptions" aria-labelledby="tab-exceptions">
+              <ExceptionsTab accountId={accountId} />
+            </div>
+          )}
         </>
       )}
     </div>
@@ -561,6 +617,160 @@ function BillingCard({ account, onChanged }: { account: AccountDetailView; onCha
             )}
           </div>
         </div>
+      )}
+    </Card>
+  );
+}
+
+// ───────────────────────────── orders tab ─────────────────────────────
+
+const TERMINAL_GREEN = new Set(['DELIVERED', 'INVOICED', 'CLOSED', 'APPROVED']);
+function orderTone(status: string): 'green' | 'amber' | 'red' | 'blue' {
+  if (TERMINAL_GREEN.has(status)) return 'green';
+  if (status === 'ON_HOLD') return 'amber';
+  if (status === 'CANCELLED' || status === 'DECLINED') return 'red';
+  return 'blue';
+}
+
+/** The account's orders — reads the proven order listing (server delegates), confined to the account. */
+function OrdersTab({ accountId }: { accountId: string }): React.ReactElement {
+  const { client } = useSession();
+  const state = useAsync<OrderListResult>(() => client.getAccountOrders(accountId, { limit: 50 }), [accountId]);
+  const orderTotal = (o: OrderSummary): string | null => o.totals?.total ?? o.quotes?.[0]?.total ?? null;
+  return (
+    <Card title="Orders">
+      {!state.data && state.loading ? (
+        <Loading />
+      ) : !state.data && state.error ? (
+        <ErrorBox message={state.error} onRetry={state.reload} />
+      ) : !state.data || state.data.orders.length === 0 ? (
+        <EmptyState title="No orders" message="This account has no orders yet." />
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-bb-line text-left text-bb-sub">
+              <th className="py-2 pr-4 font-medium">Order</th>
+              <th className="py-2 pr-4 font-medium">Status</th>
+              <th className="py-2 pr-4 font-medium">Vertical</th>
+              <th className="py-2 pr-4 font-medium">Amount</th>
+              <th className="py-2 font-medium">Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.data.orders.map((o) => (
+              <tr key={o.id} className="border-b border-bb-line last:border-0" data-testid={`order-${o.id}`}>
+                <td className="py-2 pr-4 font-mono text-xs text-bb-sub">{orderRef(o.id)}</td>
+                <td className="py-2 pr-4">
+                  <Badge tone={orderTone(o.status)}>{humanize(o.status)}</Badge>
+                </td>
+                <td className="py-2 pr-4">{humanize(o.vertical)}</td>
+                <td className="py-2 pr-4 text-bb-sub">{money(orderTotal(o), o.totals?.currency ?? 'CAD')}</td>
+                <td className="py-2 text-bb-sub">{shortDate(o.createdAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+}
+
+// ───────────────────────────── manifests tab ─────────────────────────────
+
+/** A read-only VIEW of the account's already-generated route-stop manifests (never generates one). */
+function ManifestsTab({ accountId }: { accountId: string }): React.ReactElement {
+  const { client } = useSession();
+  const state = useAsync<{ manifests: AccountManifestView[] }>(() => client.getAccountManifests(accountId), [accountId]);
+  return (
+    <Card title="Manifests">
+      {!state.data && state.loading ? (
+        <Loading />
+      ) : !state.data && state.error ? (
+        <ErrorBox message={state.error} onRetry={state.reload} />
+      ) : !state.data || state.data.manifests.length === 0 ? (
+        <EmptyState
+          title="No manifests"
+          message="Manifests are generated on the route/stop endpoints — none exist for this account yet."
+        />
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-bb-line text-left text-bb-sub">
+              <th className="py-2 pr-4 font-medium">Stop</th>
+              <th className="py-2 pr-4 font-medium">Type</th>
+              <th className="py-2 pr-4 font-medium">Status</th>
+              <th className="py-2 pr-4 font-medium">Order</th>
+              <th className="py-2 pr-4 font-medium">Site</th>
+              <th className="py-2 pr-4 font-medium">Expected items</th>
+              <th className="py-2 font-medium">Generated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.data.manifests.map((m) => (
+              <tr key={m.id} className="border-b border-bb-line last:border-0" data-testid={`manifest-${m.id}`}>
+                <td className="py-2 pr-4">{m.stopSeq != null ? `#${m.stopSeq}` : '—'}</td>
+                <td className="py-2 pr-4">{m.stopKind ? humanize(m.stopKind) : '—'}</td>
+                <td className="py-2 pr-4">{m.stopStatus ? <Badge tone="neutral">{humanize(m.stopStatus)}</Badge> : '—'}</td>
+                <td className="py-2 pr-4 font-mono text-xs text-bb-sub">{m.orderId ? orderRef(m.orderId) : '—'}</td>
+                <td className="py-2 pr-4 text-bb-sub">{m.siteName ?? '—'}</td>
+                <td className="py-2 pr-4">{formatNumber(m.expectedItemCount)}</td>
+                <td className="py-2 text-bb-sub">{shortDate(m.generatedAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+}
+
+// ───────────────────────────── exceptions tab ─────────────────────────────
+
+function exceptionTone(kind: OwnerException['kind']): 'red' | 'amber' {
+  return kind === 'STOP_FAILED' || kind === 'PAYMENT_FAILED' || kind === 'PAYMENT_DISPUTE' ? 'red' : 'amber';
+}
+
+/** The account's exceptions feed (failed/skipped stops, held orders, open disputes, failed payments). */
+function ExceptionsTab({ accountId }: { accountId: string }): React.ReactElement {
+  const { client } = useSession();
+  const state = useAsync<{ exceptions: OwnerException[] }>(() => client.getAccountExceptions(accountId), [accountId]);
+  return (
+    <Card title="Exceptions">
+      {!state.data && state.loading ? (
+        <Loading />
+      ) : !state.data && state.error ? (
+        <ErrorBox message={state.error} onRetry={state.reload} />
+      ) : !state.data || state.data.exceptions.length === 0 ? (
+        <EmptyState
+          title="No exceptions"
+          message="No failed/skipped stops, held orders, open disputes, or failed payments for this account."
+        />
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-bb-line text-left text-bb-sub">
+              <th className="py-2 pr-4 font-medium">Type</th>
+              <th className="py-2 pr-4 font-medium">Detail</th>
+              <th className="py-2 pr-4 font-medium">Amount</th>
+              <th className="py-2 font-medium">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.data.exceptions.map((x) => (
+              <tr key={x.id} className="border-b border-bb-line last:border-0" data-testid={`exception-${x.id}`}>
+                <td className="py-2 pr-4">
+                  <Badge tone={exceptionTone(x.kind)}>{humanize(x.kind)}</Badge>
+                </td>
+                <td className="py-2 pr-4 text-bb-sub">
+                  {x.title}
+                  {x.detail ? <span className="text-bb-sub"> — {x.detail}</span> : null}
+                </td>
+                <td className="py-2 pr-4 text-bb-sub">{x.amount ? money(x.amount, x.currency ?? 'CAD') : '—'}</td>
+                <td className="py-2 text-bb-sub">{shortDate(x.occurredAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </Card>
   );

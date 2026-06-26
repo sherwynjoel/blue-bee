@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, type StandingOrder } from '@prisma/client';
 import {
+  COST_CENTER_ERRORS,
   RECURRING_ERRORS,
   StandingOrderCadence,
   type CreateStandingOrderDto,
@@ -43,6 +44,10 @@ export class StandingOrderService {
     const service = await db.service.findFirst({ where: { id: dto.serviceId }, select: { id: true } });
     if (!service) throw new NotFoundException({ error: RECURRING_ERRORS.SERVICE_NOT_FOUND, message: `service ${dto.serviceId} not found in scope` });
 
+    // Track-A Phase 2: an optional cost centre the generated orders inherit — must be in scope AND belong
+    // to this account (cross-account attribution is rejected at the source, so generation can't leak it).
+    if (dto.costCenterId) await this.assertCostCenterInAccount(db, dto.costCenterId, dto.accountId);
+
     const spec: CadenceSpec = { cadence: dto.cadence, weekday: dto.weekday, startsOn: dto.startsOn, endsOn: dto.endsOn };
     const nextRunAt = nextOccurrenceAfter(spec, new Date(dto.startsOn.getTime() - 86_400_000)); // first on/after startsOn
 
@@ -58,6 +63,7 @@ export class StandingOrderService {
           weekday: dto.weekday,
           pickupWindow: dto.pickupWindow as unknown as Prisma.InputJsonValue,
           concierge: dto.concierge,
+          costCenterId: dto.costCenterId ?? null,
           active: dto.active,
           startsOn: dto.startsOn,
           endsOn: dto.endsOn ?? null,
@@ -72,7 +78,7 @@ export class StandingOrderService {
           entity: 'StandingOrder',
           entityId: row.id,
           action: 'STANDING_ORDER_CREATED',
-          after: { accountId: dto.accountId, siteId: dto.siteId, serviceId: dto.serviceId, cadence: dto.cadence, weekday: dto.weekday, concierge: dto.concierge },
+          after: { accountId: dto.accountId, siteId: dto.siteId, serviceId: dto.serviceId, cadence: dto.cadence, weekday: dto.weekday, concierge: dto.concierge, costCenterId: dto.costCenterId ?? null },
         },
         tx,
       );
@@ -106,6 +112,12 @@ export class StandingOrderService {
   async update(principal: RequestPrincipal, id: string, dto: UpdateStandingOrderDto): Promise<StandingOrderView> {
     const existing = await this.require(principal, id);
 
+    // Track-A Phase 2: a re-pointed cost centre must belong to the standing order's account.
+    if (dto.costCenterId) {
+      const db = scopedPrisma(this.prisma, principal);
+      await this.assertCostCenterInAccount(db, dto.costCenterId, existing.accountId);
+    }
+
     // Recompute the advisory nextRunAt when the recurrence shape changes.
     const spec: CadenceSpec = {
       cadence: (dto.cadence ?? (existing.cadence as unknown as StandingOrderCadence)),
@@ -124,6 +136,7 @@ export class StandingOrderService {
           ...(dto.pickupWindow !== undefined ? { pickupWindow: dto.pickupWindow as unknown as Prisma.InputJsonValue } : {}),
           ...(dto.concierge !== undefined ? { concierge: dto.concierge } : {}),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
+          ...(dto.costCenterId !== undefined ? { costCenterId: dto.costCenterId } : {}),
           ...(dto.endsOn !== undefined ? { endsOn: dto.endsOn } : {}),
           nextRunAt,
         },
@@ -191,6 +204,15 @@ export class StandingOrderService {
     return row;
   }
 
+  /** Validate a cost centre is in scope AND belongs to `accountId` (cross-org → 404, cross-account → 400). */
+  private async assertCostCenterInAccount(db: ReturnType<typeof scopedPrisma>, costCenterId: string, accountId: string): Promise<void> {
+    const cc = await db.costCenter.findFirst({ where: { id: costCenterId }, select: { id: true, accountId: true } });
+    if (!cc) throw new NotFoundException({ error: COST_CENTER_ERRORS.COST_CENTER_NOT_FOUND, message: `cost centre ${costCenterId} not found in scope` });
+    if (cc.accountId !== accountId) {
+      throw new BadRequestException({ error: COST_CENTER_ERRORS.ACCOUNT_MISMATCH, message: `cost centre ${costCenterId} does not belong to account ${accountId}` });
+    }
+  }
+
   private toView(r: StandingOrder): StandingOrderView {
     return {
       id: r.id,
@@ -202,6 +224,7 @@ export class StandingOrderService {
       weekday: r.weekday,
       pickupWindow: r.pickupWindow as unknown as PickupWindow,
       concierge: r.concierge,
+      costCenterId: r.costCenterId,
       active: r.active,
       startsOn: periodKey(r.startsOn),
       endsOn: r.endsOn ? periodKey(r.endsOn) : null,

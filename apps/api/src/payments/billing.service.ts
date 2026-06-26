@@ -16,6 +16,7 @@ import type { RequestPrincipal } from '../auth/rbac/types';
 import { PAYMENTS_CONFIG, type PaymentsConfig } from '../config/payments.config';
 import { PAYMENT_PROVIDER, type PaymentProvider } from './provider/payment-provider';
 import { decimalMoney, moneyToCents } from '../orders/money';
+import { parseStoredBreakdown } from '../cost-centers/cost-center-split';
 import type { PaymentSucceededEffect } from './payment.service';
 
 interface QuoteLine {
@@ -253,6 +254,9 @@ export class BillingService {
       total: decimalMoney(inv.total),
       currency: inv.currency,
       lines: inv.invoiceLines.map((l) => ({ description: l.description, quantity: l.quantity, unitAmount: decimalMoney(l.unitAmount), amount: decimalMoney(l.amount) })),
+      // Track-A Phase 2: a single-order invoice carries an empty breakdown (default `{}` → []); the
+      // batch path is the one that populates per-cost-centre splits. Surfaced on every read for shape parity.
+      costCenterBreakdown: parseStoredBreakdown(inv.costCenterBreakdown),
       issuedAt: inv.issuedAt ? inv.issuedAt.toISOString() : null,
       paidAt: inv.paidAt ? inv.paidAt.toISOString() : null,
       dueAt: inv.dueAt ? inv.dueAt.toISOString() : null,

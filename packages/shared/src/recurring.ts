@@ -42,6 +42,8 @@ export const createStandingOrderSchema = z
     pickupWindow: pickupWindowSchema,
     /** True ⇒ the generated pickup is a single building concierge/lobby handoff. */
     concierge: z.boolean().default(false),
+    /** Track-A Phase 2: a cost centre the generated orders inherit (split-billing attribution). */
+    costCenterId: z.string().uuid().nullable().optional(),
     startsOn: dateOnlySchema,
     endsOn: dateOnlySchema.optional(),
     active: z.boolean().default(true),
@@ -59,6 +61,8 @@ export const updateStandingOrderSchema = z
     pickupWindow: pickupWindowSchema.optional(),
     concierge: z.boolean().optional(),
     active: z.boolean().optional(),
+    /** Track-A Phase 2: re-point (or clear with `null`) the cost centre generated orders inherit. */
+    costCenterId: z.string().uuid().nullable().optional(),
     endsOn: dateOnlySchema.nullable().optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
@@ -119,6 +123,8 @@ export interface StandingOrderView {
   weekday: number;
   pickupWindow: PickupWindow;
   concierge: boolean;
+  /** Track-A Phase 2: cost centre generated orders inherit (split-billing attribution), or null. */
+  costCenterId: string | null;
   active: boolean;
   startsOn: string; // YYYY-MM-DD
   endsOn: string | null;

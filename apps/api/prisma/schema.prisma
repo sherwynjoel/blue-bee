@@ -272,6 +272,15 @@ enum StandingOrderCadence {
   BIWEEKLY
 }
 
+// [Track A Phase 2] CostCenter.kind — condo/B2B billing-group taxonomy (PRD §B4.1). Nullable on the row.
+enum CostCenterKind {
+  WING
+  FLOOR
+  FUNDING
+  AMENITY
+  OTHER
+}
+
 enum PaymentMethod {
   CARD
   APPLE_PAY
@@ -423,6 +432,7 @@ model Account {
   routeStops     RouteStop[]
   priceLists     PriceList[]
   standingOrders StandingOrder[]
+  costCenters    CostCenter[]
 
   @@index([orgId])
 }
@@ -446,6 +456,7 @@ model Site {
   standingOrders StandingOrder[]
   residents      Resident[]
   lostFoundItems LostFoundItem[]
+  costCenters    CostCenter[]
 
   @@index([orgId])
   @@index([accountId])
@@ -533,12 +544,17 @@ model Order {
   scheduledPickupWindow   Json?         @map("scheduled_pickup_window")
   scheduledDeliveryWindow Json?         @map("scheduled_delivery_window")
   totals                  Json          @default("{}")
+  // [Track A Phase 2] Cost-centre split-billing attribution — orthogonal metadata (never touches the
+  // §5.1 spine). The batch-invoice engine groups by this id; FK SET NULL ⇒ a deleted centre falls the
+  // order into the "Unassigned" bucket (never lost).
+  costCenterId            String?       @map("cost_center_id") @db.Uuid
   createdAt               DateTime      @default(now()) @map("created_at")
   updatedAt               DateTime      @updatedAt @map("updated_at")
   createdBy               String?       @map("created_by") @db.Uuid
 
   account    Account     @relation(fields: [accountId], references: [id])
   site       Site?       @relation(fields: [siteId], references: [id])
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   lines      OrderLine[]
   items      Item[]
   quotes     Quote[]
@@ -554,6 +570,7 @@ model Order {
   // Track-A: the batch-invoicing path filters an account's orders by a created-at window
   // (account_id + created_at range), so a composite index keeps that query index-only.
   @@index([accountId, createdAt])
+  @@index([costCenterId])
 }
 
 model OrderLine {
@@ -1051,6 +1068,8 @@ model StandingOrder {
   // True ⇒ the generated pickup is a single building concierge/lobby handoff (RouteStop.stopKind=CONCIERGE).
   concierge    Boolean              @default(false)
   active       Boolean              @default(true)
+  // [Track A Phase 2] Cost centre the generated orders inherit (split-billing attribution). SET NULL.
+  costCenterId String?              @map("cost_center_id") @db.Uuid
   startsOn     DateTime             @map("starts_on") @db.Date // first eligible date + biweekly parity anchor
   endsOn       DateTime?            @map("ends_on") @db.Date
   nextRunAt    DateTime?            @map("next_run_at") // next due occurrence date (advisory; generation recomputes)
@@ -1064,11 +1083,13 @@ model StandingOrder {
   // standing order can't be deleted out from under it.
   site        Site                      @relation(fields: [siteId], references: [id], onDelete: Restrict)
   service     Service                   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  costCenter  CostCenter?               @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   occurrences StandingOrderOccurrence[]
 
   @@index([orgId])
   @@index([accountId])
   @@index([active, nextRunAt])
+  @@index([costCenterId])
 }
 
 // One row per (standing order, period) materialization — the IDEMPOTENCY ledger. `period_key` is the
@@ -1135,20 +1156,54 @@ model Invoice {
 
 // Per-line invoice breakdown (Increment 12) — lines from the approved quote + the HST line.
 model InvoiceLine {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  invoiceId   String   @map("invoice_id") @db.Uuid
-  description String
-  quantity    Int      @default(1)
-  unitAmount  Decimal  @map("unit_amount") @db.Decimal(12, 2)
-  amount      Decimal  @db.Decimal(12, 2)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  invoiceId    String   @map("invoice_id") @db.Uuid
+  description  String
+  quantity     Int      @default(1)
+  unitAmount   Decimal  @map("unit_amount") @db.Decimal(12, 2)
+  amount       Decimal  @db.Decimal(12, 2)
+  // [Track A Phase 2] The cost centre this line is attributed to (from the billed order). SET NULL.
+  costCenterId String?  @map("cost_center_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice    Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
 
   @@index([orgId])
   @@index([invoiceId])
+  @@index([costCenterId])
+}
+
+// [Track A Phase 2 — PRD §B4.1/§A5.2/§B5.2] A cost centre = a building's billing group (wing / floor /
+// funding line / amenity-vs-resident), living UNDER one Account (optionally scoped to a Site). Orders +
+// standing orders are attributed to one; the batch-invoice engine groups invoiced lines by cost centre
+// and writes a reconciling `Invoice.costCenterBreakdown`. Additive to the proven Account→Site model —
+// NOT a parent-of-accounts entity.
+model CostCenter {
+  id        String          @id @default(uuid()) @db.Uuid
+  orgId     String          @map("org_id") @db.Uuid
+  accountId String          @map("account_id") @db.Uuid
+  siteId    String?         @map("site_id") @db.Uuid
+  code      String
+  name      String
+  kind      CostCenterKind?
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  createdBy String?         @map("created_by") @db.Uuid
+
+  account        Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  site           Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  orders         Order[]
+  standingOrders StandingOrder[]
+  invoiceLines   InvoiceLine[]
+
+  @@unique([accountId, code])
+  @@index([orgId])
+  @@index([accountId])
+  @@index([siteId])
 }
 
 model Payment {

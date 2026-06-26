@@ -230,7 +230,9 @@ export class StandingOrderGenerationService implements OnModuleInit, OnModuleDes
       if (claimed.length === 0) return null;
       const occurrenceId = claimed[0].id;
 
-      // 2) Create the real Order (REQUESTED route-stop order for the building pickup).
+      // 2) Create the real Order (REQUESTED route-stop order for the building pickup). The generated
+      //    order INHERITS the standing order's cost centre (Track-A Phase 2 split-billing attribution),
+      //    so once it is priced + batch-invoiced it lands in the right cost-centre split automatically.
       const order = await tx.order.create({
         data: {
           orgId: so.orgId,
@@ -241,6 +243,7 @@ export class StandingOrderGenerationService implements OnModuleInit, OnModuleDes
           status: OrderStatus.REQUESTED,
           scheduledPickupWindow: buildPickupWindowForDate(date, window) as unknown as Prisma.InputJsonValue,
           totals: {},
+          costCenterId: so.costCenterId,
           createdBy: so.createdBy,
         },
         select: { id: true },

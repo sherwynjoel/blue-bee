@@ -314,6 +314,22 @@ export enum StandingOrderCadence {
   BIWEEKLY = 'BIWEEKLY',
 }
 
+/**
+ * [DERIVED — Track A Phase 2] CostCenter.kind — the taxonomy of a condo/B2B billing group
+ * (PRD §B4.1/§A5.2 "groups attached to the condominium"). A building's billing can be split by
+ * physical division (WING/FLOOR), funding line (FUNDING — e.g. reserve fund vs operating), or
+ * amenity-vs-resident (AMENITY). OTHER is the honest escape hatch; the field is nullable (an
+ * unclassified cost centre is allowed). Attribution is orthogonal metadata — it never touches the
+ * §5.1 order spine.
+ */
+export enum CostCenterKind {
+  WING = 'WING',
+  FLOOR = 'FLOOR',
+  FUNDING = 'FUNDING',
+  AMENITY = 'AMENITY',
+  OTHER = 'OTHER',
+}
+
 /** [DERIVED] Payment.method (§8.4 lists card/wallets/ACH/PAD). */
 export enum PaymentMethod {
   CARD = 'CARD',

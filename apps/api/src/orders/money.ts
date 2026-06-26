@@ -48,3 +48,25 @@ export function moneyToCents(money: string): number {
 export function decimalMoney(v: { toString(): string } | string): string {
   return centsToMoney(moneyToCents(typeof v === 'string' ? v : v.toString()));
 }
+
+/**
+ * Pull {subtotal, tax, total} fixed-2 dollar strings out of an `Order.totals` JSON, or null when the
+ * order carries no billable `total`. `total` is required to bill; `subtotal` defaults to `total` and
+ * `tax` to "0.00" when absent. The single source of truth for "is this order billable, and for how
+ * much" — shared by the batch-invoice engine (Track A) and the cost-centre split + report (Phase 2),
+ * so the two paths can never diverge on what an order is worth.
+ */
+export function parseOrderTotals(totals: unknown): { subtotal: string; tax: string; total: string } | null {
+  if (!totals || typeof totals !== 'object') return null;
+  const t = totals as Record<string, unknown>;
+  const num = (v: unknown): string | null => {
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return v;
+    if (typeof v === 'number' && Number.isFinite(v)) return v.toFixed(2);
+    return null;
+  };
+  const total = num(t.total);
+  if (total === null) return null;
+  const subtotal = num(t.subtotal) ?? total;
+  const tax = num(t.tax) ?? '0.00';
+  return { subtotal, tax, total };
+}

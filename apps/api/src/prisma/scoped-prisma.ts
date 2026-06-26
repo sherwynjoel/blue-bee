@@ -25,6 +25,10 @@ const ACCOUNT_DIRECT: Record<string, string> = {
   RouteStop: 'accountId',
   Account: 'id',
   StandingOrder: 'accountId',
+  // Track-A Phase 2: a cost centre lives directly under an account. A confined principal's reads/writes
+  // are pinned to their accounts (a cost centre is also nullable-site-scoped, but the account boundary
+  // is the tenancy guard; account-level centres carry a NULL site so are NOT filtered by SITE_DIRECT).
+  CostCenter: 'accountId',
 };
 
 /** Models whose account linkage is reachable via a relation path. */

@@ -11,6 +11,7 @@
  */
 import { z } from 'zod';
 import { InvoiceStatus, PaymentMethod, PaymentStatus } from './enums';
+import type { CostCenterBreakdownEntry } from './cost-centers';
 
 // ───────────────────────────── requests ─────────────────────────────
 
@@ -94,6 +95,12 @@ export interface InvoiceView {
   total: string;
   currency: string;
   lines: InvoiceLineView[];
+  /**
+   * Track-A Phase 2 cost-centre split (PRD §A5.2). One entry per cost centre (+ an explicit
+   * "Unassigned" bucket); the split subtotals/taxes/totals SUM EXACTLY to subtotal/tax/total. Empty
+   * `[]` for a single-order/unsplit invoice — the engine only populates it when batching by cost centre.
+   */
+  costCenterBreakdown: CostCenterBreakdownEntry[];
   issuedAt: string | null;
   paidAt: string | null;
   dueAt: string | null;

@@ -12,36 +12,28 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { scopedPrisma } from '../prisma/scoped-prisma';
 import { AuditService } from '../orders/audit.service';
-import { centsToMoney, decimalMoney, moneyToCents } from '../orders/money';
+import { centsToMoney, decimalMoney, moneyToCents, parseOrderTotals } from '../orders/money';
+import { buildCostCenterBreakdown, parseStoredBreakdown, type SplitLine } from '../cost-centers/cost-center-split';
 import type { RequestPrincipal } from '../auth/rbac/types';
 
 const CURRENCY = 'CAD';
-
-/** Pull {subtotal?, tax?, total} dollar strings out of an Order.totals JSON. total is required to bill. */
-function orderMoney(totals: unknown): { subtotal: string; tax: string; total: string } | null {
-  if (!totals || typeof totals !== 'object') return null;
-  const t = totals as Record<string, unknown>;
-  const num = (v: unknown): string | null => {
-    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return v;
-    if (typeof v === 'number' && Number.isFinite(v)) return v.toFixed(2);
-    return null;
-  };
-  const total = num(t.total);
-  if (total === null) return null;
-  const subtotal = num(t.subtotal) ?? total;
-  const tax = num(t.tax) ?? '0.00';
-  return { subtotal, tax, total };
-}
 
 /**
  * Per-account billing terms + the batch/periodic invoicing path (Track A, PRD §9.1 / §11 BILLING
  * `POST /invoices:batch`). Sets `Account.billingMode`/`billingNetDays`, and — for a BATCH_PERIODIC
  * account — batches a period's billable Orders into ONE periodic Invoice (net-days due), reusing the
- * Inc-12 Invoice + InvoiceLine models. PER_ORDER stays the Inc-12 specialty path. Cost-center split
- * billing is DEFERRED (Phase 2) — `Invoice.costCenterBreakdown` stays modeled-but-empty, never faked.
+ * Inc-12 Invoice + InvoiceLine models. PER_ORDER stays the Inc-12 specialty path.
+ *
+ * Cost-centre split billing (Phase 2, PRD §A5.2) — the engine groups the invoiced lines by the order's
+ * `costCenterId`, tags each InvoiceLine, and writes a structured `Invoice.costCenterBreakdown` whose
+ * split subtotals/taxes/totals RECONCILE EXACTLY to the invoice total (integer-cents partition; the
+ * `buildCostCenterBreakdown` helper is unit-locked). Orders with no cost centre land in an explicit
+ * "Unassigned" bucket — honest, never silently dropped. HST stays whatever the order's totals carry
+ * (derived upstream by the quote engine) — never re-derived or hardcoded here.
  *
  * Idempotent: the batch invoice number is deterministic per (account, period); a re-run returns the
- * existing invoice (re-read on the unique-number race), never a duplicate or a 500.
+ * existing invoice (re-read on the unique-number race), never a duplicate or a 500 — and because the
+ * split is a deterministic function of the same lines, the breakdown is stable across re-runs.
  */
 @Injectable()
 export class AccountBillingService {
@@ -108,7 +100,7 @@ export class AccountBillingService {
     // invoiced (no Invoice rows back-reference their id). Org-scoped read.
     const candidates = await db.order.findMany({
       where: { accountId, createdAt: { gte: from, lt: to } },
-      select: { id: true, totals: true, createdAt: true },
+      select: { id: true, totals: true, createdAt: true, costCenterId: true },
       orderBy: { createdAt: 'asc' },
     });
     const billableIds = candidates.map((o) => o.id);
@@ -118,14 +110,15 @@ export class AccountBillingService {
         .filter((x): x is string => x !== null),
     );
 
-    const lines: { orderId: string; description: string; subtotalCents: number; taxCents: number; totalCents: number }[] = [];
+    const lines: (SplitLine & { orderId: string; description: string })[] = [];
     for (const o of candidates) {
       if (alreadyInvoiced.has(o.id)) continue;
-      const m = orderMoney(o.totals);
+      const m = parseOrderTotals(o.totals);
       if (!m) continue;
       lines.push({
         orderId: o.id,
         description: `Order ${o.id.slice(0, 8).toUpperCase()} — ${o.createdAt.toISOString().slice(0, 10)}`,
+        costCenterId: o.costCenterId,
         subtotalCents: moneyToCents(m.subtotal),
         taxCents: moneyToCents(m.tax),
         totalCents: moneyToCents(m.total),
@@ -138,6 +131,18 @@ export class AccountBillingService {
     const subtotalCents = lines.reduce((a, l) => a + l.subtotalCents, 0);
     const taxCents = lines.reduce((a, l) => a + l.taxCents, 0);
     const totalCents = lines.reduce((a, l) => a + l.totalCents, 0);
+
+    // Cost-centre split (PRD §A5.2): resolve code/name for the referenced centres (scoped to this
+    // account), then partition the lines into the reconciling breakdown. The split is a pure function of
+    // the same lines, so it sums EXACTLY to the invoice subtotal/tax/total and is stable on a re-run.
+    const ccIds = [...new Set(lines.map((l) => l.costCenterId).filter((x): x is string => x !== null))];
+    const ccMeta = new Map<string, { code: string; name: string }>();
+    if (ccIds.length > 0) {
+      const ccs = await db.costCenter.findMany({ where: { accountId, id: { in: ccIds } }, select: { id: true, code: true, name: true } });
+      for (const c of ccs) ccMeta.set(c.id, { code: c.code, name: c.name });
+    }
+    const costCenterBreakdown = buildCostCenterBreakdown(lines, ccMeta);
+
     const issuedAt = new Date();
     const dueAt = new Date(issuedAt.getTime() + account.billingNetDays * 86_400_000);
 
@@ -158,13 +163,14 @@ export class AccountBillingService {
             status: InvoiceStatus.ISSUED,
             issuedAt,
             dueAt,
-            lines: lines.map((l) => ({ orderId: l.orderId, description: l.description, amount: centsToMoney(l.totalCents) })) as unknown as Prisma.InputJsonValue,
+            lines: lines.map((l) => ({ orderId: l.orderId, description: l.description, amount: centsToMoney(l.totalCents), costCenterId: l.costCenterId })) as unknown as Prisma.InputJsonValue,
+            costCenterBreakdown: costCenterBreakdown as unknown as Prisma.InputJsonValue,
             createdBy: principal.userId,
           },
           select: { id: true },
         });
         await tx.invoiceLine.createMany({
-          data: lines.map((l) => ({ orgId: principal.orgId, invoiceId: inv.id, description: l.description, quantity: 1, unitAmount: centsToMoney(l.totalCents), amount: centsToMoney(l.totalCents) })),
+          data: lines.map((l) => ({ orgId: principal.orgId, invoiceId: inv.id, description: l.description, quantity: 1, unitAmount: centsToMoney(l.totalCents), amount: centsToMoney(l.totalCents), costCenterId: l.costCenterId })),
         });
         await this.audit.record(
           {
@@ -173,7 +179,7 @@ export class AccountBillingService {
             entity: 'Invoice',
             entityId: inv.id,
             action: 'BATCH_INVOICE_GENERATED',
-            after: { accountId, period, orderCount: lines.length, total: centsToMoney(totalCents), netDays: account.billingNetDays },
+            after: { accountId, period, orderCount: lines.length, total: centsToMoney(totalCents), netDays: account.billingNetDays, costCenterCount: costCenterBreakdown.length },
           },
           tx,
         );
@@ -204,6 +210,7 @@ export class AccountBillingService {
       total: decimalMoney(inv.total),
       currency: inv.currency,
       lines: inv.invoiceLines.map((l) => ({ description: l.description, quantity: l.quantity, unitAmount: decimalMoney(l.unitAmount), amount: decimalMoney(l.amount) })),
+      costCenterBreakdown: parseStoredBreakdown(inv.costCenterBreakdown),
       issuedAt: inv.issuedAt ? inv.issuedAt.toISOString() : null,
       paidAt: inv.paidAt ? inv.paidAt.toISOString() : null,
       dueAt: inv.dueAt ? inv.dueAt.toISOString() : null,

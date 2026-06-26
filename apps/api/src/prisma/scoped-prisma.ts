@@ -24,6 +24,7 @@ const ACCOUNT_DIRECT: Record<string, string> = {
   Invoice: 'accountId',
   RouteStop: 'accountId',
   Account: 'id',
+  StandingOrder: 'accountId',
 };
 
 /** Models whose account linkage is reachable via a relation path. */
@@ -38,6 +39,7 @@ const ACCOUNT_VIA: Record<string, (filter: unknown) => Record<string, unknown>> 
   CustodyEvent: (f) => ({ item: { order: { accountId: f } } }),
   GeofenceEvent: (f) => ({ routeStop: { accountId: f } }),
   ProofOfDelivery: (f) => ({ routeStop: { accountId: f } }),
+  StandingOrderOccurrence: (f) => ({ standingOrder: { accountId: f } }),
 };
 
 /** Models that also carry a direct siteId (for SITE-scoped principals). */

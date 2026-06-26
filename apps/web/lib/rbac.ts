@@ -20,6 +20,8 @@ export const ANALYTICS_OPERATIONAL_ROLES: RoleType[] = [
 ];
 export const ANALYTICS_COMMERCIAL_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE];
 export const ANALYTICS_SCORECARD_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE, RoleType.CSR];
+// Admin (Inc 16) — OWNER only (§17.3 admin row), mirrors the server @Roles(OWNER).
+export const ADMIN_ROLES: RoleType[] = [RoleType.OWNER];
 
 export function roleNames(me: MeResponse | null): RoleType[] {
   return me ? me.user.roles.map((r) => r.role) : [];
@@ -45,4 +47,5 @@ export const can = {
   analyticsOperational: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_OPERATIONAL_ROLES),
   analyticsCommercial: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_COMMERCIAL_ROLES),
   analyticsScorecard: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_SCORECARD_ROLES),
+  admin: (me: MeResponse | null) => hasAnyRole(me, ADMIN_ROLES),
 };

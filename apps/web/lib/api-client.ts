@@ -2,10 +2,20 @@ import { ApiClient, type TokenStore } from '@blue-bee/api-client';
 import type {
   AccountScorecard,
   AddStopDto,
+  AdminDevice,
+  AdminDevicesResult,
+  AdminDriversResult,
+  AdminUserRolesResult,
+  AdminUsersResult,
+  AssignDriverVehicleDto,
+  AssignRoleDto,
   AssignRouteDto,
+  AuditLogResult,
   CommercialAnalytics,
   ConfirmMediaDto,
+  CreateDeviceDto,
   CreateDriverDto,
+  NotificationConfigView,
   CreateRouteDto,
   CreateShiftDto,
   CreateVehicleDto,
@@ -226,6 +236,54 @@ export class ConsoleApiClient extends ApiClient {
   accountScorecard(accountId: string, range: AnalyticsRange = {}): Promise<AccountScorecard> {
     return this.request('GET', `/analytics/accounts/${accountId}/scorecard${rangeQs(range)}`);
   }
+
+  // ───────────── admin (Inc 16, PRD Epic B6.2 — OWNER-gated) ─────────────
+
+  adminListUsers(): Promise<AdminUsersResult> {
+    return this.request('GET', '/admin/users');
+  }
+  adminAssignRole(userId: string, dto: AssignRoleDto): Promise<AdminUserRolesResult> {
+    return this.request('POST', `/admin/users/${userId}/roles`, { body: dto });
+  }
+  adminRevokeRole(userId: string, roleId: string): Promise<AdminUserRolesResult> {
+    return this.request('DELETE', `/admin/users/${userId}/roles/${roleId}`);
+  }
+  adminListDevices(): Promise<AdminDevicesResult> {
+    return this.request('GET', '/admin/devices');
+  }
+  adminCreateDevice(dto: CreateDeviceDto): Promise<AdminDevice> {
+    return this.request('POST', '/admin/devices', { body: dto });
+  }
+  adminDeleteDevice(id: string): Promise<void> {
+    return this.request('DELETE', `/admin/devices/${id}`);
+  }
+  adminListDrivers(): Promise<AdminDriversResult> {
+    return this.request('GET', '/admin/drivers');
+  }
+  adminAssignDriverVehicle(driverId: string, dto: AssignDriverVehicleDto): Promise<AdminDriversResult['drivers'][number]> {
+    return this.request('PATCH', `/admin/drivers/${driverId}`, { body: dto });
+  }
+  adminNotificationConfig(): Promise<NotificationConfigView> {
+    return this.request('GET', '/admin/notification-config');
+  }
+  adminAuditLogs(query: AdminAuditQuery = {}): Promise<AuditLogResult> {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) if (v) p.set(k, String(v));
+    const qs = p.toString();
+    return this.request('GET', `/admin/audit-logs${qs ? `?${qs}` : ''}`);
+  }
+}
+
+/** Filters for the admin audit-log viewer. */
+export interface AdminAuditQuery {
+  entity?: string;
+  entityId?: string;
+  actorId?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  cursor?: string;
+  limit?: number;
 }
 
 /** An analytics window — both bounds optional (the server defaults to the last 30 days). */

@@ -17,6 +17,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { PaymentsModule } from './payments/payments.module';
 import { OwnerModule } from './owner/owner.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { AdminModule } from './admin/admin.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -53,6 +54,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     DriverModule,
     OwnerModule,
     AnalyticsModule,
+    AdminModule,
     HealthModule,
   ],
 })

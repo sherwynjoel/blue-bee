@@ -16,6 +16,7 @@
     "@blue-bee/api-client": "*",
     "@blue-bee/shared": "*",
     "leaflet": "^1.9.4",
+    "lucide-react": "^0.468.0",
     "next": "^14.2.5",
     "react": "18.2.0",
     "react-dom": "18.2.0",

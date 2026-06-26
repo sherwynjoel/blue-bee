@@ -74,6 +74,8 @@ const SO: StandingOrderView = {
   weekday: 1,
   pickupWindow: { start: '07:00', end: '09:00' },
   concierge: true,
+  // cost-centre split-billing landed on another branch (Phase-2 attribution); null here.
+  costCenterId: null,
   active: true,
   startsOn: '2026-06-01',
   endsOn: null,
@@ -98,6 +100,7 @@ const INVOICE: InvoiceView = {
   total: '525.45',
   currency: 'CAD',
   lines: [{ description: 'Order 11111111 — 2026-06-22', quantity: 1, unitAmount: '135.60', amount: '135.60' }],
+  costCenterBreakdown: [],
   issuedAt: '2026-06-26T00:00:00.000Z',
   paidAt: null,
   dueAt: '2026-07-26T00:00:00.000Z',

@@ -1,0 +1,33 @@
+{
+  "name": "@blue-bee/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Blue Bee canonical design tokens (the 'Daylight' system) — pure-TS typed constants (color light/dark, space, radius, type scale, elevation, motion) + an optional Tailwind preset. No React, no platform imports: imported by the web (Tailwind) and the Expo apps so the look stays consistent across surfaces. Single source of truth; mirrors docs/design/DESIGN-LANGUAGE.md.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --ext .ts --max-warnings=0",
+    "test": "jest",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.5",
+    "typescript": "^5.5.4"
+  }
+}

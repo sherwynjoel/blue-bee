@@ -13,6 +13,7 @@ import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { ExceptionsScreen } from './src/screens/ExceptionsScreen';
 import { OrderDetailScreen } from './src/screens/OrderDetailScreen';
 import { RouteDetailScreen } from './src/screens/RouteDetailScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
 import { useNotificationDeepLinks } from './src/push/useDeepLink';
 import { navigationRef, type RootStackParamList } from './src/navigation';
 
@@ -34,6 +35,7 @@ function SignedInStack(): React.ReactElement {
         component={RouteDetailScreen}
         options={({ route }) => ({ title: route.params.title ?? 'Route' })}
       />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Stack.Navigator>
   );
 }

@@ -102,4 +102,14 @@ export class CustomerApiClient extends ApiClient {
   confirmMedia(dto: ConfirmMediaDto): Promise<MediaResult> {
     return this.request('POST', '/media/confirm', { body: dto });
   }
+
+  // ───────────── account (launch-scaffolding — store-required self-deletion) ─────────────
+
+  /**
+   * Permanently delete the signed-in user's OWN account. The server purges PII children + anonymizes
+   * the user row (irreversible, audited); the app must then clear the local session (sign out).
+   */
+  deleteAccount(): Promise<void> {
+    return this.request('DELETE', '/account', { body: {} });
+  }
 }

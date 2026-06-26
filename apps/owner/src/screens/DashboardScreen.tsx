@@ -75,6 +75,10 @@ export function DashboardScreen({ navigation }: { navigation: Nav }): React.Reac
         </>
       ) : null}
 
+      <TouchableOpacity style={styles.settings} onPress={() => navigation.navigate('Settings')} testID="settings">
+        <Text style={styles.settingsText}>Settings</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.signout} onPress={() => void logout()} testID="signout">
         <Text style={styles.signoutText}>Sign out</Text>
       </TouchableOpacity>
@@ -143,6 +147,8 @@ const styles = StyleSheet.create({
   countTextAlert: { color: '#cf222e' },
   chev: { fontSize: 24, color: '#8c959f' },
   stamp: { color: '#8c959f', fontSize: 12, textAlign: 'center', marginTop: 12 },
-  signout: { marginTop: 24, alignItems: 'center' },
+  settings: { marginTop: 24, alignItems: 'center' },
+  settingsText: { color: '#1f6feb', fontSize: 15, fontWeight: '600' },
+  signout: { marginTop: 16, alignItems: 'center' },
   signoutText: { color: '#57606a', fontSize: 15 },
 });

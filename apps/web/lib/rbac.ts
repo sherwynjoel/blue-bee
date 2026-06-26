@@ -10,6 +10,16 @@ export const INTAKE_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.
 export const DISPATCH_ROLES: RoleType[] = [RoleType.OWNER, RoleType.DISPATCHER];
 export const FLEET_READ_ROLES: RoleType[] = [RoleType.OWNER, RoleType.DISPATCHER, RoleType.CSR];
 export const FINANCE_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE];
+// Analytics (Inc 15) — MIRRORS the server's per-dashboard @Roles (analytics.controller.ts).
+export const ANALYTICS_OPERATIONAL_ROLES: RoleType[] = [
+  RoleType.OWNER,
+  RoleType.DISPATCHER,
+  RoleType.CSR,
+  RoleType.PLANT_OP,
+  RoleType.FINANCE,
+];
+export const ANALYTICS_COMMERCIAL_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE];
+export const ANALYTICS_SCORECARD_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE, RoleType.CSR];
 
 export function roleNames(me: MeResponse | null): RoleType[] {
   return me ? me.user.roles.map((r) => r.role) : [];
@@ -30,4 +40,9 @@ export const can = {
   dispatch: (me: MeResponse | null) => hasAnyRole(me, DISPATCH_ROLES),
   fleet: (me: MeResponse | null) => hasAnyRole(me, FLEET_READ_ROLES),
   finance: (me: MeResponse | null) => hasAnyRole(me, FINANCE_ROLES),
+  // Analytics — `analytics` gates the nav (any dashboard); the three sub-checks gate each section.
+  analytics: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_OPERATIONAL_ROLES),
+  analyticsOperational: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_OPERATIONAL_ROLES),
+  analyticsCommercial: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_COMMERCIAL_ROLES),
+  analyticsScorecard: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_SCORECARD_ROLES),
 };

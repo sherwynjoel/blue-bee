@@ -1,7 +1,9 @@
 import { ApiClient, type TokenStore } from '@blue-bee/api-client';
 import type {
+  AccountScorecard,
   AddStopDto,
   AssignRouteDto,
+  CommercialAnalytics,
   ConfirmMediaDto,
   CreateDriverDto,
   CreateRouteDto,
@@ -16,6 +18,7 @@ import type {
   ListOrdersQuery,
   ListRoutesQuery,
   MediaResult,
+  OperationalAnalytics,
   OptimizeRouteDto,
   PatchStopDto,
   PaymentView,
@@ -211,6 +214,33 @@ export class ConsoleApiClient extends ApiClient {
   listDisputes(): Promise<DisputeView[]> {
     return this.request('GET', '/disputes');
   }
+
+  // ───────────── analytics (Inc 15, PRD §13) ─────────────
+
+  analyticsOperational(range: AnalyticsRange = {}): Promise<OperationalAnalytics> {
+    return this.request('GET', `/analytics/operational${rangeQs(range)}`);
+  }
+  analyticsCommercial(range: AnalyticsRange = {}): Promise<CommercialAnalytics> {
+    return this.request('GET', `/analytics/commercial${rangeQs(range)}`);
+  }
+  accountScorecard(accountId: string, range: AnalyticsRange = {}): Promise<AccountScorecard> {
+    return this.request('GET', `/analytics/accounts/${accountId}/scorecard${rangeQs(range)}`);
+  }
+}
+
+/** An analytics window — both bounds optional (the server defaults to the last 30 days). */
+export interface AnalyticsRange {
+  from?: string;
+  to?: string;
+}
+
+/** Build the `?from=&to=` query string (omitting empty bounds). */
+function rangeQs(range: AnalyticsRange): string {
+  const p = new URLSearchParams();
+  if (range.from) p.set('from', range.from);
+  if (range.to) p.set('to', range.to);
+  const qs = p.toString();
+  return qs ? `?${qs}` : '';
 }
 
 /** A §5.4 stop transition returns the updated stop (status + exception/timestamps). */

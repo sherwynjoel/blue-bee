@@ -46,6 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.Rea
     { href: '/dispatch', label: 'Dispatch', show: can.dispatch(me) || can.fleet(me) },
     { href: '/fleet', label: 'Live fleet', show: can.fleet(me) },
     { href: '/finance', label: 'Finance', show: can.finance(me) },
+    { href: '/analytics', label: 'Analytics', show: can.analytics(me) },
   ];
 
   return (

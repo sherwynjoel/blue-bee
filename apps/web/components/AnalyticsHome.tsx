@@ -11,7 +11,8 @@ import type {
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
-import { money } from '@/lib/format';
+import { formatNumber, money } from '@/lib/format';
+import { guardStopsPerHour, type RateGuard } from '@/lib/ratio';
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Loading } from './ui';
 import { RequireCapability } from './AppShell';
 
@@ -106,7 +107,7 @@ function OperationalSection({ range }: { range: Range }): React.ReactElement {
             <Stat label="On-time delivery" metric={data.metrics.onTimeDeliveryPercent} render={asPercent} />
             <Stat label="Route adherence" metric={data.metrics.routeAdherencePercent} render={asPercent} />
             <Stat label="Failed/skip rate" metric={data.metrics.failedSkipRatePercent} render={asPercent} />
-            <Stat label="Stops / hour" metric={data.metrics.stopsPerHour} render={asNumber} />
+            <Stat label="Stops / hour" metric={data.metrics.stopsPerHour} render={asNumber} guard={guardStopsPerHour} />
             <Stat label="Avg dwell (min)" metric={data.metrics.avgDwellMinutes} render={asNumber} />
             <Stat label="Items-lost rate" metric={data.metrics.itemsLostRatePercent} render={asPercent} />
             <Stat label="Rewash rate" metric={data.metrics.rewashRatePercent} render={asPercent} />
@@ -264,23 +265,31 @@ function ScorecardSection({ range }: { range: Range }): React.ReactElement {
 // ───────────────────────────── shared renderers ─────────────────────────────
 
 const asPercent = (v: number): string => `${v}%`;
-const asNumber = (v: number): string => String(v);
+const asNumber = (v: number): string => formatNumber(v);
 
 function StatGrid({ children }: { children: React.ReactNode }): React.ReactElement {
   return <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{children}</div>;
 }
 
-/** A single metric tile that honours the {@link Metric} wrapper — never invents a value. */
+/**
+ * A single metric tile that honours the {@link Metric} wrapper — never invents a value. An optional
+ * `guard` adds a display-side plausibility check for rate metrics: a computed-but-implausible figure
+ * (collapsed denominator) renders an honest "n/a (insufficient data)" with the raw value disclosed in
+ * the tooltip, instead of an absurd number. The data-layer source of truth is unchanged.
+ */
 function Stat<T>({
   label,
   metric,
   render,
+  guard,
 }: {
   label: string;
   metric: Metric<T>;
   render: (value: T) => string;
+  guard?: (value: T) => RateGuard;
 }): React.ReactElement {
   let body: React.ReactNode;
+  let tooltip = metric.note;
   if (metric.status === 'unavailable_in_phase_1') {
     body = <Badge tone="amber">Phase 2</Badge>;
   } else if (metric.status === 'error') {
@@ -288,11 +297,21 @@ function Stat<T>({
   } else if (metric.value === null) {
     body = <span className="text-bb-sub">—</span>;
   } else {
-    body = <span className="text-xl font-semibold text-bb-ink">{render(metric.value)}</span>;
+    const checked = guard?.(metric.value);
+    if (checked && !checked.plausible) {
+      tooltip = checked.reason;
+      body = (
+        <span className="text-base font-semibold text-bb-sub">
+          n/a <span className="text-xs font-normal">(insufficient data)</span>
+        </span>
+      );
+    } else {
+      body = <span className="text-xl font-semibold text-bb-ink">{render(metric.value)}</span>;
+    }
   }
 
   return (
-    <div className="rounded-lg border border-bb-line bg-white p-3" data-testid={`stat-${label}`} title={metric.note}>
+    <div className="rounded-lg border border-bb-line bg-white p-3" data-testid={`stat-${label}`} title={tooltip}>
       <div className="mb-1 text-xs font-medium text-bb-sub">{label}</div>
       {body}
       {metric.status === 'ok' && metric.rowCount !== null && (
@@ -312,6 +331,6 @@ function SectionBody<T>({
 }): React.ReactElement {
   if (state.loading) return <Loading />;
   if (state.error) return <ErrorBox message={state.error} onRetry={state.reload} />;
-  if (!state.data) return <EmptyState message="No data." />;
+  if (!state.data) return <EmptyState title="Nothing in this window" message="No analytics rows for the selected date range. Try widening the dates." />;
   return <>{children(state.data)}</>;
 }

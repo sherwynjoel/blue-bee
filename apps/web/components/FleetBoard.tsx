@@ -14,7 +14,7 @@ import { RequireCapability } from './AppShell';
 // The map is a browser-only seam (Leaflet touches window) → dynamic import, no SSR.
 const FleetMap = dynamic(() => import('./FleetMap'), {
   ssr: false,
-  loading: () => <div className="flex h-[460px] items-center justify-center rounded-xl border border-bb-line bg-white"><Loading label="Loading map…" /></div>,
+  loading: () => <div className="flex h-[560px] items-center justify-center rounded-xl border border-bb-line bg-white"><Loading label="Loading map…" /></div>,
 });
 
 export function FleetBoard(): React.ReactElement {
@@ -54,33 +54,38 @@ function FleetBoardInner(): React.ReactElement {
         <Badge tone={status === 'live' ? 'green' : 'amber'}>{status === 'live' ? '● Live' : status === 'connecting' ? 'Connecting…' : 'Snapshot (polling)'}</Badge>
       </div>
 
-      {vehicles.length === 0 ? (
-        <EmptyState message="No vehicles are reporting a position yet." />
-      ) : (
-        <FleetMap vehicles={vehicles} />
-      )}
+      {/* Map dominates (2/3 on desktop); the vehicle list sits beside it and scrolls so it never dwarfs the map. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          {vehicles.length === 0 ? (
+            <EmptyState title="No vehicles on the map yet" message="No vehicles are reporting a position yet." />
+          ) : (
+            <FleetMap vehicles={vehicles} height={560} />
+          )}
+        </div>
 
-      <Card title={`Vehicles (${data.vehicles.length} live · ${data.withoutPosition.length} idle)`}>
-        <ul className="divide-y divide-bb-line text-sm">
-          {data.vehicles.map((v) => {
-            const live = positions[v.vehicleId];
-            return (
-              <li key={v.vehicleId} className="flex items-center justify-between py-2" data-testid={`fleet-${v.vehicleId}`}>
-                <span className="font-medium text-bb-ink">{v.label}</span>
-                <span className="text-bb-sub">
-                  {live ? <Badge tone="green">live</Badge> : <>updated {timeAgo(v.recordedAt)}</>}
-                </span>
+        <Card title={`Vehicles (${data.vehicles.length} live · ${data.withoutPosition.length} idle)`}>
+          <ul className="max-h-[500px] divide-y divide-bb-line overflow-y-auto text-sm">
+            {data.vehicles.map((v) => {
+              const live = positions[v.vehicleId];
+              return (
+                <li key={v.vehicleId} className="flex items-center justify-between py-2 pr-1" data-testid={`fleet-${v.vehicleId}`}>
+                  <span className="font-medium text-bb-ink">{v.label}</span>
+                  <span className="text-bb-sub">
+                    {live ? <Badge tone="green">live</Badge> : <>updated {timeAgo(v.recordedAt)}</>}
+                  </span>
+                </li>
+              );
+            })}
+            {data.withoutPosition.map((v) => (
+              <li key={v.vehicleId} className="flex items-center justify-between py-2 pr-1 text-bb-sub">
+                <span>{v.label}</span>
+                <span>no position</span>
               </li>
-            );
-          })}
-          {data.withoutPosition.map((v) => (
-            <li key={v.vehicleId} className="flex items-center justify-between py-2 text-bb-sub">
-              <span>{v.label}</span>
-              <span>no position</span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+            ))}
+          </ul>
+        </Card>
+      </div>
     </div>
   );
 }

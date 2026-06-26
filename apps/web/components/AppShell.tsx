@@ -7,6 +7,7 @@ import { useSession } from '@/lib/session';
 import { can, isOps, roleNames } from '@/lib/rbac';
 import { Button, Loading } from './ui';
 import { Login } from './Login';
+import { Logo } from './Logo';
 
 interface NavItem {
   href: string;
@@ -55,8 +56,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.Rea
       <header className="border-b border-bb-line bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-6">
-            <Link href="/orders" className="text-lg font-bold text-bb-ink">
-              🐝 Blue Bee
+            <Link href="/orders" aria-label="Blue Bee — go to orders" className="shrink-0">
+              <Logo />
             </Link>
             <nav className="flex items-center gap-1">
               {nav
@@ -67,7 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.Rea
                     <Link
                       key={n.href}
                       href={n.href}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${active ? 'bg-blue-50 text-bb-blue' : 'text-bb-sub hover:text-bb-ink'}`}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${active ? 'bg-bb-blueSoft text-bb-blue' : 'text-bb-sub hover:text-bb-ink'}`}
                     >
                       {n.label}
                     </Link>

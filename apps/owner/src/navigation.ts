@@ -8,6 +8,7 @@ export type RootStackParamList = {
   Exceptions: undefined;
   OrderDetail: { orderId: string };
   RouteDetail: { routeId: string; title?: string };
+  Settings: undefined;
 };
 
 /** A ref so out-of-tree code (a tapped push) can deep-link into the stack. */

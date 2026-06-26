@@ -114,4 +114,25 @@ describe('ApiClient (driver app)', () => {
     expect(err.isConflict).toBe(true);
     expect(err.code).toBe('illegal_stop_transition');
   });
+
+  it('deleteAccount issues DELETE /v1/account with auth', async () => {
+    const store = new MemoryTokenStore();
+    await store.setTokens('access-1', 'refresh-1');
+    const client = new ApiClient('http://api', store);
+
+    let lastUrl = '';
+    let lastMethod: string | undefined;
+    let lastAuth: string | undefined;
+    global.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      lastUrl = String(url);
+      lastMethod = init?.method;
+      lastAuth = authOf(init);
+      return jsonRes(200, { status: 'deleted' });
+    }) as unknown as typeof fetch;
+
+    await client.deleteAccount();
+    expect(lastUrl).toBe('http://api/v1/account');
+    expect(lastMethod).toBe('DELETE');
+    expect(lastAuth).toBe('Bearer access-1');
+  });
 });

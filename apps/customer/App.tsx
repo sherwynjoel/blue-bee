@@ -12,6 +12,7 @@ import { BookScreen } from './src/screens/BookScreen';
 import { OrderDetailScreen } from './src/screens/OrderDetailScreen';
 import { TrackScreen } from './src/screens/TrackScreen';
 import { PayScreen } from './src/screens/PayScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
 import { navigationRef, openOrderTracking, type RootStackParamList } from './src/navigation';
 import { usePushDeepLinks } from './src/push/register';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config';
@@ -42,6 +43,7 @@ function Root(): React.ReactElement {
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order' }} />
       <Stack.Screen name="Track" component={TrackScreen} options={{ title: 'Track my truck' }} />
       <Stack.Screen name="Pay" component={PayScreen} options={{ title: 'Pay' }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Stack.Navigator>
   );
 }

@@ -72,6 +72,14 @@ describe('Owner ApiClient routes', () => {
     expect(await client.accessToken()).toBe('access-1');
   });
 
+  it('deleteAccount issues DELETE /v1/account with auth', async () => {
+    const { client, last } = setup(200, { status: 'deleted' });
+    await client.deleteAccount();
+    expect(last().url).toBe('http://api/v1/account');
+    expect(last().method).toBe('DELETE');
+    expect(last().headers.authorization).toBe('Bearer access-1');
+  });
+
   it('device-token register/unregister hit /device-tokens (inherited)', async () => {
     const { client, calls } = setup(200, { id: 'd1', platform: 'IOS', token: 't', active: true, createdAt: 'now' });
     await client.registerDeviceToken({ token: 'ExponentPushToken[x]', platform: DevicePlatform.IOS });

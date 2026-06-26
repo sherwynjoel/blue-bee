@@ -7,6 +7,7 @@ export type RootStackParamList = {
   OrderDetail: { orderId: string };
   Track: { orderId: string };
   Pay: { orderId: string };
+  Settings: undefined;
 };
 
 /** A ref so out-of-tree code (a tapped push) can deep-link into the stack. */

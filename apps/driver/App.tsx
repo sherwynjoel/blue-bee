@@ -9,6 +9,7 @@ import { LoginScreen } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { RouteScreen } from './src/screens/RouteScreen';
 import { StopScreen } from './src/screens/StopScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
 import type { RootStackParamList } from './src/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -32,6 +33,7 @@ function Root(): React.ReactElement {
       <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'My shift' }} />
       <Stack.Screen name="Route" component={RouteScreen} options={{ title: 'My route today' }} />
       <Stack.Screen name="Stop" component={StopScreen} options={{ title: 'Stop' }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Stack.Navigator>
   );
 }

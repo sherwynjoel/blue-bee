@@ -103,4 +103,13 @@ describe('CustomerApiClient routes', () => {
     expect(calls[0]!.url).toBe('http://api/v1/orders/o1/payment');
     expect(calls[1]!.url).toBe('http://api/v1/orders/o1/invoice');
   });
+
+  // ── Account self-deletion (launch-scaffolding) ──
+  it('deleteAccount issues DELETE /v1/account with auth', async () => {
+    const { client, last } = setup(200, { status: 'deleted' });
+    await client.deleteAccount();
+    expect(last().url).toBe('http://api/v1/account');
+    expect(last().method).toBe('DELETE');
+    expect(last().headers.authorization).toBe('Bearer access-1');
+  });
 });

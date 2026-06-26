@@ -73,4 +73,11 @@ export class ApiClient extends BaseApiClient {
     const qs = status ? `?status=${encodeURIComponent(status)}&limit=100` : '?limit=100';
     return this.request('GET', `/routes${qs}`);
   }
+
+  // ───────────── account (launch-scaffolding — store-required self-deletion) ─────────────
+
+  /** Permanently delete the signed-in user's OWN account (server purges PII + anonymizes); then sign out. */
+  deleteAccount(): Promise<void> {
+    return this.request('DELETE', '/account', { body: {} });
+  }
 }

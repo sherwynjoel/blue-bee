@@ -13,6 +13,8 @@ type Status = 'loading' | 'signedOut' | 'signedIn';
 interface SessionValue {
   status: Status;
   me: MeResponse | null;
+  /** The driver API client (used by Settings for the store-required self-deletion). */
+  client: ApiClient;
   assignment: DriverAssignment | null;
   /** Drives the visible "sharing location" indicator. */
   sharingLocation: boolean;
@@ -121,6 +123,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
   const value: SessionValue = {
     status: session.status,
     me: session.me,
+    client,
     assignment,
     sharingLocation,
     requestOtp: session.requestOtp,

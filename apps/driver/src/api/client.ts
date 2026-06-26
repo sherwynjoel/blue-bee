@@ -39,4 +39,11 @@ export class ApiClient extends BaseApiClient {
   postLocations(batch: LocationBatchDto): Promise<LocationBatchResult> {
     return this.request('POST', '/locations:batch', { body: batch });
   }
+
+  // ───────────── account (launch-scaffolding — store-required self-deletion) ─────────────
+
+  /** Permanently delete the signed-in user's OWN account (server purges PII + anonymizes); then sign out. */
+  deleteAccount(): Promise<void> {
+    return this.request('DELETE', '/account', { body: {} });
+  }
 }

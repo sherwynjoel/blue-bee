@@ -61,9 +61,14 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.hello}>Hi{me?.user.name ? `, ${me.user.name.split(' ')[0]}` : ''}</Text>
-        <TouchableOpacity testID="logout" onPress={() => void logout()}>
-          <Text style={styles.link}>Sign out</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity testID="settings" onPress={() => navigation.navigate('Settings')}>
+            <Text style={styles.link}>Settings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity testID="logout" onPress={() => void logout()}>
+            <Text style={styles.link}>Sign out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <TouchableOpacity testID="book-cta" style={styles.bookCta} onPress={() => navigation.navigate('Book')}>
@@ -97,6 +102,7 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f6f8fa', padding: 16 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   hello: { fontSize: 22, fontWeight: '700', color: '#1f2328' },
   link: { color: '#1f6feb', fontSize: 15 },
   bookCta: { backgroundColor: '#1f6feb', borderRadius: 10, padding: 14, alignItems: 'center', marginBottom: 16 },

@@ -86,6 +86,10 @@ export function HomeScreen({ navigation }: HomeProps): React.ReactElement {
           )}
         </View>
 
+        <TouchableOpacity testID="settings" style={styles.settings} onPress={() => navigation.navigate('Settings')}>
+          <Text style={styles.settingsText}>Settings</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity testID="logout" style={styles.logout} onPress={() => void logout()}>
           <Text style={styles.logoutText}>Sign out</Text>
         </TouchableOpacity>
@@ -120,6 +124,8 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '600' },
   hint: { color: '#6b7280', fontSize: 12, marginTop: 4 },
   empty: { color: '#6b7280' },
+  settings: { padding: 12, alignItems: 'center' },
+  settingsText: { color: '#1f6feb', fontWeight: '600' },
   logout: { padding: 12, alignItems: 'center' },
   logoutText: { color: '#b91c1c', fontWeight: '600' },
 });

@@ -19,6 +19,7 @@ import { OwnerModule } from './owner/owner.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
 import { RecurringModule } from './recurring/recurring.module';
+import { AccountModule } from './account/account.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -57,6 +58,7 @@ import { RecurringModule } from './recurring/recurring.module';
     AnalyticsModule,
     AdminModule,
     RecurringModule,
+    AccountModule,
     HealthModule,
   ],
 })

@@ -12,9 +12,13 @@ export const REDIS = Symbol('REDIS_CLIENT');
       provide: REDIS,
       useFactory: (): Redis => {
         const logger = new Logger('RedisModule');
+        // REDIS_FAMILY forces the DNS address family (Railway private networking is IPv6-only → set
+        // REDIS_FAMILY=0 for dual-stack); unset preserves ioredis's default (local dev). Increment 14b.
+        const family = process.env.REDIS_FAMILY;
         const client = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
           maxRetriesPerRequest: 2,
           lazyConnect: false,
+          ...(family !== undefined ? { family: Number(family) } : {}),
         });
         client.on('error', (err) => logger.warn(`Redis error: ${err.message}`));
         client.on('connect', () => logger.log('Redis connected'));

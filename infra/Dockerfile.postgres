@@ -25,3 +25,13 @@ RUN set -eux; \
 #   command: postgres -c shared_preload_libraries=timescaledb
 # The PostGIS base auto-creates the postgis extension on first init; the Prisma
 # migration additionally runs CREATE EXTENSION IF NOT EXISTS for both (idempotent).
+
+# Bake the preload into the image's default command so the image is self-contained where the
+# orchestrator does NOT inject a command (Increment 14b — Railway runs the image as-is, with a
+# persistent volume at /var/lib/postgresql/data). Local docker-compose still overrides `command:`
+# with the identical flag, so this is backwards-compatible. ENTRYPOINT stays the stock
+# docker-entrypoint.sh (Prisma-compatible) inherited from the postgis base image.
+# `listen_addresses=*` binds IPv4 AND IPv6 — required because Railway's private service-to-service
+# network is IPv6-only (the API reaches Postgres over `*.railway.internal` → AAAA). Local compose
+# overrides this command, so it is unaffected.
+CMD ["postgres", "-c", "shared_preload_libraries=timescaledb", "-c", "listen_addresses=*"]

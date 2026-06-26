@@ -13,10 +13,11 @@ out/
 .turbo/
 *.tsbuildinfo
 
-# Environment / secrets — NEVER commit real keys
+# Environment / secrets — NEVER commit real keys. Ignore every .env* (incl. .env.production /
+# .env.staging) and keep ONLY the tracked template (Increment 14b — match the .dockerignore + the docs).
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 *.pem
 google-service-account*.json
 serviceAccountKey*.json

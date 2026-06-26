@@ -125,7 +125,10 @@ export function loadNotificationsConfig(): NotificationsConfig {
     ),
     // ── Payments / billing (Increment 12, §17.2). Receipt = a durable confirmation (email + push);
     //    dunning = a failed-payment notice the customer must act on (email + SMS + push); dispute =
-    //    an internal owner/finance alert (email). All per-event overridable via NOTIF_MATRIX_*.
+    //    an internal owner/finance alert. Increment 14a adds PUSH to the dispute row so a registered
+    //    OWNER device (the owner app) receives the dispute exception as a push that deep-links into
+    //    the order (the §17.2 "Damage/claim → owner approval Push" intent; the PUSH template + the
+    //    {orderId,type} deep-link payload already exist). All per-event overridable via NOTIF_MATRIX_*.
     [NOTIFICATION_EVENTS.PAYMENT_RECEIPT]: parseChannels(
       nullableStr('NOTIF_MATRIX_PAYMENT_RECEIPT'),
       [CommsChannel.EMAIL, CommsChannel.PUSH],
@@ -136,7 +139,7 @@ export function loadNotificationsConfig(): NotificationsConfig {
     ),
     [NOTIFICATION_EVENTS.PAYMENT_DISPUTE]: parseChannels(
       nullableStr('NOTIF_MATRIX_PAYMENT_DISPUTE'),
-      [CommsChannel.EMAIL],
+      [CommsChannel.EMAIL, CommsChannel.PUSH],
     ),
   };
 

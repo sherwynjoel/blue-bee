@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Blue Bee Owner",
+    "slug": "blue-bee-owner",
+    "scheme": "bluebeeowner",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bluebee.owner",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
+    },
+    "android": {
+      "package": "com.bluebee.owner",
+      "permissions": []
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#1f6feb"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000"
+    }
+  }
+}

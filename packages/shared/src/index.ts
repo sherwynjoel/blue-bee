@@ -14,3 +14,4 @@ export * from './driver';
 export * from './media';
 export * from './catalog';
 export * from './payments';
+export * from './owner';

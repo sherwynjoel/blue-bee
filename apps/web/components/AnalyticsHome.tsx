@@ -8,12 +8,27 @@ import type {
   Metric,
   OperationalAnalytics,
 } from '@blue-bee/shared';
+import { LineChart, Search } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
 import { formatNumber, money } from '@/lib/format';
 import { guardStopsPerHour, type RateGuard } from '@/lib/ratio';
-import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Loading } from './ui';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  Input,
+  PageHeader,
+  Table,
+  TableSkeleton,
+  Td,
+  Th,
+  cn,
+} from './ui';
 import { RequireCapability } from './AppShell';
 
 /** Default window: the last 30 days, as YYYY-MM-DD date-input strings. */
@@ -57,25 +72,28 @@ function AnalyticsHomeInner(): React.ReactElement {
   const [applied, setApplied] = useState(init);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-2xl font-bold text-bb-ink">Analytics</h1>
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setApplied({ from, to });
-          }}
-        >
-          <Field label="From">
-            <Input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} aria-label="From date" />
-          </Field>
-          <Field label="To">
-            <Input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} aria-label="To date" />
-          </Field>
-          <Button type="submit">Apply</Button>
-        </form>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Analytics"
+        subtitle="Operational, commercial, and per-account read-only dashboards."
+        actions={
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setApplied({ from, to });
+            }}
+          >
+            <Field label="From">
+              <Input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} aria-label="From date" />
+            </Field>
+            <Field label="To">
+              <Input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} aria-label="To date" />
+            </Field>
+            <Button type="submit">Apply</Button>
+          </form>
+        }
+      />
 
       {can.analyticsOperational(me) && <OperationalSection range={applied} />}
       {can.analyticsCommercial(me) && <CommercialSection range={applied} />}
@@ -140,21 +158,22 @@ function CommercialSection({ range }: { range: Range }): React.ReactElement {
         {(data) => (
           <>
             <StatGrid>
-              <Stat label="Tracked GMV" metric={data.metrics.trackedGmv} render={(v) => money(v, data.currency)} />
-              <Stat label="Jobs" metric={data.metrics.jobCount} render={asNumber} />
-              <Stat label="Jobs / week" metric={data.metrics.jobsPerWeek} render={asNumber} />
-              <Stat label="Repeat rate" metric={data.metrics.repeatRatePercent} render={asPercent} />
-              <Stat label="Revenue / route" metric={data.metrics.revenuePerRoute} render={(v) => money(v, data.currency)} />
+              <Stat label="Tracked GMV" metric={data.metrics.trackedGmv} render={(v) => money(v, data.currency)} mono />
+              <Stat label="Jobs" metric={data.metrics.jobCount} render={asNumber} mono />
+              <Stat label="Jobs / week" metric={data.metrics.jobsPerWeek} render={asNumber} mono />
+              <Stat label="Repeat rate" metric={data.metrics.repeatRatePercent} render={asPercent} mono />
+              <Stat label="Revenue / route" metric={data.metrics.revenuePerRoute} render={(v) => money(v, data.currency)} mono />
               <Stat
                 label="Quote→approval"
                 metric={data.metrics.quoteApprovalConversionPercent}
                 render={asPercent}
+                mono
               />
-              <Stat label="Median approval (h)" metric={data.metrics.medianQuoteApprovalHours} render={asNumber} />
-              <Stat label="Damage-claim rate" metric={data.metrics.damageClaimRatePercent} render={asPercent} />
-              <Stat label="Claim resolution (d)" metric={data.metrics.medianClaimResolutionDays} render={asNumber} />
-              <Stat label="Active contracts" metric={data.metrics.activeContracts} render={asNumber} />
-              <Stat label="CSAT" metric={data.metrics.csat} render={asNumber} />
+              <Stat label="Median approval (h)" metric={data.metrics.medianQuoteApprovalHours} render={asNumber} mono />
+              <Stat label="Damage-claim rate" metric={data.metrics.damageClaimRatePercent} render={asPercent} mono />
+              <Stat label="Claim resolution (d)" metric={data.metrics.medianClaimResolutionDays} render={asNumber} mono />
+              <Stat label="Active contracts" metric={data.metrics.activeContracts} render={asNumber} mono />
+              <Stat label="CSAT" metric={data.metrics.csat} render={asNumber} mono />
             </StatGrid>
             <ArAgingView metric={data.metrics.arAging} currency={data.currency} />
           </>
@@ -166,34 +185,34 @@ function CommercialSection({ range }: { range: Range }): React.ReactElement {
 
 function ArAgingView({ metric, currency }: { metric: Metric<ArAging>; currency: string }): React.ReactElement {
   return (
-    <div className="mt-4">
-      <h3 className="mb-2 text-sm font-semibold text-bb-ink">AR aging</h3>
+    <div className="mt-6">
+      <h3 className="mb-3 text-subhead font-semibold text-ink">AR aging</h3>
       {metric.status !== 'ok' || metric.value === null ? (
-        <p className="text-sm text-bb-sub">{metric.status === 'ok' ? 'No outstanding invoices in range.' : metric.note}</p>
+        <p className="text-footnote text-secondary">{metric.status === 'ok' ? 'No outstanding invoices in range.' : metric.note}</p>
       ) : (
-        <table className="w-full text-sm">
+        <Table>
           <thead>
-            <tr className="border-b border-bb-line text-left text-bb-sub">
-              <th className="py-2 pr-4 font-medium">Bucket</th>
-              <th className="py-2 pr-4 font-medium">Outstanding</th>
-              <th className="py-2 font-medium">Invoices</th>
+            <tr>
+              <Th>Bucket</Th>
+              <Th numeric>Outstanding</Th>
+              <Th numeric>Invoices</Th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-hairline">
             {metric.value.buckets.map((b) => (
-              <tr key={b.label} className="border-b border-bb-line last:border-0" data-testid={`ar-${b.label}`}>
-                <td className="py-2 pr-4">{b.label}</td>
-                <td className="py-2 pr-4">{money(b.amount, currency)}</td>
-                <td className="py-2 text-bb-sub">{b.count}</td>
+              <tr key={b.label} data-testid={`ar-${b.label}`}>
+                <Td>{b.label}</Td>
+                <Td numeric>{money(b.amount, currency)}</Td>
+                <Td numeric className="text-secondary">{b.count}</Td>
               </tr>
             ))}
-            <tr className="font-semibold">
-              <td className="py-2 pr-4">Total</td>
-              <td className="py-2 pr-4">{money(metric.value.totalOutstanding, currency)}</td>
-              <td className="py-2" />
+            <tr className="border-t border-hairline font-semibold">
+              <Td className="font-semibold">Total</Td>
+              <Td numeric className="font-semibold">{money(metric.value.totalOutstanding, currency)}</Td>
+              <Td numeric />
             </tr>
           </tbody>
-        </table>
+        </Table>
       )}
     </div>
   );
@@ -214,7 +233,7 @@ function ScorecardSection({ range }: { range: Range }): React.ReactElement {
   return (
     <Card title="Account scorecard">
       <form
-        className="mb-4 flex items-end gap-2"
+        className="mb-5 flex items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           setAccountId(accountInput.trim());
@@ -234,17 +253,31 @@ function ScorecardSection({ range }: { range: Range }): React.ReactElement {
       </form>
 
       {!accountId ? (
-        <EmptyState message="Enter an account id to load its scorecard." />
+        <EmptyState
+          icon={<Search className="h-5 w-5" strokeWidth={1.75} />}
+          title="No account loaded"
+          message="Enter an account id to load its scorecard."
+        />
       ) : state.loading ? (
-        <Loading />
+        <div className="space-y-4">
+          <TableSkeleton rows={1} cols={2} />
+          <StatGrid>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <StatTile key={i} label="">
+                <span className="block h-6 w-16 rounded-md bg-subtle" aria-hidden="true" />
+              </StatTile>
+            ))}
+          </StatGrid>
+        </div>
       ) : state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data ? (
         <EmptyState message="No scorecard." />
       ) : (
         <>
-          <p className="mb-3 text-sm text-bb-sub">
-            <span className="font-medium text-bb-ink">{state.data.accountName}</span> · {state.data.accountId}
+          <p className="mb-4 text-footnote text-secondary">
+            <span className="font-semibold text-ink">{state.data.accountName}</span> ·{' '}
+            <span className="font-mono tabular-nums">{state.data.accountId}</span>
           </p>
           <StatGrid>
             <Stat label="Loss rate" metric={state.data.metrics.lossRatePercent} render={asPercent} />
@@ -253,6 +286,7 @@ function ScorecardSection({ range }: { range: Range }): React.ReactElement {
               label="Monthly spend"
               metric={state.data.metrics.monthlySpend}
               render={(v) => `${money(v.total, state.data!.currency)} · ${money(v.perMonth, state.data!.currency)}/mo`}
+              mono
             />
             <Stat label="Cost-center split" metric={state.data.metrics.costCenterSplit} render={() => '—'} />
           </StatGrid>
@@ -268,7 +302,32 @@ const asPercent = (v: number): string => `${v}%`;
 const asNumber = (v: number): string => formatNumber(v);
 
 function StatGrid({ children }: { children: React.ReactNode }): React.ReactElement {
-  return <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{children}</div>;
+  return <div className="stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{children}</div>;
+}
+
+/** The shared tile chrome for a metric (also reused by the loading placeholder). */
+function StatTile({
+  label,
+  title,
+  children,
+  footer,
+}: {
+  label: string;
+  title?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div
+      className="flex flex-col rounded-card border border-hairline bg-surface p-4 shadow-e1 transition duration-fast ease-daylight hover:shadow-e2"
+      data-testid={`stat-${label}`}
+      title={title}
+    >
+      <div className="mb-1.5 text-caption font-medium uppercase tracking-wide text-tertiary">{label}</div>
+      {children}
+      {footer}
+    </div>
+  );
 }
 
 /**
@@ -282,11 +341,13 @@ function Stat<T>({
   metric,
   render,
   guard,
+  mono,
 }: {
   label: string;
   metric: Metric<T>;
   render: (value: T) => string;
   guard?: (value: T) => RateGuard;
+  mono?: boolean;
 }): React.ReactElement {
   let body: React.ReactNode;
   let tooltip = metric.note;
@@ -295,29 +356,35 @@ function Stat<T>({
   } else if (metric.status === 'error') {
     body = <Badge tone="red">Unavailable</Badge>;
   } else if (metric.value === null) {
-    body = <span className="text-bb-sub">—</span>;
+    body = <span className="text-title3 font-semibold text-tertiary">—</span>;
   } else {
     const checked = guard?.(metric.value);
     if (checked && !checked.plausible) {
       tooltip = checked.reason;
       body = (
-        <span className="text-base font-semibold text-bb-sub">
-          n/a <span className="text-xs font-normal">(insufficient data)</span>
+        <span className="text-headline font-semibold text-secondary">
+          n/a <span className="text-caption font-normal">(insufficient data)</span>
         </span>
       );
     } else {
-      body = <span className="text-xl font-semibold text-bb-ink">{render(metric.value)}</span>;
+      body = (
+        <span className={cn('text-title2 font-semibold text-ink', mono && 'font-mono tabular-nums')}>{render(metric.value)}</span>
+      );
     }
   }
 
   return (
-    <div className="rounded-lg border border-bb-line bg-white p-3" data-testid={`stat-${label}`} title={tooltip}>
-      <div className="mb-1 text-xs font-medium text-bb-sub">{label}</div>
+    <StatTile
+      label={label}
+      title={tooltip}
+      footer={
+        metric.status === 'ok' && metric.rowCount !== null ? (
+          <div className="mt-1.5 font-mono text-caption tabular-nums text-tertiary">n={metric.rowCount}</div>
+        ) : null
+      }
+    >
       {body}
-      {metric.status === 'ok' && metric.rowCount !== null && (
-        <div className="mt-1 text-[11px] text-bb-sub">n={metric.rowCount}</div>
-      )}
-    </div>
+    </StatTile>
   );
 }
 
@@ -329,8 +396,24 @@ function SectionBody<T>({
   state: { data: T | null; loading: boolean; error: string | null; reload: () => void };
   children: (data: T) => React.ReactNode;
 }): React.ReactElement {
-  if (state.loading) return <Loading />;
+  if (state.loading)
+    return (
+      <StatGrid>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <StatTile key={i} label="">
+            <span className="block h-7 w-20 rounded-md bg-subtle" aria-hidden="true" />
+          </StatTile>
+        ))}
+      </StatGrid>
+    );
   if (state.error) return <ErrorBox message={state.error} onRetry={state.reload} />;
-  if (!state.data) return <EmptyState title="Nothing in this window" message="No analytics rows for the selected date range. Try widening the dates." />;
+  if (!state.data)
+    return (
+      <EmptyState
+        icon={<LineChart className="h-5 w-5" strokeWidth={1.75} />}
+        title="Nothing in this window"
+        message="No analytics rows for the selected date range. Try widening the dates."
+      />
+    );
   return <>{children(state.data)}</>;
 }

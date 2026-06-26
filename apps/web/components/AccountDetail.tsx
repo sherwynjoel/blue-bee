@@ -16,12 +16,30 @@ import {
   type StandingOrderView,
 } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
+import { ArrowLeft, CalendarClock, Package, ScrollText, TriangleAlert } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
 import { formatNumber, humanize, money, orderRef, shortDate } from '@/lib/format';
 import type { OrderListResult, OrderSummary } from '@/lib/types';
-import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Loading, Select } from './ui';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  Input,
+  KV,
+  Select,
+  Skeleton,
+  StatusPill,
+  Table,
+  TableSkeleton,
+  Tabs,
+  Td,
+  Th,
+} from './ui';
 import { RequireCapability } from './AppShell';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -46,35 +64,12 @@ export function AccountDetail({ accountId }: { accountId: string }): React.React
 }
 
 type TabKey = 'overview' | 'orders' | 'manifests' | 'exceptions';
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'orders', label: 'Orders' },
-  { key: 'manifests', label: 'Manifests' },
-  { key: 'exceptions', label: 'Exceptions' },
+const TABS: { value: TabKey; label: string }[] = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'orders', label: 'Orders' },
+  { value: 'manifests', label: 'Manifests' },
+  { value: 'exceptions', label: 'Exceptions' },
 ];
-
-/** Accessible in-page tab strip (local state, no new dependency). */
-function TabNav({ tab, onSelect }: { tab: TabKey; onSelect: (t: TabKey) => void }): React.ReactElement {
-  return (
-    <div role="tablist" aria-label="Account sections" className="flex flex-wrap gap-1 border-b border-bb-line">
-      {TABS.map((t) => (
-        <button
-          key={t.key}
-          role="tab"
-          id={`tab-${t.key}`}
-          aria-selected={tab === t.key}
-          aria-controls={`panel-${t.key}`}
-          onClick={() => onSelect(t.key)}
-          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-            tab === t.key ? 'border-bb-blue text-bb-blue' : 'border-transparent text-bb-sub hover:text-bb-ink'
-          }`}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function AccountDetailInner({ accountId }: { accountId: string }): React.ReactElement {
   const { client, me } = useSession();
@@ -84,34 +79,47 @@ function AccountDetailInner({ accountId }: { accountId: string }): React.ReactEl
   const state = useAsync<AccountDetailView>(() => client.getAccount(accountId), [accountId, nonce]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 animate-fade-in">
       <div>
-        <Link href="/accounts" className="text-sm text-bb-blue hover:underline">
-          ← Accounts
+        <Link
+          href="/accounts"
+          className="inline-flex items-center gap-1.5 text-footnote font-medium text-secondary transition-colors duration-fast hover:text-ink focus-visible:outline-none focus-visible:shadow-focus rounded"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Accounts
         </Link>
       </div>
 
       {!state.data && state.loading ? (
-        <Loading />
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+            <Skeleton className="h-6 w-28 rounded-full" />
+          </div>
+          <Card>
+            <TableSkeleton rows={4} cols={4} />
+          </Card>
+        </div>
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data ? (
         <EmptyState message="Account not found." />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold text-bb-ink">{state.data.name}</h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-title1 text-ink">{state.data.name}</h1>
             <Badge tone={state.data.type === 'BUSINESS' ? 'blue' : 'neutral'}>{humanize(state.data.type)}</Badge>
             <Badge tone={state.data.billingMode === 'BATCH_PERIODIC' ? 'amber' : 'neutral'}>{humanize(state.data.billingMode)}</Badge>
-            <span className="text-sm text-bb-sub">
-              {formatNumber(state.data.siteCount)} site(s) · {formatNumber(state.data.activeStandingOrderCount)} active standing order(s)
+            <span className="text-footnote text-secondary">
+              <span className="font-mono tabular-nums">{formatNumber(state.data.siteCount)}</span> site(s) ·{' '}
+              <span className="font-mono tabular-nums">{formatNumber(state.data.activeStandingOrderCount)}</span> active standing order(s)
             </span>
           </div>
 
-          <TabNav tab={tab} onSelect={setTab} />
+          <Tabs tabs={TABS} value={tab} onChange={(v) => setTab(v as TabKey)} />
 
           {tab === 'overview' && (
-            <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" className="space-y-4">
+            <div role="tabpanel" className="space-y-6">
               {can.analyticsScorecard(me) && <ScorecardCard accountId={accountId} />}
               <StandingOrdersCard account={state.data} onChanged={reloadHeader} />
               <GeneratedCard accountId={accountId} reloadKey={nonce} />
@@ -119,17 +127,17 @@ function AccountDetailInner({ accountId }: { accountId: string }): React.ReactEl
             </div>
           )}
           {tab === 'orders' && (
-            <div role="tabpanel" id="panel-orders" aria-labelledby="tab-orders">
+            <div role="tabpanel">
               <OrdersTab accountId={accountId} />
             </div>
           )}
           {tab === 'manifests' && (
-            <div role="tabpanel" id="panel-manifests" aria-labelledby="tab-manifests">
+            <div role="tabpanel">
               <ManifestsTab accountId={accountId} />
             </div>
           )}
           {tab === 'exceptions' && (
-            <div role="tabpanel" id="panel-exceptions" aria-labelledby="tab-exceptions">
+            <div role="tabpanel">
               <ExceptionsTab accountId={accountId} />
             </div>
           )}
@@ -147,13 +155,17 @@ function ScorecardCard({ accountId }: { accountId: string }): React.ReactElement
   return (
     <Card title="Scorecard (last 30 days)">
       {!state.data && state.loading ? (
-        <Loading />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-[88px] rounded-card" />
+          ))}
+        </div>
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data ? (
         <EmptyState message="No scorecard." />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 stagger sm:grid-cols-4">
           <Stat label="Loss rate" metric={state.data.metrics.lossRatePercent} render={(v) => `${v}%`} />
           <Stat label="On-time" metric={state.data.metrics.onTimePercent} render={(v) => `${v}%`} />
           <Stat
@@ -173,13 +185,15 @@ function Stat<T>({ label, metric, render }: { label: string; metric: Metric<T>; 
   let body: React.ReactNode;
   if (metric.status === 'unavailable_in_phase_1') body = <Badge tone="amber">Phase 2</Badge>;
   else if (metric.status === 'error') body = <Badge tone="red">Unavailable</Badge>;
-  else if (metric.value === null) body = <span className="text-bb-sub">—</span>;
-  else body = <span className="text-xl font-semibold text-bb-ink">{render(metric.value)}</span>;
+  else if (metric.value === null) body = <span className="text-tertiary">—</span>;
+  else body = <span className="text-title2 font-semibold tabular-nums text-ink">{render(metric.value)}</span>;
   return (
-    <div className="rounded-lg border border-bb-line bg-white p-3" data-testid={`stat-${label}`} title={metric.note}>
-      <div className="mb-1 text-xs font-medium text-bb-sub">{label}</div>
+    <div className="rounded-card border border-hairline bg-subtle p-3.5" data-testid={`stat-${label}`} title={metric.note}>
+      <div className="mb-1.5 text-caption font-semibold uppercase tracking-wide text-tertiary">{label}</div>
       {body}
-      {metric.status === 'ok' && metric.rowCount !== null && <div className="mt-1 text-[11px] text-bb-sub">n={metric.rowCount}</div>}
+      {metric.status === 'ok' && metric.rowCount !== null && (
+        <div className="mt-1.5 font-mono text-caption tabular-nums text-tertiary">n={metric.rowCount}</div>
+      )}
     </div>
   );
 }
@@ -291,11 +305,15 @@ function StandingOrdersCard({ account, onChanged }: { account: AccountDetailView
 
   return (
     <Card title="Standing / recurring orders" actions={actions}>
-      {runMsg && <p className="mb-2 rounded-lg bg-bb-blueSoft px-3 py-2 text-sm text-bb-blue">{runMsg}</p>}
-      {err && <p className="mb-2 text-sm text-red-700">{err}</p>}
+      {runMsg && (
+        <p className="mb-3 rounded-btn border border-primary-tint bg-primary-tint px-3 py-2 text-footnote font-medium text-primary-strong">{runMsg}</p>
+      )}
+      {err && (
+        <p className="mb-3 rounded-btn border border-danger-tint bg-danger-tint px-3 py-2 text-footnote font-medium text-danger-strong">{err}</p>
+      )}
 
       {canWrite && showCreate && (
-        <form className="mb-4 grid gap-3 rounded-lg border border-bb-line p-4 sm:grid-cols-2 lg:grid-cols-3" onSubmit={create}>
+        <form className="mb-4 grid gap-3 rounded-card border border-hairline bg-subtle p-4 sm:grid-cols-2 lg:grid-cols-3" onSubmit={create}>
           <Field label="Site">
             <Select value={form.siteId} onChange={(e) => set('siteId', e.target.value)} aria-label="Site" required>
               <option value="">Select…</option>
@@ -352,8 +370,14 @@ function StandingOrdersCard({ account, onChanged }: { account: AccountDetailView
           <Field label="Pickup to">
             <Input type="time" value={form.end} onChange={(e) => set('end', e.target.value)} aria-label="Pickup to" required />
           </Field>
-          <label className="flex items-center gap-2 self-end text-sm text-bb-ink">
-            <input type="checkbox" checked={form.concierge} onChange={(e) => set('concierge', e.target.checked)} aria-label="Concierge handoff" />
+          <label className="flex items-center gap-2 self-end text-subhead text-ink">
+            <input
+              type="checkbox"
+              checked={form.concierge}
+              onChange={(e) => set('concierge', e.target.checked)}
+              aria-label="Concierge handoff"
+              className="h-4 w-4 rounded border-hairline text-primary accent-primary focus-visible:outline-none focus-visible:shadow-focus"
+            />
             Concierge / lobby handoff
           </label>
           <div className="sm:col-span-2 lg:col-span-3">
@@ -365,51 +389,61 @@ function StandingOrdersCard({ account, onChanged }: { account: AccountDetailView
       )}
 
       {!list.data && list.loading ? (
-        <Loading />
+        <TableSkeleton rows={3} cols={canWrite ? 7 : 6} />
       ) : !list.data && list.error ? (
         <ErrorBox message={list.error} onRetry={reload} />
       ) : !list.data || list.data.standingOrders.length === 0 ? (
-        <EmptyState title="No standing orders" message="This account has no recurring orders yet." />
+        <EmptyState
+          icon={<CalendarClock className="h-5 w-5" strokeWidth={1.75} />}
+          title="No standing orders"
+          message="This account has no recurring orders yet."
+        />
       ) : (
-        <table className="w-full text-sm">
+        <Table>
           <thead>
-            <tr className="border-b border-bb-line text-left text-bb-sub">
-              <th className="py-2 pr-4 font-medium">Cadence</th>
-              <th className="py-2 pr-4 font-medium">Day</th>
-              <th className="py-2 pr-4 font-medium">Pickup window</th>
-              <th className="py-2 pr-4 font-medium">Handoff</th>
-              <th className="py-2 pr-4 font-medium">Status</th>
-              <th className="py-2 pr-4 font-medium">Next run</th>
-              {canWrite && <th className="py-2 font-medium">Actions</th>}
+            <tr>
+              <Th>Cadence</Th>
+              <Th>Day</Th>
+              <Th>Pickup window</Th>
+              <Th>Handoff</Th>
+              <Th>Status</Th>
+              <Th>Next run</Th>
+              {canWrite && <Th>Actions</Th>}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="stagger">
             {list.data.standingOrders.map((so) => (
-              <tr key={so.id} className="border-b border-bb-line last:border-0" data-testid={`so-${so.id}`}>
-                <td className="py-2 pr-4">{humanize(so.cadence)}</td>
-                <td className="py-2 pr-4">{WEEKDAYS[so.weekday] ?? so.weekday}</td>
-                <td className="py-2 pr-4 text-bb-sub">
+              <tr key={so.id} className="border-b border-hairline transition-colors duration-fast last:border-0 hover:bg-subtle" data-testid={`so-${so.id}`}>
+                <Td className="font-medium">{humanize(so.cadence)}</Td>
+                <Td>{WEEKDAYS[so.weekday] ?? so.weekday}</Td>
+                <Td className="font-mono tabular-nums text-secondary">
                   {so.pickupWindow.start}–{so.pickupWindow.end}
-                </td>
-                <td className="py-2 pr-4">{so.concierge ? <Badge tone="blue">Concierge</Badge> : <span className="text-bb-sub">Direct</span>}</td>
-                <td className="py-2 pr-4">{so.active ? <Badge tone="green">Active</Badge> : <Badge tone="neutral">Paused</Badge>}</td>
-                <td className="py-2 pr-4 text-bb-sub">{so.nextRunAt ? shortDate(so.nextRunAt) : '—'}</td>
+                </Td>
+                <Td>{so.concierge ? <Badge tone="blue">Concierge</Badge> : <span className="text-tertiary">Direct</span>}</Td>
+                <Td>{so.active ? <StatusPill tone="green">Active</StatusPill> : <StatusPill tone="neutral">Paused</StatusPill>}</Td>
+                <Td className="text-secondary">{so.nextRunAt ? shortDate(so.nextRunAt) : '—'}</Td>
                 {canWrite && (
-                  <td className="py-2">
-                    <div className="flex gap-3">
-                      <button className="text-xs text-bb-blue hover:underline" onClick={() => void toggleActive(so)}>
+                  <Td>
+                    <div className="flex gap-2">
+                      <button
+                        className="rounded px-1 text-footnote font-semibold text-primary underline-offset-2 transition-colors duration-fast hover:underline focus-visible:outline-none focus-visible:shadow-focus"
+                        onClick={() => void toggleActive(so)}
+                      >
                         {so.active ? 'Pause' : 'Resume'}
                       </button>
-                      <button className="text-xs text-red-700 hover:underline" onClick={() => void remove(so)}>
+                      <button
+                        className="rounded px-1 text-footnote font-semibold text-danger underline-offset-2 transition-colors duration-fast hover:underline focus-visible:outline-none focus-visible:shadow-focus"
+                        onClick={() => void remove(so)}
+                      >
                         Delete
                       </button>
                     </div>
-                  </td>
+                  </Td>
                 )}
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
     </Card>
   );
@@ -423,36 +457,42 @@ function GeneratedCard({ accountId, reloadKey }: { accountId: string; reloadKey:
   return (
     <Card title="Generated orders & routes">
       {!state.data && state.loading ? (
-        <Loading />
+        <TableSkeleton rows={3} cols={4} />
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data || state.data.occurrences.length === 0 ? (
-        <EmptyState title="Nothing generated yet" message="Run due generation (or wait for the schedule) to materialize recurring orders here." />
+        <EmptyState
+          icon={<Package className="h-5 w-5" strokeWidth={1.75} />}
+          title="Nothing generated yet"
+          message="Run due generation (or wait for the schedule) to materialize recurring orders here."
+        />
       ) : (
         <>
-          <p className="mb-3 text-sm text-bb-sub">
-            {formatNumber(state.data.orderCount)} order(s) · {formatNumber(state.data.routeCount)} route(s) from {formatNumber(state.data.occurrences.length)} occurrence(s).
+          <p className="mb-3 text-footnote text-secondary">
+            <span className="font-mono tabular-nums">{formatNumber(state.data.orderCount)}</span> order(s) ·{' '}
+            <span className="font-mono tabular-nums">{formatNumber(state.data.routeCount)}</span> route(s) from{' '}
+            <span className="font-mono tabular-nums">{formatNumber(state.data.occurrences.length)}</span> occurrence(s).
           </p>
-          <table className="w-full text-sm">
+          <Table>
             <thead>
-              <tr className="border-b border-bb-line text-left text-bb-sub">
-                <th className="py-2 pr-4 font-medium">Period</th>
-                <th className="py-2 pr-4 font-medium">Order</th>
-                <th className="py-2 pr-4 font-medium">Route</th>
-                <th className="py-2 font-medium">Generated</th>
+              <tr>
+                <Th>Period</Th>
+                <Th>Order</Th>
+                <Th>Route</Th>
+                <Th>Generated</Th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="stagger">
               {state.data.occurrences.map((o) => (
-                <tr key={o.id} className="border-b border-bb-line last:border-0" data-testid={`occ-${o.id}`}>
-                  <td className="py-2 pr-4">{o.periodKey}</td>
-                  <td className="py-2 pr-4 font-mono text-xs text-bb-sub">{o.orderId ? o.orderId.slice(0, 8) : '—'}</td>
-                  <td className="py-2 pr-4 font-mono text-xs text-bb-sub">{o.routeId ? o.routeId.slice(0, 8) : '—'}</td>
-                  <td className="py-2 text-bb-sub">{shortDate(o.generatedAt)}</td>
+                <tr key={o.id} className="border-b border-hairline transition-colors duration-fast last:border-0 hover:bg-subtle" data-testid={`occ-${o.id}`}>
+                  <Td className="font-mono tabular-nums">{o.periodKey}</Td>
+                  <Td className="font-mono text-caption text-secondary">{o.orderId ? o.orderId.slice(0, 8) : '—'}</Td>
+                  <Td className="font-mono text-caption text-secondary">{o.routeId ? o.routeId.slice(0, 8) : '—'}</Td>
+                  <Td className="text-secondary">{shortDate(o.generatedAt)}</Td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         </>
       )}
     </Card>
@@ -535,14 +575,25 @@ function BillingCard({ account, onChanged }: { account: AccountDetailView; onCha
   return (
     <Card title="Billing">
       {!terms.data && terms.loading ? (
-        <Loading />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-10 w-full rounded-input" />
+            <Skeleton className="h-10 w-28 rounded-btn" />
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-10 w-full rounded-input" />
+            <Skeleton className="h-10 w-44 rounded-btn" />
+          </div>
+        </div>
       ) : !terms.data && terms.error ? (
         <ErrorBox message={terms.error} onRetry={() => setNonce((n) => n + 1)} />
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           {/* terms */}
           <form className="space-y-3" onSubmit={saveTerms}>
-            <h3 className="text-sm font-semibold text-bb-ink">Terms</h3>
+            <h3 className="text-subhead font-semibold text-ink">Terms</h3>
             <Field label="Billing mode">
               <Select value={mode} onChange={(e) => setMode(e.target.value as BillingMode)} aria-label="Billing mode">
                 {Object.values(BillingMode).map((m) => (
@@ -567,17 +618,17 @@ function BillingCard({ account, onChanged }: { account: AccountDetailView; onCha
             <Button type="submit" loading={savingTerms}>
               Save terms
             </Button>
-            {termsMsg && <p className="text-sm text-green-700">{termsMsg}</p>}
-            {termsErr && <p className="text-sm text-red-700">{termsErr}</p>}
+            {termsMsg && <p className="text-footnote font-medium text-success-strong">{termsMsg}</p>}
+            {termsErr && <p className="text-footnote font-medium text-danger-strong">{termsErr}</p>}
           </form>
 
           {/* batch invoice */}
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-bb-ink">Periodic invoice</h3>
+            <h3 className="text-subhead font-semibold text-ink">Periodic invoice</h3>
             {!isBatch ? (
-              <p className="text-sm text-bb-sub">
-                This account bills <span className="font-medium">per order</span>. Switch billing to{' '}
-                <span className="font-medium">Batch periodic</span> to batch a period’s orders into one invoice.
+              <p className="text-footnote text-secondary">
+                This account bills <span className="font-medium text-ink">per order</span>. Switch billing to{' '}
+                <span className="font-medium text-ink">Batch periodic</span> to batch a period’s orders into one invoice.
               </p>
             ) : (
               <form className="space-y-3" onSubmit={runBatch}>
@@ -595,21 +646,25 @@ function BillingCard({ account, onChanged }: { account: AccountDetailView; onCha
                 <Button type="submit" loading={batching} disabled={!from || !to || batching}>
                   Generate periodic invoice
                 </Button>
-                {batchErr && <p className="text-sm text-red-700">{batchErr}</p>}
+                {batchErr && <p className="text-footnote font-medium text-danger-strong">{batchErr}</p>}
               </form>
             )}
 
             {invoice && (
-              <div className="rounded-lg border border-bb-line bg-bb-blueSoft/40 p-3 text-sm" data-testid="batch-invoice">
-                <div className="font-semibold text-bb-ink">{invoice.number ?? 'Invoice'}</div>
-                <div className="text-bb-sub">
-                  {humanize(invoice.status)} · {money(invoice.total, invoice.currency)} · due {invoice.dueAt ? shortDate(invoice.dueAt) : '—'}
+              <div className="animate-scale-in rounded-card border border-hairline bg-subtle p-4" data-testid="batch-invoice">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-mono text-subhead font-semibold tabular-nums text-ink">{invoice.number ?? 'Invoice'}</div>
+                  <Badge tone="blue">{humanize(invoice.status)}</Badge>
                 </div>
-                <ul className="mt-2 space-y-1">
+                <div className="mt-2 space-y-1 border-t border-hairline pt-2">
+                  <KV label="Total" value={money(invoice.total, invoice.currency)} mono />
+                  <KV label="Due" value={invoice.dueAt ? shortDate(invoice.dueAt) : '—'} mono />
+                </div>
+                <ul className="mt-3 space-y-1.5 border-t border-hairline pt-3">
                   {invoice.lines.map((l, i) => (
-                    <li key={i} className="flex justify-between text-bb-sub">
-                      <span>{l.description}</span>
-                      <span>{money(l.amount, invoice.currency)}</span>
+                    <li key={i} className="flex justify-between gap-4 text-footnote">
+                      <span className="text-secondary">{l.description}</span>
+                      <span className="shrink-0 font-mono tabular-nums text-ink">{money(l.amount, invoice.currency)}</span>
                     </li>
                   ))}
                 </ul>
@@ -640,36 +695,40 @@ function OrdersTab({ accountId }: { accountId: string }): React.ReactElement {
   return (
     <Card title="Orders">
       {!state.data && state.loading ? (
-        <Loading />
+        <TableSkeleton rows={5} cols={5} />
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data || state.data.orders.length === 0 ? (
-        <EmptyState title="No orders" message="This account has no orders yet." />
+        <EmptyState
+          icon={<Package className="h-5 w-5" strokeWidth={1.75} />}
+          title="No orders"
+          message="This account has no orders yet."
+        />
       ) : (
-        <table className="w-full text-sm">
+        <Table>
           <thead>
-            <tr className="border-b border-bb-line text-left text-bb-sub">
-              <th className="py-2 pr-4 font-medium">Order</th>
-              <th className="py-2 pr-4 font-medium">Status</th>
-              <th className="py-2 pr-4 font-medium">Vertical</th>
-              <th className="py-2 pr-4 font-medium">Amount</th>
-              <th className="py-2 font-medium">Created</th>
+            <tr>
+              <Th>Order</Th>
+              <Th>Status</Th>
+              <Th>Vertical</Th>
+              <Th numeric>Amount</Th>
+              <Th>Created</Th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="stagger">
             {state.data.orders.map((o) => (
-              <tr key={o.id} className="border-b border-bb-line last:border-0" data-testid={`order-${o.id}`}>
-                <td className="py-2 pr-4 font-mono text-xs text-bb-sub">{orderRef(o.id)}</td>
-                <td className="py-2 pr-4">
-                  <Badge tone={orderTone(o.status)}>{humanize(o.status)}</Badge>
-                </td>
-                <td className="py-2 pr-4">{humanize(o.vertical)}</td>
-                <td className="py-2 pr-4 text-bb-sub">{money(orderTotal(o), o.totals?.currency ?? 'CAD')}</td>
-                <td className="py-2 text-bb-sub">{shortDate(o.createdAt)}</td>
+              <tr key={o.id} className="border-b border-hairline transition-colors duration-fast last:border-0 hover:bg-subtle" data-testid={`order-${o.id}`}>
+                <Td className="font-mono text-caption text-secondary">{orderRef(o.id)}</Td>
+                <Td>
+                  <StatusPill tone={orderTone(o.status)}>{humanize(o.status)}</StatusPill>
+                </Td>
+                <Td>{humanize(o.vertical)}</Td>
+                <Td numeric className="text-secondary">{money(orderTotal(o), o.totals?.currency ?? 'CAD')}</Td>
+                <Td className="text-secondary">{shortDate(o.createdAt)}</Td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
     </Card>
   );
@@ -684,41 +743,42 @@ function ManifestsTab({ accountId }: { accountId: string }): React.ReactElement 
   return (
     <Card title="Manifests">
       {!state.data && state.loading ? (
-        <Loading />
+        <TableSkeleton rows={5} cols={7} />
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data || state.data.manifests.length === 0 ? (
         <EmptyState
+          icon={<ScrollText className="h-5 w-5" strokeWidth={1.75} />}
           title="No manifests"
           message="Manifests are generated on the route/stop endpoints — none exist for this account yet."
         />
       ) : (
-        <table className="w-full text-sm">
+        <Table>
           <thead>
-            <tr className="border-b border-bb-line text-left text-bb-sub">
-              <th className="py-2 pr-4 font-medium">Stop</th>
-              <th className="py-2 pr-4 font-medium">Type</th>
-              <th className="py-2 pr-4 font-medium">Status</th>
-              <th className="py-2 pr-4 font-medium">Order</th>
-              <th className="py-2 pr-4 font-medium">Site</th>
-              <th className="py-2 pr-4 font-medium">Expected items</th>
-              <th className="py-2 font-medium">Generated</th>
+            <tr>
+              <Th>Stop</Th>
+              <Th>Type</Th>
+              <Th>Status</Th>
+              <Th>Order</Th>
+              <Th>Site</Th>
+              <Th numeric>Expected items</Th>
+              <Th>Generated</Th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="stagger">
             {state.data.manifests.map((m) => (
-              <tr key={m.id} className="border-b border-bb-line last:border-0" data-testid={`manifest-${m.id}`}>
-                <td className="py-2 pr-4">{m.stopSeq != null ? `#${m.stopSeq}` : '—'}</td>
-                <td className="py-2 pr-4">{m.stopKind ? humanize(m.stopKind) : '—'}</td>
-                <td className="py-2 pr-4">{m.stopStatus ? <Badge tone="neutral">{humanize(m.stopStatus)}</Badge> : '—'}</td>
-                <td className="py-2 pr-4 font-mono text-xs text-bb-sub">{m.orderId ? orderRef(m.orderId) : '—'}</td>
-                <td className="py-2 pr-4 text-bb-sub">{m.siteName ?? '—'}</td>
-                <td className="py-2 pr-4">{formatNumber(m.expectedItemCount)}</td>
-                <td className="py-2 text-bb-sub">{shortDate(m.generatedAt)}</td>
+              <tr key={m.id} className="border-b border-hairline transition-colors duration-fast last:border-0 hover:bg-subtle" data-testid={`manifest-${m.id}`}>
+                <Td className="font-mono tabular-nums text-secondary">{m.stopSeq != null ? `#${m.stopSeq}` : '—'}</Td>
+                <Td>{m.stopKind ? humanize(m.stopKind) : '—'}</Td>
+                <Td>{m.stopStatus ? <StatusPill tone="neutral">{humanize(m.stopStatus)}</StatusPill> : '—'}</Td>
+                <Td className="font-mono text-caption text-secondary">{m.orderId ? orderRef(m.orderId) : '—'}</Td>
+                <Td className="text-secondary">{m.siteName ?? '—'}</Td>
+                <Td numeric>{formatNumber(m.expectedItemCount)}</Td>
+                <Td className="text-secondary">{shortDate(m.generatedAt)}</Td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
     </Card>
   );
@@ -737,40 +797,41 @@ function ExceptionsTab({ accountId }: { accountId: string }): React.ReactElement
   return (
     <Card title="Exceptions">
       {!state.data && state.loading ? (
-        <Loading />
+        <TableSkeleton rows={5} cols={4} />
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data || state.data.exceptions.length === 0 ? (
         <EmptyState
+          icon={<TriangleAlert className="h-5 w-5" strokeWidth={1.75} />}
           title="No exceptions"
           message="No failed/skipped stops, held orders, open disputes, or failed payments for this account."
         />
       ) : (
-        <table className="w-full text-sm">
+        <Table>
           <thead>
-            <tr className="border-b border-bb-line text-left text-bb-sub">
-              <th className="py-2 pr-4 font-medium">Type</th>
-              <th className="py-2 pr-4 font-medium">Detail</th>
-              <th className="py-2 pr-4 font-medium">Amount</th>
-              <th className="py-2 font-medium">When</th>
+            <tr>
+              <Th>Type</Th>
+              <Th>Detail</Th>
+              <Th numeric>Amount</Th>
+              <Th>When</Th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="stagger">
             {state.data.exceptions.map((x) => (
-              <tr key={x.id} className="border-b border-bb-line last:border-0" data-testid={`exception-${x.id}`}>
-                <td className="py-2 pr-4">
-                  <Badge tone={exceptionTone(x.kind)}>{humanize(x.kind)}</Badge>
-                </td>
-                <td className="py-2 pr-4 text-bb-sub">
-                  {x.title}
-                  {x.detail ? <span className="text-bb-sub"> — {x.detail}</span> : null}
-                </td>
-                <td className="py-2 pr-4 text-bb-sub">{x.amount ? money(x.amount, x.currency ?? 'CAD') : '—'}</td>
-                <td className="py-2 text-bb-sub">{shortDate(x.occurredAt)}</td>
+              <tr key={x.id} className="border-b border-hairline transition-colors duration-fast last:border-0 hover:bg-subtle" data-testid={`exception-${x.id}`}>
+                <Td>
+                  <StatusPill tone={exceptionTone(x.kind)}>{humanize(x.kind)}</StatusPill>
+                </Td>
+                <Td className="text-secondary">
+                  <span className="text-ink">{x.title}</span>
+                  {x.detail ? <span className="text-secondary"> — {x.detail}</span> : null}
+                </Td>
+                <Td numeric className="text-secondary">{x.amount ? money(x.amount, x.currency ?? 'CAD') : '—'}</Td>
+                <Td className="text-secondary">{shortDate(x.occurredAt)}</Td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
     </Card>
   );

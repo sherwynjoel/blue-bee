@@ -3,11 +3,12 @@
 import React from 'react';
 import Link from 'next/link';
 import type { AccountListItemView } from '@blue-bee/shared';
+import { Building2 } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
 import { formatNumber, humanize } from '@/lib/format';
-import { Badge, Card, EmptyState, ErrorBox, Loading } from './ui';
+import { Badge, Card, EmptyState, ErrorBox, PageHeader, Table, TableSkeleton, Td, Th } from './ui';
 import { RequireCapability } from './AppShell';
 
 /**
@@ -30,37 +31,41 @@ function AccountsHomeInner(): React.ReactElement {
   const state = useAsync(() => client.listAccounts({ limit: 100 }), []);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-bb-ink">Accounts</h1>
-        <p className="mt-1 text-sm text-bb-sub">Building (B2B) &amp; residential accounts — billing terms and recurring service.</p>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <PageHeader
+        title="Accounts"
+        subtitle="Building (B2B) & residential accounts — billing terms and recurring service."
+      />
 
-      <Card>
+      <Card padded={false} className="p-5">
         {state.loading ? (
-          <Loading />
+          <TableSkeleton rows={5} cols={6} />
         ) : state.error ? (
           <ErrorBox message={state.error} onRetry={state.reload} />
         ) : !state.data || state.data.accounts.length === 0 ? (
-          <EmptyState title="No accounts" message="No accounts are visible for your organization yet." />
+          <EmptyState
+            icon={<Building2 className="h-5 w-5" strokeWidth={1.75} />}
+            title="No accounts"
+            message="No accounts are visible for your organization yet."
+          />
         ) : (
-          <table className="w-full text-sm">
+          <Table>
             <thead>
-              <tr className="border-b border-bb-line text-left text-bb-sub">
-                <th className="py-2 pr-4 font-medium">Account</th>
-                <th className="py-2 pr-4 font-medium">Type</th>
-                <th className="py-2 pr-4 font-medium">Billing</th>
-                <th className="py-2 pr-4 font-medium">Net days</th>
-                <th className="py-2 pr-4 font-medium">Sites</th>
-                <th className="py-2 font-medium">Active standing orders</th>
+              <tr>
+                <Th>Account</Th>
+                <Th>Type</Th>
+                <Th>Billing</Th>
+                <Th numeric>Net days</Th>
+                <Th numeric>Sites</Th>
+                <Th numeric>Active standing orders</Th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="stagger">
               {state.data.accounts.map((a) => (
                 <AccountRow key={a.id} account={a} />
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
       </Card>
     </div>
@@ -69,21 +74,24 @@ function AccountsHomeInner(): React.ReactElement {
 
 function AccountRow({ account: a }: { account: AccountListItemView }): React.ReactElement {
   return (
-    <tr className="border-b border-bb-line last:border-0" data-testid={`account-${a.id}`}>
-      <td className="py-2 pr-4">
-        <Link href={`/accounts/${a.id}`} className="font-medium text-bb-blue hover:underline">
+    <tr className="border-b border-hairline transition-colors duration-fast last:border-0 hover:bg-subtle" data-testid={`account-${a.id}`}>
+      <Td>
+        <Link
+          href={`/accounts/${a.id}`}
+          className="font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:shadow-focus rounded"
+        >
           {a.name}
         </Link>
-      </td>
-      <td className="py-2 pr-4">
+      </Td>
+      <Td>
         <Badge tone={a.type === 'BUSINESS' ? 'blue' : 'neutral'}>{humanize(a.type)}</Badge>
-      </td>
-      <td className="py-2 pr-4">
+      </Td>
+      <Td>
         <Badge tone={a.billingMode === 'BATCH_PERIODIC' ? 'amber' : 'neutral'}>{humanize(a.billingMode)}</Badge>
-      </td>
-      <td className="py-2 pr-4 text-bb-sub">{a.billingMode === 'BATCH_PERIODIC' ? formatNumber(a.billingNetDays) : '—'}</td>
-      <td className="py-2 pr-4 text-bb-sub">{formatNumber(a.siteCount)}</td>
-      <td className="py-2 text-bb-sub">{formatNumber(a.activeStandingOrderCount)}</td>
+      </Td>
+      <Td numeric className="text-secondary">{a.billingMode === 'BATCH_PERIODIC' ? formatNumber(a.billingNetDays) : '—'}</Td>
+      <Td numeric className="text-secondary">{formatNumber(a.siteCount)}</Td>
+      <Td numeric className="text-secondary">{formatNumber(a.activeStandingOrderCount)}</Td>
     </tr>
   );
 }

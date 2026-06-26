@@ -13,8 +13,26 @@ import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
 import { humanize, shortDate } from '@/lib/format';
-import { Badge, Button, Card, EmptyState, ErrorBox, Field, Loading, Select } from './ui';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  PageHeader,
+  Select,
+  Skeleton,
+  SkeletonText,
+  StatusPill,
+  Table,
+  TableSkeleton,
+  Td,
+  Th,
+  cn,
+} from './ui';
 import { RequireCapability } from './AppShell';
+import { Search, Shirt, Sparkles, UserRound } from 'lucide-react';
 
 const apiErr = (e: unknown, fallback: string): string => (e instanceof ApiError ? e.message : fallback);
 
@@ -65,22 +83,27 @@ function ResidentClothingInner(): React.ReactElement {
   }, [account.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-bb-ink">Resident clothing</h1>
-        <p className="mt-1 text-sm text-bb-sub">
-          Care-home personal garments — enrolled, in process, returned, and lost &amp; found. Resident
-          reads are audited.
-        </p>
-      </div>
+    <div className="space-y-6 animate-fade-up">
+      <PageHeader
+        title="Resident clothing"
+        subtitle={
+          <>
+            Care-home personal garments — enrolled, in process, returned, and lost &amp; found. Resident
+            reads are audited.
+          </>
+        }
+      />
 
-      <Card>
+      <Card title="Scope">
         {accounts.loading ? (
-          <Loading />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SkeletonText lines={2} />
+            <SkeletonText lines={2} />
+          </div>
         ) : accounts.error ? (
           <ErrorBox message={accounts.error} onRetry={accounts.reload} />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Account">
               <Select value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Account">
                 {(accounts.data?.accounts ?? []).map((a) => (
@@ -104,7 +127,15 @@ function ResidentClothingInner(): React.ReactElement {
         )}
       </Card>
 
-      {siteId ? <SitePanel siteId={siteId} /> : <EmptyState message="Pick an account and site to view residents." />}
+      {siteId ? (
+        <SitePanel siteId={siteId} />
+      ) : (
+        <EmptyState
+          icon={<Search className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />}
+          title="Choose a scope"
+          message="Pick an account and site to view residents."
+        />
+      )}
     </div>
   );
 }
@@ -124,41 +155,55 @@ function SitePanel({ siteId }: { siteId: string }): React.ReactElement {
   }, [residents.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="grid gap-6 lg:grid-cols-3">
       <Card title="Residents">
         {!residents.data && residents.loading ? (
-          <Loading />
+          <SkeletonText lines={5} />
         ) : !residents.data && residents.error ? (
           <ErrorBox message={residents.error} onRetry={reload} />
         ) : !residents.data || residents.data.residents.length === 0 ? (
-          <EmptyState title="No residents" message="Enroll residents at this site to track their clothing." />
+          <EmptyState
+            icon={<UserRound className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />}
+            title="No residents"
+            message="Enroll residents at this site to track their clothing."
+          />
         ) : (
-          <ul className="space-y-1">
-            {residents.data.residents.map((r) => (
-              <li key={r.id}>
-                <button
-                  data-testid={`resident-${r.id}`}
-                  onClick={() => setResidentId(r.id)}
-                  className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
-                    r.id === residentId ? 'bg-bb-blueSoft text-bb-blue' : 'hover:bg-bb-line/40 text-bb-ink'
-                  }`}
-                >
-                  <span className="font-medium">{r.name}</span>
-                  {r.room && <span className="text-bb-sub"> · Room {r.room}</span>}
-                  {r.status !== 'ACTIVE' && <Badge tone="neutral">{humanize(r.status)}</Badge>}
-                </button>
-              </li>
-            ))}
+          <ul className="stagger space-y-1">
+            {residents.data.residents.map((r) => {
+              const active = r.id === residentId;
+              return (
+                <li key={r.id}>
+                  <button
+                    data-testid={`resident-${r.id}`}
+                    onClick={() => setResidentId(r.id)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-subhead transition duration-fast ease-daylight focus-visible:outline-none focus-visible:shadow-focus active:scale-[0.99]',
+                      active ? 'bg-primary-tint text-primary-strong' : 'text-ink hover:bg-subtle',
+                    )}
+                    aria-pressed={active}
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-semibold">{r.name}</span>
+                      {r.room && <span className="text-tertiary"> · Room {r.room}</span>}
+                    </span>
+                    {r.status !== 'ACTIVE' && <Badge tone="neutral">{humanize(r.status)}</Badge>}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
 
-      <div className="space-y-4 lg:col-span-2">
+      <div className="space-y-6 lg:col-span-2">
         {residentId ? (
           <ClothingPanel residentId={residentId} reloadKey={nonce} />
         ) : (
           <Card title="Garments">
-            <EmptyState message="Select a resident to see their garments." />
+            <EmptyState
+              icon={<Shirt className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />}
+              message="Select a resident to see their garments."
+            />
           </Card>
         )}
         <LostFoundPanel siteId={siteId} residents={residents.data?.residents ?? []} canOps={canOps} reloadKey={nonce} onReconciled={reload} />
@@ -169,12 +214,12 @@ function SitePanel({ siteId }: { siteId: string }): React.ReactElement {
 
 function GarmentRow({ g }: { g: GarmentView }): React.ReactElement {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-bb-line py-1.5 last:border-0" data-testid={`garment-${g.id}`}>
+    <div className="flex items-center justify-between gap-2 border-b border-hairline py-2 last:border-0" data-testid={`garment-${g.id}`}>
       <div className="min-w-0">
-        <div className="truncate text-sm text-bb-ink">{g.description ?? 'Garment'}</div>
-        <div className="font-mono text-[11px] text-bb-sub">{g.tagCode ?? '—'}</div>
+        <div className="truncate text-footnote text-ink">{g.description ?? 'Garment'}</div>
+        <div className="font-mono tabular-nums text-caption text-tertiary">{g.tagCode ?? '—'}</div>
       </div>
-      <Badge tone={garmentTone(g.garmentStatus)}>{humanize(g.garmentStatus)}</Badge>
+      <StatusPill tone={garmentTone(g.garmentStatus)}>{humanize(g.garmentStatus)}</StatusPill>
     </div>
   );
 }
@@ -185,23 +230,30 @@ function ClothingPanel({ residentId, reloadKey }: { residentId: string; reloadKe
   return (
     <Card title={state.data ? `Garments — ${state.data.resident.name}` : 'Garments'}>
       {!state.data && state.loading ? (
-        <Loading />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {BUCKET_LABELS.map(({ key }) => (
+            <div key={key} className="rounded-card border border-hairline bg-subtle/40 p-3">
+              <Skeleton className="mb-3 h-3 w-1/2" />
+              <SkeletonText lines={2} />
+            </div>
+          ))}
+        </div>
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data ? (
         <EmptyState message="No resident." />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {BUCKET_LABELS.map(({ key, label }) => {
             const garments = state.data!.buckets[key];
             return (
-              <div key={key} className="rounded-lg border border-bb-line p-3" data-testid={`bucket-${key}`}>
+              <div key={key} className="rounded-card border border-hairline bg-subtle/40 p-3" data-testid={`bucket-${key}`}>
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-bb-sub">{label}</span>
-                  <span className="text-xs text-bb-sub">{garments.length}</span>
+                  <span className="text-caption font-semibold uppercase tracking-wide text-tertiary">{label}</span>
+                  <span className="font-mono tabular-nums text-caption font-semibold text-secondary">{garments.length}</span>
                 </div>
                 {garments.length === 0 ? (
-                  <p className="text-xs text-bb-sub">—</p>
+                  <p className="text-caption text-tertiary">—</p>
                 ) : (
                   garments.map((g) => <GarmentRow key={g.id} g={g} />)
                 )}
@@ -250,38 +302,45 @@ function LostFoundPanel({
 
   return (
     <Card title="Lost & found">
-      {err && <p className="mb-2 text-sm text-red-700">{err}</p>}
+      {err && (
+        <p className="mb-3 rounded-btn bg-danger-tint px-3 py-2 text-footnote font-medium text-danger-strong">{err}</p>
+      )}
       {!state.data && state.loading ? (
-        <Loading />
+        <TableSkeleton rows={3} cols={canOps ? 5 : 4} />
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data || state.data.lostFound.length === 0 ? (
-        <EmptyState title="Nothing in lost & found" message="Unmatched garments on return sort land here for reconciliation." />
+        <EmptyState
+          icon={<Sparkles className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />}
+          title="Nothing in lost & found"
+          message="Unmatched garments on return sort land here for reconciliation."
+        />
       ) : (
-        <table className="w-full text-sm">
+        <Table>
           <thead>
-            <tr className="border-b border-bb-line text-left text-bb-sub">
-              <th className="py-2 pr-4 font-medium">Garment</th>
-              <th className="py-2 pr-4 font-medium">Tag</th>
-              <th className="py-2 pr-4 font-medium">Candidate</th>
-              <th className="py-2 pr-4 font-medium">Found</th>
-              {canOps && <th className="py-2 font-medium">Reconcile to</th>}
+            <tr>
+              <Th>Garment</Th>
+              <Th>Tag</Th>
+              <Th>Candidate</Th>
+              <Th>Found</Th>
+              {canOps && <Th>Reconcile to</Th>}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="stagger divide-y divide-hairline">
             {state.data.lostFound.map((lf) => (
-              <tr key={lf.id} className="border-b border-bb-line last:border-0" data-testid={`lostfound-${lf.id}`}>
-                <td className="py-2 pr-4">{lf.notes ?? 'Garment'}</td>
-                <td className="py-2 pr-4 font-mono text-[11px] text-bb-sub">{lf.tagCode ?? '—'}</td>
-                <td className="py-2 pr-4 text-bb-sub">{lf.candidateResidentName ?? '—'}</td>
-                <td className="py-2 pr-4 text-bb-sub">{shortDate(lf.createdAt)}</td>
+              <tr key={lf.id} className="transition-colors duration-fast hover:bg-subtle/50" data-testid={`lostfound-${lf.id}`}>
+                <Td className="text-ink">{lf.notes ?? 'Garment'}</Td>
+                <Td className="font-mono tabular-nums text-tertiary">{lf.tagCode ?? '—'}</Td>
+                <Td className="text-secondary">{lf.candidateResidentName ?? '—'}</Td>
+                <Td className="font-mono tabular-nums text-secondary">{shortDate(lf.createdAt)}</Td>
                 {canOps && (
-                  <td className="py-2">
+                  <Td>
                     <div className="flex items-center gap-2">
                       <Select
                         value={pick[lf.id] ?? lf.candidateResidentId ?? ''}
                         onChange={(e) => setPick((p) => ({ ...p, [lf.id]: e.target.value }))}
                         aria-label={`Reconcile ${lf.id} to`}
+                        className="min-w-[12rem]"
                       >
                         <option value="">Select resident…</option>
                         {residents.map((r) => (
@@ -295,12 +354,12 @@ function LostFoundPanel({
                         Reconcile
                       </Button>
                     </div>
-                  </td>
+                  </Td>
                 )}
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
     </Card>
   );

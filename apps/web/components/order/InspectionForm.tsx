@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import { PhotoKind, type InspectionDto } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useSession } from '@/lib/session';
 import { uploadPhoto, MediaError } from '@/lib/media';
 import type { OrderDetail, ItemView } from '@/lib/types';
-import { Button, Field, Input, Modal } from '../ui';
+import { Button, Field, Input, Modal, Textarea } from '../ui';
 
 const MEASURE_FIELDS: { key: string; label: string }[] = [
   { key: 'sqft', label: 'Area (sq ft)' },
@@ -105,33 +106,48 @@ export function InspectionForm({ orderId, item, onClose, onDone }: { orderId: st
           <Input value={conditionCodes} onChange={(e) => setConditionCodes(e.target.value)} placeholder="frayed, stain" />
         </Field>
         <Field label="Notes">
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" rows={2} />
         </Field>
 
-        <label className="flex items-center gap-2 text-sm text-bb-ink">
-          <input type="checkbox" checked={damage} onChange={(e) => setDamage(e.target.checked)} aria-label="Pre-existing damage" />
+        <label className="flex items-center gap-2.5 text-subhead text-ink">
+          <input
+            type="checkbox"
+            checked={damage}
+            onChange={(e) => setDamage(e.target.checked)}
+            aria-label="Pre-existing damage"
+            className="h-4 w-4 rounded border-hairline text-primary accent-primary focus-visible:outline-none focus-visible:shadow-focus"
+          />
           Flag pre-existing damage
         </label>
 
         {damage && (
-          <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="space-y-3 rounded-card border border-warning bg-warning-tint p-4 animate-fade-in">
+            <p className="flex items-center gap-1.5 text-footnote font-semibold text-warning-strong">
+              <TriangleAlert className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" /> Damage requires proof + customer acknowledgement
+            </p>
             <Field label="Damage photo (required)">
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp,application/pdf"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 aria-label="Damage photo"
-                className="text-sm"
+                className="block w-full text-footnote text-secondary file:mr-3 file:rounded-btn file:border-0 file:bg-surface file:px-3 file:py-1.5 file:text-footnote file:font-semibold file:text-ink hover:file:bg-subtle"
               />
             </Field>
-            <label className="flex items-center gap-2 text-sm text-bb-ink">
-              <input type="checkbox" checked={customerAck} onChange={(e) => setCustomerAck(e.target.checked)} aria-label="Customer acknowledged" />
+            <label className="flex items-center gap-2.5 text-subhead text-ink">
+              <input
+                type="checkbox"
+                checked={customerAck}
+                onChange={(e) => setCustomerAck(e.target.checked)}
+                aria-label="Customer acknowledged"
+                className="h-4 w-4 rounded border-hairline text-primary accent-primary focus-visible:outline-none focus-visible:shadow-focus"
+              />
               Customer acknowledged the pre-existing damage
             </label>
           </div>
         )}
 
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {error && <p className="text-footnote font-medium text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel

@@ -38,7 +38,7 @@ export function OrdersQueue(): React.ReactElement {
         ) : error ? (
           <ErrorBox message={error} onRetry={reload} />
         ) : !data || data.orders.length === 0 ? (
-          <EmptyState message="No orders match this filter." />
+          <EmptyState title="No orders here" message="No orders match this filter." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

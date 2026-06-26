@@ -133,10 +133,12 @@ describe('AnalyticsHome (console, RBAC-gated)', () => {
     expect(within(screen.getByTestId('stat-On-time pickup')).getByText('50%')).toBeInTheDocument();
     expect(within(screen.getByTestId('stat-Route adherence')).getByText('80%')).toBeInTheDocument();
     expect(within(screen.getByTestId('stat-Plant throughput')).getByText(/3 items/)).toBeInTheDocument();
+    // a plausible stops/hour renders its computed value (formatted)
+    expect(within(screen.getByTestId('stat-Stops / hour')).getByText('0.69')).toBeInTheDocument();
 
-    // commercial computed values
+    // commercial computed values — money is grouped with thousands separators
     await waitFor(() => expect(screen.getByTestId('stat-Tracked GMV')).toBeInTheDocument());
-    expect(within(screen.getByTestId('stat-Tracked GMV')).getByText(/1000\.00/)).toBeInTheDocument();
+    expect(within(screen.getByTestId('stat-Tracked GMV')).getByText(/1,000\.00/)).toBeInTheDocument();
     expect(within(screen.getByTestId('stat-Quote→approval')).getByText('50%')).toBeInTheDocument();
 
     // AR aging table
@@ -150,6 +152,21 @@ describe('AnalyticsHome (console, RBAC-gated)', () => {
     await waitFor(() => expect(screen.getByTestId('stat-Active contracts')).toBeInTheDocument());
     expect(within(screen.getByTestId('stat-Active contracts')).getByText('Phase 2')).toBeInTheDocument();
     expect(within(screen.getByTestId('stat-CSAT')).getByText('Phase 2')).toBeInTheDocument();
+  });
+
+  it('GUARD: an implausible stops/hour renders honest "insufficient data", not the absurd number', async () => {
+    mockClient.analyticsOperational.mockResolvedValue({
+      ...operational,
+      // A collapsed on-site-time denominator makes the real, computed ratio explode (the e2e-seed artifact).
+      metrics: { ...operational.metrics, stopsPerHour: ok(195652, 4) },
+    });
+    render(<AnalyticsHome />);
+    await waitFor(() => expect(screen.getByTestId('stat-Stops / hour')).toBeInTheDocument());
+    const tile = screen.getByTestId('stat-Stops / hour');
+    expect(within(tile).getByText(/insufficient data/i)).toBeInTheDocument();
+    // The absurd figure is NOT presented as a real value (it is disclosed only in the tooltip).
+    expect(within(tile).queryByText(/195,652/)).not.toBeInTheDocument();
+    expect(tile.getAttribute('title')).toMatch(/195,652/);
   });
 
   it('HONESTY: a computed metric with no rows shows "—", not 0', async () => {

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ApiError } from '@blue-bee/api-client';
 import { useSession } from '@/lib/session';
 import { Button, Card, Field, Input } from './ui';
+import { Logo } from './Logo';
 
 /**
  * Phone-OTP login for ops staff (Increment 13) — reuses the shared `useAuthSession`. In dev (console
@@ -50,11 +51,12 @@ export function Login(): React.ReactElement {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-bb-blueSoft to-[#f6f8fa] p-6">
       <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-bb-ink">🐝 Blue Bee Console</h1>
-          <p className="mt-1 text-sm text-bb-sub">Operator sign-in</p>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <Logo size="lg" />
+          <p className="mt-3 text-sm text-bb-sub">Operator sign-in</p>
+          <p className="mt-1 text-xs text-bb-sub">Orders · dispatch · fleet · finance</p>
         </div>
         <Card>
           {stage === 'phone' ? (
@@ -98,6 +100,7 @@ export function Login(): React.ReactElement {
             </form>
           )}
         </Card>
+        <p className="mt-6 text-center text-xs text-bb-sub">Back-of-house operations console · Blue Bee</p>
       </div>
     </main>
   );

@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poplin / SudShare — Competitive Teardown · Blue Bee</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --navy:#15487e; --navy2:#2f73b8; --ink:#1f2933; --amber:#f4b400; --amber2:#b9860b;
+    --coral:#c43e6b; --coral2:#e0739a; --paper:#f5f7fa; --card:#ffffff; --line:#e3e9f0;
+    --good:#1d7a45; --muted:#6b7280;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5}
+  a{color:var(--navy);text-decoration:none}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 18px}
+  header.top{background:linear-gradient(120deg,#0f3b63,#15487e 60%,#1d5a96);color:#fff;padding:26px 0 0}
+  .brandbar{height:8px;background:linear-gradient(90deg,#15487e 0 62%,#f4b400 62% 100%)}
+  .kicker{letter-spacing:.18em;text-transform:uppercase;font-size:11px;color:#bcd4ee;font-weight:700}
+  header.top h1{margin:8px 0 4px;font-size:30px;line-height:1.12}
+  header.top h1 .amber{color:var(--amber)}
+  header.top p.sub{margin:6px 0 18px;color:#d8e6f5;max-width:760px;font-size:15px}
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:16px 0 22px}
+  .kpi{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:11px 12px}
+  .kpi .v{font-size:21px;font-weight:800;color:#fff}
+  .kpi .v.am{color:var(--amber)}
+  .kpi .l{font-size:10.5px;color:#cfe0f2;text-transform:uppercase;letter-spacing:.03em;margin-top:3px}
+  nav.tabs{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(15,59,99,.06)}
+  nav.tabs .wrap{display:flex;gap:4px;overflow-x:auto}
+  nav.tabs button{appearance:none;border:0;background:transparent;padding:14px 14px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+  nav.tabs button:hover{color:var(--navy)}
+  nav.tabs button.active{color:var(--navy);border-bottom-color:var(--amber)}
+  section.panel{display:none;padding:26px 0 10px;animation:fade .25s ease}
+  section.panel.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h2.sec{font-size:21px;color:var(--navy);margin:4px 0 4px}
+  p.lede{color:#3f4a57;font-size:15px;margin:2px 0 16px;max-width:850px}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g23{grid-template-columns:1.4fr 1fr}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(16,42,67,.04)}
+  .card h3{margin:0 0 10px;color:var(--navy);font-size:16px}
+  .card h3 .pill{font-size:10px;font-weight:700;background:#eef4fb;color:var(--navy);padding:2px 8px;border-radius:10px;vertical-align:middle;margin-left:6px;text-transform:uppercase;letter-spacing:.03em}
+  .chartbox{position:relative;height:280px}
+  .chartbox.sm{height:230px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--navy);color:#fff;font-weight:600;font-size:12.5px}
+  tbody tr:nth-child(even){background:#f7f9fc}
+  td.b{font-weight:700;color:#14334f}
+  .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:1px 7px;border-radius:9px}
+  .tag.v{background:#e3f3ea;color:#1d7a45}.tag.e{background:#fdeccf;color:#9a6b00}.tag.m{background:#e7eefc;color:#274b9b}
+  .callout{border-radius:10px;padding:13px 16px;margin:14px 0;font-size:14px}
+  .callout.key{background:#eef4fb;border-left:4px solid var(--navy)}
+  .callout.warn{background:#fdf3e3;border-left:4px solid var(--amber)}
+  .callout.win{background:#eaf6ef;border-left:4px solid var(--good)}
+  .callout h4{margin:0 0 5px;color:var(--navy)}
+  ul.tight{margin:6px 0;padding-left:18px}ul.tight li{margin:5px 0}
+  /* flow */
+  .flow{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+  .node{flex:1;min-width:150px;border-radius:10px;padding:12px;font-size:12.5px}
+  .node .t{font-weight:800;display:block;margin-bottom:3px;font-size:13.5px}
+  .node.cust{background:#eaf2fb;border:1.5px solid var(--navy);color:#13456f}
+  .node.plat{background:var(--navy);color:#fff}
+  .node.pro{background:#fbeaf1;border:1.5px solid var(--coral);color:#8f2a4d}
+  .arrow{display:flex;flex-direction:column;justify-content:center;align-items:center;color:#9aa3ad;font-weight:800;font-size:18px;min-width:42px}
+  .arrow small{font-size:9px;color:var(--muted);font-weight:700}
+  /* calc */
+  .calc{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:center}
+  .calc .controls label{font-size:12.5px;color:var(--muted);font-weight:600;display:block;margin:2px 0 4px}
+  .calc input[type=range]{width:100%;accent-color:var(--navy)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px}
+  .seg button{border:0;background:#fff;padding:8px 14px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
+  .seg button.on{background:var(--navy);color:#fff}
+  .out{display:flex;gap:10px;margin-top:10px}
+  .outcard{flex:1;border-radius:10px;padding:11px;text-align:center}
+  .outcard.c{background:#eaf2fb;border:1px solid #cfe0f5}.outcard.p{background:#fbeaf1;border:1px solid #f0cdda}.outcard.k{background:#fff6e0;border:1px solid #f3e0ad}
+  .outcard .n{font-size:22px;font-weight:800}
+  .outcard.c .n{color:var(--navy)}.outcard.p .n{color:var(--coral)}.outcard.k .n{color:var(--amber2)}
+  .outcard .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin-top:2px}
+  .stackbar{height:18px;border-radius:5px;overflow:hidden;display:flex;margin-top:12px;border:1px solid var(--line)}
+  .stackbar .s1{background:var(--coral)}.stackbar .s2{background:var(--amber)}
+  .matrix td.dim{background:#eef2f7;font-weight:700;color:#14334f;width:20%}
+  .matrix th.pp{background:var(--coral)}.matrix th.bb{background:var(--navy)}
+  .yes{color:var(--good);font-weight:800}.no{color:var(--coral);font-weight:800}
+  footer{color:var(--muted);font-size:12px;padding:22px 0 40px}
+  .src{font-size:11px;color:#8a939e;word-break:break-word}
+  @media(max-width:880px){.kpis{grid-template-columns:repeat(3,1fr)}.g2,.g3,.g23{grid-template-columns:1fr}.calc{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="brandbar"></div>
+<header class="top">
+  <div class="wrap">
+    <div class="kicker">Competitive Teardown · Senior Business Analyst Brief · Jun 27 2026</div>
+    <h1>Poplin <span class="amber">(formerly SudShare)</span> &mdash; how it works &amp; what it means for Blue&nbsp;Bee</h1>
+    <p class="sub">The "Uber-for-laundry" marketplace your customer referenced, taken apart across model, GTM, market, money, onboarding and product &mdash; then benchmarked against what Blue&nbsp;Bee is building in the GTA.</p>
+    <div class="kpis">
+      <div class="kpi"><div class="v">2018</div><div class="l">Founded (app &rsquo;17)</div></div>
+      <div class="kpi"><div class="v">500+</div><div class="l">US cities</div></div>
+      <div class="kpi"><div class="v am">150k+</div><div class="l">Laundry Pros</div></div>
+      <div class="kpi"><div class="v">25%</div><div class="l">Take rate</div></div>
+      <div class="kpi"><div class="v am">$10M</div><div class="l">Raised (seed)</div></div>
+      <div class="kpi"><div class="v">~$30M</div><div class="l">Est. rev (unverified)</div></div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs"><div class="wrap" id="tabbar">
+  <button data-tab="overview" class="active">Overview</button>
+  <button data-tab="model">Model &amp; economics</button>
+  <button data-tab="gtm">GTM &amp; market</button>
+  <button data-tab="money">Money</button>
+  <button data-tab="product">Onboarding &amp; app</button>
+  <button data-tab="vs">vs Blue&nbsp;Bee</button>
+  <button data-tab="comp">Competitors</button>
+</div></nav>
+
+<main class="wrap">
+
+<!-- OVERVIEW -->
+<section class="panel active" id="overview">
+  <h2 class="sec">The 30-second read</h2>
+  <p class="lede">Poplin is a two-sided <b>consumer gig marketplace</b>: it connects busy households with independent "Laundry Pros" who wash, dry, fold and deliver everyday laundry using their own home machines. Poplin owns the app and trust layer, owns none of the production, and clips <b>~25%</b> of each order.</p>
+  <div class="callout key"><h4>The one thing to internalise</h4>Poplin is <b>not a competitor &mdash; it's a different sport.</b> It sells <i>convenience</i> to <i>consumers</i> for a <i>commodity</i> (wash-dry-fold) at <i>$1/lb</i>, with trust outsourced to background checks and star ratings. Blue&nbsp;Bee sells <i>operational control, traceability and liability cover</i> to <i>businesses</i> under <i>contract</i>, with chain-of-custody as the product. Same word ("laundry"), opposite business.</div>
+
+  <div class="grid g23">
+    <div class="card">
+      <h3>Your six questions, answered</h3>
+      <table>
+        <tr><td class="b">GTM</td><td>Run supply (recruit gig pros, "earn from your laundry room") and demand (hyper-local SEO city pages, PR as "Uber for laundry", review harvesting, referrals) at once; flywheel connects them.</td></tr>
+        <tr><td class="b">Target market</td><td>Time-poor US households in 500+ cities; thin SMB edge (gyms, salons, Airbnb, boutique hotels) sold the <i>same</i> $1/lb product. No rural.</td></tr>
+        <tr><td class="b">Earnings</td><td>Private. ~$30M est. revenue <span class="tag e">Est</span>; 25% take; ~80 staff; $10M raised; no big later round &rarr; capital-efficient.</td></tr>
+        <tr><td class="b">Onboarding</td><td>Pros: ID+SSN+background check, own washer/dryer+car, training, probation, rank ladder. Customers: tap, set prefs, leave bag, pay by weight.</td></tr>
+        <tr><td class="b">Customers</td><td>Overwhelmingly B2C households; trust ("strangers touching clothes") is the gating issue, managed by ratings + $1,000 Protection Plan.</td></tr>
+        <tr><td class="b">The app</td><td>Customer app (order/track/pay) + separate Pro app (accept gigs/navigate/payout) + a ranking engine that routes best-rated pros first.</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Positioning <span class="pill">Analyst view</span></h3>
+      <div class="chartbox">
+        <canvas id="radar"></canvas>
+      </div>
+      <p class="src" style="margin-top:8px">Illustrative 0&ndash;10 positioning scores (analyst judgement), not company data.</p>
+    </div>
+  </div>
+</section>
+
+<!-- MODEL -->
+<section class="panel" id="model">
+  <h2 class="sec">How the company works</h2>
+  <p class="lede">A classic platform business &mdash; it never touches a washing machine. It matches two sides and takes a cut of the transaction.</p>
+  <div class="card">
+    <h3>The marketplace</h3>
+    <div class="flow">
+      <div class="node cust"><span class="t">Customer (demand)</span>Time-poor household. Orders a pickup, sets preferences, leaves the bag at the door, pays.</div>
+      <div class="arrow">&rarr;<small>order&nbsp;+&nbsp;$</small></div>
+      <div class="node plat"><span class="t">Poplin platform</span>App, matching/ranking engine, ID + background checks, payments, ratings, $1,000 Protection Plan. <b>Keeps ~25% + fees.</b></div>
+      <div class="arrow">&rarr;<small>gig offer</small></div>
+      <div class="node pro"><span class="t">Laundry Pro (supply)</span>Independent contractor. Picks up, washes at home, folds, returns to the door. <b>Earns 75% + 100% of tips.</b></div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h3>Service scope</h3>
+      <p style="margin:4px 0;font-size:13px"><b style="color:var(--good)">IS:</b> wash &middot; dry &middot; fold of everyday clothes &amp; household laundry; free pickup/delivery; detergent &amp; hang-dry options; next-day or same-day.</p>
+      <p style="margin:8px 0;font-size:13px"><b style="color:var(--coral)">IS NOT:</b> <span class="no">no</span> stain treatment, <span class="no">no</span> ironing, <span class="no">no</span> dry cleaning, <span class="no">no</span> specialty (rugs/upholstery/blinds/carpets), <span class="no">no</span> commercial production, par-level/linen management or item-level chain of custody.</p>
+      <div class="callout warn" style="margin:8px 0 0"><b>That "IS NOT" list is exactly Blue&nbsp;Bee's territory.</b></div>
+    </div>
+    <div class="card">
+      <h3>Pricing &amp; the 25% take</h3>
+      <table>
+        <thead><tr><th>Line</th><th>Customer</th><th>Pro</th><th>Poplin</th></tr></thead>
+        <tbody>
+          <tr><td class="b">Standard / lb</td><td>$1.00</td><td>$0.75</td><td>$0.25</td></tr>
+          <tr><td class="b">Express / lb</td><td>$2.00</td><td>$1.50</td><td>$0.50</td></tr>
+          <tr><td class="b">Bulky item</td><td>+$8</td><td>+$6</td><td>+$2</td></tr>
+          <tr><td class="b">Tips</td><td>opt.</td><td>100%</td><td>$0</td></tr>
+          <tr><td class="b">Order min</td><td>~$30</td><td>&mdash;</td><td>&mdash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid g23" style="margin-top:16px">
+    <div class="card">
+      <h3>Order economics calculator <span class="pill">Interactive</span></h3>
+      <div class="calc">
+        <div class="controls">
+          <label>Order weight: <b id="lbOut" style="color:var(--navy)">40</b> lb</label>
+          <input type="range" id="lb" min="10" max="120" value="40" step="1">
+          <label style="margin-top:12px">Service</label>
+          <div class="seg" id="seg">
+            <button class="on" data-rate="1" data-min="30">Standard $1/lb</button>
+            <button data-rate="2" data-min="40">Express $2/lb</button>
+          </div>
+          <div class="stackbar" title="Split of the bill"><div class="s1" id="barPro" style="width:75%"></div><div class="s2" id="barPop" style="width:25%"></div></div>
+          <p class="src" style="margin-top:6px"><span style="color:var(--coral)">&#9632;</span> Pro 75% &nbsp; <span style="color:var(--amber2)">&#9632;</span> Poplin 25% (+ Trust &amp; Safety fee, not shown)</p>
+        </div>
+        <div>
+          <div class="out">
+            <div class="outcard c"><div class="n" id="oCust">$40</div><div class="lab">Customer pays</div></div>
+            <div class="outcard p"><div class="n" id="oPro">$30</div><div class="lab">Pro keeps</div></div>
+            <div class="outcard k"><div class="n" id="oPop">$10</div><div class="lab">Poplin take</div></div>
+          </div>
+          <p class="src" style="margin-top:10px">Weighed after washing. Order minimum enforced. Pro nets less after ~&#8531; costs (gas, bags, detergent, power) + keeps 100% of tips.</p>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Where the bill goes</h3>
+      <div class="chartbox sm"><canvas id="take"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<!-- GTM -->
+<section class="panel" id="gtm">
+  <h2 class="sec">Go-to-market &amp; target market</h2>
+  <p class="lede">A marketplace must solve two acquisition problems at once. Poplin runs a distinct motion for each side and lets the flywheel connect them.</p>
+  <div class="grid g2">
+    <div class="card"><h3>Supply &mdash; recruit Laundry Pros</h3>
+      <ul class="tight">
+        <li><b>"Earn from your laundry room"</b> work-from-home pitch &mdash; stay-at-home parents, retirees, side-hustlers</li>
+        <li>Listed on gig/side-hustle sites (SideHusl, Indeed, Glassdoor, BeBee)</li>
+        <li>Near-zero CAC &mdash; pros bring their own machines &amp; car</li>
+        <li>Retention via points/rank ladder + instant payout for top pros</li>
+      </ul>
+    </div>
+    <div class="card"><h3>Demand &mdash; acquire customers</h3>
+      <ul class="tight">
+        <li><b>Hyper-local programmatic SEO</b> &mdash; a landing page per city/state ("$1/lb laundry pickup in Brooklyn")</li>
+        <li><b>Earned media</b> &mdash; blanket local-news coverage as the "Uber for laundry" on each launch</li>
+        <li><b>Reviews as fuel</b> &mdash; 40k+ five-star reviews; Trustpilot ~4.4; "13,522 five-star reviews in the last 7 days"</li>
+        <li>Referrals, app-store presence, word-of-mouth</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout key" style="margin-top:14px"><h4>The flywheel</h4>More pros in a ZIP &rarr; faster, more reliable pickups &rarr; better ratings &amp; reviews &rarr; more customers convert on the local SEO page &rarr; more orders &rarr; market attracts more pros. The ranking engine rewards whoever shows up first &amp; rates well &mdash; locking in early supply and making each city defensible <i>without owning any assets.</i></div>
+  <div class="grid g23" style="margin-top:6px">
+    <div class="card"><h3>Target market</h3>
+      <table>
+        <thead><tr><th>Segment</th><th>Who &amp; why</th></tr></thead>
+        <tbody>
+          <tr><td class="b">Core &mdash; households</td><td>Working parents, dual-income professionals, students, seniors, no in-unit laundry. Buying back time at a price that feels small vs the hours saved.</td></tr>
+          <tr><td class="b">Edge &mdash; SMBs</td><td>Gyms, salons, spas, Airbnb hosts, boutique hotels, clinics &mdash; via dedicated pages, but it's the <i>same</i> consumer WDF product, not a commercial contract.</td></tr>
+          <tr><td class="b">Geography</td><td>500+ US cities, urban &amp; suburban; explicitly skips rural/remote (transport cost).</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card"><h3>Scale trajectory <span class="pill">Approx</span></h3>
+      <div class="chartbox sm"><canvas id="growth"></canvas></div>
+      <p class="src" style="margin-top:6px">Laundry Pros: 50k+ (2021) &rarr; 150k+ (2024&ndash;25). Cities: 400+ &rarr; 500+.</p>
+    </div>
+  </div>
+</section>
+
+<!-- MONEY -->
+<section class="panel" id="money">
+  <h2 class="sec">Earnings, funding &amp; investment</h2>
+  <p class="lede">Private company, no audited figures. Everything here is tagged for confidence; revenue/GMV math is illustrative, not company data.</p>
+  <div class="grid g23">
+    <div class="card"><h3>Funding history</h3>
+      <table>
+        <thead><tr><th>When</th><th>Round</th><th>Amount</th><th>Lead / notes</th></tr></thead>
+        <tbody>
+          <tr><td>2018&ndash;21</td><td>Bootstrapped</td><td>&mdash;</td><td>Family-funded; did the laundry themselves first, then signed up contractors</td></tr>
+          <tr><td>Mar 2022</td><td class="b">Seed</td><td class="b">$10.0M</td><td><b>Headline</b> (lead); also Clean Ventures, Ludlow, Origin</td></tr>
+          <tr><td>2023&ndash;26</td><td>None disclosed</td><td>&mdash;</td><td>Rebrand to Poplin (2023); grew to 500+ cities on existing capital</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:13px;margin-top:8px"><b>Total disclosed funding &asymp; $10M</b> &mdash; essentially one priced round. Valuation undisclosed. <span class="tag v">Verified</span></p>
+    </div>
+    <div class="card"><h3>Knowable metrics</h3>
+      <table>
+        <tbody>
+          <tr><td class="b">Est. revenue</td><td>&asymp; $30.4M <span class="tag e">Est</span></td></tr>
+          <tr><td class="b">Take rate</td><td>25% + T&amp;S fee <span class="tag v">Verified</span></td></tr>
+          <tr><td class="b">Employees</td><td>~80 (2024) <span class="tag m">Mixed</span></td></tr>
+          <tr><td class="b">Pros</td><td>150k+ <span class="tag m">Mixed</span></td></tr>
+          <tr><td class="b">Cities</td><td>500+ <span class="tag m">Mixed</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid g23" style="margin-top:16px">
+    <div class="card"><h3>Illustrative GMV &rarr; revenue <span class="pill">Hypothetical</span></h3>
+      <div class="chartbox sm"><canvas id="rev"></canvas></div>
+      <p class="src" style="margin-top:6px">Transparent arithmetic, <b>not</b> company data: what gross billed volume (GMV) would have to be for the ~$30M estimate to hold at the disclosed 25% take. At $120M GMV (&asymp;120M lb @ $1/lb) the math lands on ~$30M.</p>
+    </div>
+    <div class="card"><h3>Investor read <span class="pill">CEO lens</span></h3>
+      <p style="font-size:13.5px;margin:2px 0">Reaching 500+ cities and 150k+ contractors on ~$10M of outside capital is a strong <b>capital-efficiency</b> signal &mdash; supply self-funds its own equipment. The absence of a big Series A/B in 2023&ndash;26 most likely means the business is at/near profitability, is run for cash by a founding family, or the market cooled on low-take consumer-services marketplaces.</p>
+      <div class="callout win" style="margin:10px 0 0"><b>Lesson for Blue&nbsp;Bee:</b> laundry <i>can</i> be built lean &mdash; but a 25% take on a $1/lb commodity is a thin, low-defensibility margin. Blue&nbsp;Bee's contract + custody + specialty model is heavier per market but far higher ACV and switching cost.</div>
+    </div>
+  </div>
+</section>
+
+<!-- PRODUCT -->
+<section class="panel" id="product">
+  <h2 class="sec">Onboarding &amp; how the app works</h2>
+  <div class="grid g2">
+    <div class="card"><h3>Laundry Pro onboarding (supply)</h3>
+      <ul class="tight">
+        <li><b>Gate:</b> 18+, US work-eligible</li>
+        <li><b>Assets:</b> washer + dryer, car, smartphone, scale, bags, detergent</li>
+        <li><b>Verify:</b> driver's licence + SSN + background check + ID cross-reference</li>
+        <li><b>Train:</b> best-practice videos + 10-min guide</li>
+        <li><b>Probation:</b> a first "test" order unlocks the rest</li>
+        <li><b>Ladder:</b> 1 order &rarr; "Bronze" (3) &rarr; higher ranks get orders first + instant payout; points favour first-movers, ratings &amp; tips; radius &le;50 mi</li>
+      </ul>
+    </div>
+    <div class="card"><h3>Customer onboarding (demand)</h3>
+      <ul class="tight">
+        <li>Download app, enter ZIP (coverage check)</li>
+        <li>Place order: Standard/Express, detergent, hang-dry, prefs</li>
+        <li>Leave bag at the door in the window</li>
+        <li>Track status &amp; message the Pro in-app</li>
+        <li>Pay by <b>post-wash weight</b>; rate &amp; tip; re-book a preferred Pro</li>
+      </ul>
+      <p class="src" style="margin-top:4px">Near-zero friction on demand; all verification friction sits on supply, where it builds the trust the customer is buying.</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>Product surfaces</h3>
+    <table>
+      <thead><tr><th>Surface</th><th>Core jobs</th></tr></thead>
+      <tbody>
+        <tr><td class="b">Customer app</td><td>Order WDF, set prefs, ZIP coverage, live status, message Pro, pay by weight, rate &amp; tip, re-book, claims.</td></tr>
+        <tr><td class="b">Pro app ("Poplin for Laundry Pros")</td><td>See/accept nearby gigs, set drive radius, navigate, message, mark stages, manage earnings &amp; payouts, training.</td></tr>
+        <tr><td class="b">Matching / ranking engine</td><td>The real IP &mdash; routes orders to highest-ranked, best-rated, longest-tenured available pros; gates new pros via probation. How an asset-light platform manufactures consistency.</td></tr>
+        <tr><td class="b">Trust &amp; payments</td><td>ID/background checks, $1,000/order Protection Plan, card payments, 100% tips to pros, payout in ~2 days (instant for top pros).</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- VS BLUE BEE -->
+<section class="panel" id="vs">
+  <h2 class="sec">Blue&nbsp;Bee vs Poplin &mdash; head to head</h2>
+  <p class="lede">Across almost every strategic axis the two businesses point in opposite directions. This is the core of the comparison.</p>
+  <div class="card">
+    <table class="matrix">
+      <thead><tr><th class="dim" style="background:var(--navy)">Dimension</th><th class="pp">Poplin</th><th class="bb">Blue&nbsp;Bee</th></tr></thead>
+      <tbody>
+        <tr><td class="dim">Buyer</td><td>B2C households (+ micro-SMB edge)</td><td>B2B &mdash; facilities, care homes, hotels, specialty clients</td></tr>
+        <tr><td class="dim">Job to be done</td><td>"Do my laundry, cheaply, by tomorrow"</td><td>"Run our linen/garment/specialty operation with proof &amp; control"</td></tr>
+        <tr><td class="dim">Scope</td><td>Wash-dry-fold only</td><td>Specialty (rugs/upholstery/blinds) &rarr; care-home linen + resident clothing &rarr; hotels</td></tr>
+        <tr><td class="dim">Production</td><td>Strangers' home washers/dryers</td><td>Controlled operation + managed fleet &amp; routes</td></tr>
+        <tr><td class="dim">Core moat</td><td>Matching + ratings (trust by reputation)</td><td><b>Chain of custody</b> &mdash; every item tagged, every scan an append-only event (trust by traceability)</td></tr>
+        <tr><td class="dim">Pricing basis</td><td>$/lb commodity, pay-as-you-go</td><td>Contracts, SLAs, volume/par-based billing</td></tr>
+        <tr><td class="dim">Revenue type</td><td>Transactional, 25% take, low margin</td><td>Recurring contract revenue, higher ACV</td></tr>
+        <tr><td class="dim">Liability</td><td>$1,000/order Protection Plan</td><td>Liability-grade: intake photos, acknowledged pre-existing damage, claims object</td></tr>
+        <tr><td class="dim">Tech surfaces</td><td>Customer app &middot; Pro app &middot; ranking engine</td><td>Customer &middot; Owner &middot; offline-first Driver (GPS/scan) &middot; full web Console</td></tr>
+        <tr><td class="dim">Geography</td><td>500+ US cities, asset-light</td><td>Greater Toronto Area, depth-first, ops-controlled</td></tr>
+        <tr><td class="dim">Switching cost</td><td><span class="no">Low</span> &mdash; a commodity tap</td><td><span class="yes">High</span> &mdash; embedded in operations &amp; compliance</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h3>Where they could touch</h3>
+      <ul class="tight">
+        <li>Poplin's <b>Airbnb / boutique-hotel</b> edge overlaps Blue&nbsp;Bee's future <b>hotel</b> vertical at the very smallest end</li>
+        <li>Both set the expectation of <b>app-ordered pickup + live status</b></li>
+      </ul>
+    </div>
+    <div class="card"><h3>Where they don't</h3>
+      <ul class="tight">
+        <li>Poplin has <span class="no">no</span> specialty cleaning, <span class="no">no</span> custody, <span class="no">no</span> SLAs, <span class="no">no</span> fleet/console</li>
+        <li>A care home or hotel cannot run on a $1/lb consumer gig app &mdash; different buyer, motion &amp; margin</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout win"><h4>The wedge &amp; the one-liner</h4>Poplin proves households will hand laundry to an app. Blue&nbsp;Bee's bet is the harder, more defensible market: <b>businesses that operationally and legally cannot hand their linens to a stranger's washing machine.</b> Test line: <i>"Poplin is the Uber for your laundry. Blue&nbsp;Bee is the operating system for everyone whose laundry is a business &mdash; with a chain of custody on every item."</i></div>
+  <div class="grid g2">
+    <div class="card"><h3>Borrow from Poplin</h3>
+      <ul class="tight">
+        <li>Programmatic <b>local SEO</b> (B2B version: "commercial rug &amp; upholstery cleaning in [GTA suburb]")</li>
+        <li>Reviews/case-studies as the conversion engine &mdash; Blue&nbsp;Bee's custody photos are stronger proof than stars</li>
+        <li>Frictionless ordering + live tracking UX</li>
+        <li>A visible trust-cover headline (custody + claims &gt; "$1,000 plan")</li>
+        <li>Capital-efficiency mindset</li>
+      </ul>
+    </div>
+    <div class="card"><h3>Resist from Poplin</h3>
+      <ul class="tight">
+        <li><b>Don't</b> benchmark price against $1/lb &mdash; wrong category, kills margin</li>
+        <li><b>Don't</b> chase the micro-Airbnb host on price &mdash; win hotels on SLA + custody</li>
+        <li><b>Don't</b> outsource production to strangers' machines &mdash; control <i>is</i> the moat</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- COMPETITORS -->
+<section class="panel" id="comp">
+  <h2 class="sec">Competitive landscape (Poplin's world)</h2>
+  <p class="lede">Poplin competes in consumer wash-dry-fold. The players differ mainly on who washes the clothes and how they price.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th>Player</th><th>Model</th><th>Pricing</th><th>vs Poplin</th></tr></thead>
+      <tbody>
+        <tr><td class="b">Poplin</td><td>Gig pros, home machines</td><td>$1/lb (2-day), $2/lb same-day; no membership</td><td>Cheapest, widest gig supply; quality varies by Pro</td></tr>
+        <tr><td class="b">Hampr</td><td>Gig washers, home machines</td><td>Flat per-load; $39/yr membership; QR-coded hampers</td><td>Closest analogue; customers separate own laundry; membership lock-in</td></tr>
+        <tr><td class="b">Rinse</td><td>Valet + centralized facilities</td><td>Pickup+delivery fee + service fee; memberships</td><td>More premium/dry-clean; higher price; less "neighbour at home"</td></tr>
+        <tr><td class="b">Tide Cleaners (P&amp;G)</td><td>Lockers + franchise</td><td>Per-item / WDF</td><td>Brand trust + dry clean; less on-demand-to-door</td></tr>
+        <tr><td class="b">Local / regional</td><td>2ULaundry, Hamperapp, LaundryMatch, SwiftFold, Sparklean</td><td>Varies; many do real commercial</td><td>Some serve true B2B &mdash; the lane Poplin only skims</td></tr>
+        <tr><td class="b">Laundromats &amp; DIY</td><td>Legacy alternative</td><td>Self-serve</td><td>The status quo Poplin displaces</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn"><b>Note:</b> Blue&nbsp;Bee's competitors are <i>not</i> in this table. Blue&nbsp;Bee competes with commercial/industrial laundries, linen-rental services and specialty cleaners in the GTA &mdash; an entirely different competitive set from Poplin's consumer gig peers.</div>
+</section>
+
+<footer class="wrap">
+  <p><b>Confidence:</b> <span class="tag v">Verified</span> company site / Wikipedia / press &nbsp; <span class="tag e">Est</span> third-party estimators (directional) &nbsp; <span class="tag m">Mixed</span> sources disagree (range shown). Revenue &amp; GMV math is illustrative, not audited. No Poplin figure is presented as a Blue&nbsp;Bee fact.</p>
+  <p class="src">Sources: poplin.co/how-it-works &middot; poplin.co (home, careers, about, city/state pages) &middot; en.wikipedia.org/wiki/Poplin_(company) &middot; sidehusl.com/poplin &amp; /sudshare &middot; crunchbase.com/organization/sudshare &middot; pitchbook.com &middot; tracxn.com &middot; growjo.com/company/Poplin &middot; technical.ly &middot; headline.com &middot; tryhampr.com &middot; Trustpilot &middot; play.google.com (com.sudshare.sudshare / .sudster). Prepared for Blue&nbsp;Bee, 27 Jun 2026.</p>
+</footer>
+</main>
+
+<script>
+// ---- tabs ----
+const tabbar=document.getElementById('tabbar');
+const inited={};
+tabbar.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  const t=b.dataset.tab;
+  [...tabbar.children].forEach(x=>x.classList.toggle('active',x===b));
+  document.querySelectorAll('section.panel').forEach(p=>p.classList.toggle('active',p.id===t));
+  if(charts[t]&&!inited[t]){charts[t]();inited[t]=true;}
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+
+// ---- chart palette ----
+const NAVY='#15487e',AMBER='#f4b400',CORAL='#c43e6b',CORAL2='#e0739a',GREY='#cdd6e0';
+Chart.defaults.font.family="'Helvetica Neue',Arial,sans-serif";
+Chart.defaults.font.size=12;Chart.defaults.color='#475569';
+
+const charts={
+  overview(){
+    new Chart(document.getElementById('radar'),{
+      type:'radar',
+      data:{labels:['Item traceability','Specialty / commercial scope','B2B / contract fit','Consumer price (WDF)','Asset-lightness','Liability / compliance'],
+        datasets:[
+          {label:'Poplin',data:[1,2,2,9,9,3],borderColor:CORAL,backgroundColor:'rgba(196,62,107,.18)',borderWidth:2,pointBackgroundColor:CORAL},
+          {label:'Blue Bee',data:[10,9,9,3,4,9],borderColor:NAVY,backgroundColor:'rgba(21,72,126,.18)',borderWidth:2,pointBackgroundColor:NAVY}
+        ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        scales:{r:{min:0,max:10,ticks:{stepSize:2,backdropColor:'transparent'},pointLabels:{font:{size:11}}}},
+        plugins:{legend:{position:'bottom'}}}
+    });
+  },
+  model(){
+    new Chart(document.getElementById('take'),{
+      type:'doughnut',
+      data:{labels:['Laundry Pro (75%)','Poplin take (25%)'],datasets:[{data:[75,25],backgroundColor:[CORAL,AMBER],borderWidth:2,borderColor:'#fff'}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'58%',plugins:{legend:{position:'bottom'},
+        tooltip:{callbacks:{label:c=>c.label+': '+c.parsed+'% of order value'}}}}
+    });
+  },
+  gtm(){
+    new Chart(document.getElementById('growth'),{
+      type:'bar',
+      data:{labels:['2021','2024–25'],datasets:[
+        {label:'Laundry Pros (thousands)',data:[50,150],backgroundColor:NAVY,borderRadius:6},
+        {label:'Cities',data:[400,500],backgroundColor:AMBER,borderRadius:6}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},
+        scales:{y:{beginAtZero:true,grid:{color:'#eef2f7'}},x:{grid:{display:false}}}}
+    });
+  },
+  money(){
+    new Chart(document.getElementById('rev'),{
+      type:'bar',
+      data:{labels:['$60M GMV','$90M GMV','$120M GMV'],datasets:[{label:'≈ Platform revenue at 25% take ($M)',data:[15,22.5,30],
+        backgroundColor:[GREY,GREY,NAVY],borderRadius:6}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:c=>'≈ $'+c.parsed.y+'M platform revenue'}}},
+        scales:{y:{beginAtZero:true,grid:{color:'#eef2f7'},title:{display:true,text:'$M revenue'}},x:{grid:{display:false}}}}
+    });
+  }
+};
+charts.overview();inited.overview=true; // default tab
+
+// ---- order calculator ----
+(function(){
+  const lb=document.getElementById('lb'),lbOut=document.getElementById('lbOut'),seg=document.getElementById('seg');
+  let rate=1,min=30;
+  const fmt=n=>'$'+(Math.round(n*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2});
+  function calc(){
+    const lbs=+lb.value; lbOut.textContent=lbs;
+    let cust=Math.max(lbs*rate,min);
+    const pro=cust*0.75, pop=cust*0.25;
+    document.getElementById('oCust').textContent=fmt(cust);
+    document.getElementById('oPro').textContent=fmt(pro);
+    document.getElementById('oPop').textContent=fmt(pop);
+    document.getElementById('barPro').style.width='75%';
+    document.getElementById('barPop').style.width='25%';
+  }
+  lb.addEventListener('input',calc);
+  seg.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+    [...seg.children].forEach(x=>x.classList.toggle('on',x===b));
+    rate=+b.dataset.rate;min=+b.dataset.min;calc();});
+  calc();
+})();
+</script>
+</body>
+</html>

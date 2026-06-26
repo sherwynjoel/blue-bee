@@ -197,6 +197,15 @@ enum RouteStopKind {
   BOTH
 }
 
+// Track-A (condo B2B) — concierge/lobby handoff. ORTHOGONAL to RouteStopKind (which is the
+// pickup/delivery operation): `stopKind` marks WHERE the handoff happens — a single building
+// concierge/lobby point (CONCIERGE) vs an individual unit/address (DIRECT). Default DIRECT keeps
+// every existing Phase-1 stop unchanged.
+enum RouteStopHandoff {
+  DIRECT
+  CONCIERGE
+}
+
 // PRD §5.4 — RouteStop lifecycle (NORMATIVE).
 enum RouteStopStatus {
   PENDING
@@ -220,6 +229,23 @@ enum InvoiceStatus {
   PAID
   OVERDUE
   VOID
+}
+
+// Track-A (condo B2B) — per-account billing terms (PRD §9.1 Account.billing_terms).
+// PER_ORDER = one invoice per order (the Inc-12 specialty default). BATCH_PERIODIC = one
+// periodic invoice batching all billable orders in a period (the B2B building-account path,
+// net-days from `billing_net_days`). Cost-center split billing stays deferred (Phase 2).
+enum BillingMode {
+  PER_ORDER
+  BATCH_PERIODIC
+}
+
+// Track-A (condo B2B) — standing-order cadence (RRULE-lite). WEEKLY/BIWEEKLY anchored on a
+// weekday; biweekly parity is measured in whole days from `starts_on` (DST-safe — see
+// recurring-schedule.ts). Full RRULE + par/soil/pack-to-par stay deferred (Phase 2).
+enum StandingOrderCadence {
+  WEEKLY
+  BIWEEKLY
 }
 
 enum PaymentMethod {
@@ -352,20 +378,27 @@ model UserRole {
 }
 
 model Account {
-  id           String      @id @default(uuid()) @db.Uuid
-  orgId        String      @map("org_id") @db.Uuid
-  type         AccountType
-  name         String
-  billingTerms Json        @default("{}") @map("billing_terms")
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-  createdBy    String?     @map("created_by") @db.Uuid
+  id             String      @id @default(uuid()) @db.Uuid
+  orgId          String      @map("org_id") @db.Uuid
+  type           AccountType
+  name           String
+  billingTerms   Json        @default("{}") @map("billing_terms")
+  // Track-A (condo B2B) — per-account billing terms. `billingMode` selects the invoicing path
+  // (PER_ORDER specialty default vs BATCH_PERIODIC building-account batching); `billingNetDays`
+  // is the net-terms due window for a periodic invoice. The free-form `billingTerms` JSON stays for
+  // any extra config. Cost-center split billing remains deferred (Phase 2).
+  billingMode    BillingMode @default(PER_ORDER) @map("billing_mode")
+  billingNetDays Int         @default(0) @map("billing_net_days")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  createdBy      String?     @map("created_by") @db.Uuid
 
-  sites      Site[]
-  orders     Order[]
-  invoices   Invoice[]
-  routeStops RouteStop[]
-  priceLists PriceList[]
+  sites          Site[]
+  orders         Order[]
+  invoices       Invoice[]
+  routeStops     RouteStop[]
+  priceLists     PriceList[]
+  standingOrders StandingOrder[]
 
   @@index([orgId])
 }
@@ -383,9 +416,10 @@ model Site {
   updatedAt      DateTime                               @updatedAt @map("updated_at")
   createdBy      String?                                @map("created_by") @db.Uuid
 
-  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  orders     Order[]
-  routeStops RouteStop[]
+  account        Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  orders         Order[]
+  routeStops     RouteStop[]
+  standingOrders StandingOrder[]
 
   @@index([orgId])
   @@index([accountId])
@@ -406,6 +440,7 @@ model Service {
 
   orderLines     OrderLine[]
   priceListItems PriceListItem[]
+  standingOrders StandingOrder[]
 
   @@index([orgId])
 }
@@ -490,6 +525,9 @@ model Order {
   @@index([orgId])
   @@index([accountId])
   @@index([status])
+  // Track-A: the batch-invoicing path filters an account's orders by a created-at window
+  // (account_id + created_at range), so a composite index keeps that query index-only.
+  @@index([accountId, createdAt])
 }
 
 model OrderLine {
@@ -582,24 +620,24 @@ model Inspection {
 }
 
 model Photo {
-  id        String                                 @id @default(uuid()) @db.Uuid
-  orgId     String                                 @map("org_id") @db.Uuid
-  itemId    String?                                @map("item_id") @db.Uuid
-  orderId   String?                                @map("order_id") @db.Uuid
-  podId     String?                                @map("pod_id") @db.Uuid
-  claimId   String?                                @map("claim_id") @db.Uuid
-  kind      PhotoKind
+  id          String                                 @id @default(uuid()) @db.Uuid
+  orgId       String                                 @map("org_id") @db.Uuid
+  itemId      String?                                @map("item_id") @db.Uuid
+  orderId     String?                                @map("order_id") @db.Uuid
+  podId       String?                                @map("pod_id") @db.Uuid
+  claimId     String?                                @map("claim_id") @db.Uuid
+  kind        PhotoKind
   // Increment 10: real uploaded objects store an org-namespaced object KEY (signed GET minted on
   // read). `url` is now nullable — retained only for the legacy external-reference fallback.
-  storageKey  String?                              @unique @map("storage_key")
-  contentType String?                              @map("content_type")
-  sizeBytes   Int?                                 @map("size_bytes")
-  url       String?
-  geo       Unsupported("geography(Point, 4326)")?
-  takenAt   DateTime                               @default(now()) @map("taken_at")
-  createdAt DateTime                               @default(now()) @map("created_at")
-  updatedAt DateTime                               @updatedAt @map("updated_at")
-  createdBy String?                                @map("created_by") @db.Uuid
+  storageKey  String?                                @unique @map("storage_key")
+  contentType String?                                @map("content_type")
+  sizeBytes   Int?                                   @map("size_bytes")
+  url         String?
+  geo         Unsupported("geography(Point, 4326)")?
+  takenAt     DateTime                               @default(now()) @map("taken_at")
+  createdAt   DateTime                               @default(now()) @map("created_at")
+  updatedAt   DateTime                               @updatedAt @map("updated_at")
+  createdBy   String?                                @map("created_by") @db.Uuid
 
   item  Item?            @relation(fields: [itemId], references: [id], onDelete: Cascade)
   order Order?           @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -764,32 +802,36 @@ model Route {
 }
 
 model RouteStop {
-  id              String          @id @default(uuid()) @db.Uuid
-  orgId           String          @map("org_id") @db.Uuid
-  routeId         String          @map("route_id") @db.Uuid
+  id              String           @id @default(uuid()) @db.Uuid
+  orgId           String           @map("org_id") @db.Uuid
+  routeId         String           @map("route_id") @db.Uuid
   seq             Int
-  accountId       String?         @map("account_id") @db.Uuid
-  siteId          String?         @map("site_id") @db.Uuid
-  orderId         String?         @map("order_id") @db.Uuid
-  kind            RouteStopKind   @default(PICKUP)
-  timeWindow      Json?           @map("time_window")
-  status          RouteStopStatus @default(PENDING)
+  accountId       String?          @map("account_id") @db.Uuid
+  siteId          String?          @map("site_id") @db.Uuid
+  orderId         String?          @map("order_id") @db.Uuid
+  kind            RouteStopKind    @default(PICKUP)
+  // Track-A (condo B2B) — concierge/lobby handoff flag (orthogonal to `kind`). CONCIERGE = a single
+  // building-handoff point (lobby/concierge) vs DIRECT = an individual unit/address. Additive;
+  // every Phase-1 stop stays DIRECT.
+  stopKind        RouteStopHandoff @default(DIRECT) @map("stop_kind")
+  timeWindow      Json?            @map("time_window")
+  status          RouteStopStatus  @default(PENDING)
   // Reason code recorded when a stop is FAILED or SKIPPED (PRD §5.4/§6.3 exceptions).
   // Required by the API on those transitions. Increment 4 — additive, nullable.
-  exceptionReason String?         @map("exception_reason")
+  exceptionReason String?          @map("exception_reason")
   // Server-side ETA (Increment 7, PRD §6.2) — computed in-house behind the EtaEstimator seam,
   // smoothed (EWMA) and surfaced as a RANGE. `eta` is the smoothed point ("mid") arrival; eta_low
   // / eta_high bound the surfaced range; eta_computed_at is the freshness stamp (and the EWMA
   // memory — the next recompute ages the prior `eta` by the elapsed time). All additive/nullable.
   eta             DateTime?
-  etaLow          DateTime?       @map("eta_low")
-  etaHigh         DateTime?       @map("eta_high")
-  etaComputedAt   DateTime?       @map("eta_computed_at")
-  arrivedAt       DateTime?       @map("arrived_at")
-  completedAt     DateTime?       @map("completed_at")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-  createdBy       String?         @map("created_by") @db.Uuid
+  etaLow          DateTime?        @map("eta_low")
+  etaHigh         DateTime?        @map("eta_high")
+  etaComputedAt   DateTime?        @map("eta_computed_at")
+  arrivedAt       DateTime?        @map("arrived_at")
+  completedAt     DateTime?        @map("completed_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  createdBy       String?          @map("created_by") @db.Uuid
 
   route          Route            @relation(fields: [routeId], references: [id], onDelete: Cascade)
   account        Account?         @relation(fields: [accountId], references: [id])
@@ -899,6 +941,76 @@ model Manifest {
   @@index([routeStopId])
 }
 
+// ─────────────────────────────── Track-A: standing / recurring orders (condo B2B) ───────────────────────────────
+// Phase-2-foundation thin slice (PRD §9.2 StandingOrder, §14 recurring route auto-generation). The
+// PRD's canonical StandingOrder hangs off a Contract; Contract/ParLevel/par-soil-pack stay DEFERRED
+// (Phase 2, not built/faked), so the thin slice binds a standing order directly to account+site+
+// service and leaves the contract linkage modeled-for (a future nullable contract_id when Contract
+// lands). A real generation job materializes due standing orders into real Orders (+ a recurring
+// Route), idempotently — never fabricated rows.
+
+model StandingOrder {
+  id           String               @id @default(uuid()) @db.Uuid
+  orgId        String               @map("org_id") @db.Uuid
+  accountId    String               @map("account_id") @db.Uuid
+  siteId       String               @map("site_id") @db.Uuid
+  serviceId    String               @map("service_id") @db.Uuid
+  vertical     OrderVertical        @default(SPECIALTY)
+  cadence      StandingOrderCadence
+  // RRULE-lite: the pickup recurs on `weekday` (0=Sun..6=Sat); BIWEEKLY also requires the
+  // whole-day gap from `startsOn` to be an even number of weeks (parity computed DST-safe).
+  weekday      Int
+  // Local time-of-day pickup window applied to each occurrence date: { start: "HH:MM", end: "HH:MM" }.
+  pickupWindow Json                 @map("pickup_window")
+  // True ⇒ the generated pickup is a single building concierge/lobby handoff (RouteStop.stopKind=CONCIERGE).
+  concierge    Boolean              @default(false)
+  active       Boolean              @default(true)
+  startsOn     DateTime             @map("starts_on") @db.Date // first eligible date + biweekly parity anchor
+  endsOn       DateTime?            @map("ends_on") @db.Date
+  nextRunAt    DateTime?            @map("next_run_at") // next due occurrence date (advisory; generation recomputes)
+  lastRunAt    DateTime?            @map("last_run_at")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  createdBy    String?              @map("created_by") @db.Uuid
+
+  account     Account                   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // Restrict (Prisma's default for a required relation, made explicit): a Site/Service in use by a
+  // standing order can't be deleted out from under it.
+  site        Site                      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  service     Service                   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  occurrences StandingOrderOccurrence[]
+
+  @@index([orgId])
+  @@index([accountId])
+  @@index([active, nextRunAt])
+}
+
+// One row per (standing order, period) materialization — the IDEMPOTENCY ledger. `period_key` is the
+// occurrence's ISO date (YYYY-MM-DD); the unique (standing_order_id, period_key) + INSERT … ON
+// CONFLICT DO NOTHING (the Inc-5 pattern) makes a re-run/concurrent generation a no-op — exactly one
+// Order per period. `order_id` is set in the same claim transaction; `route_id` is set when route
+// auto-gen succeeds and stays NULL on a degraded run (the generated Order is never lost). order_id /
+// route_id are scalars (no relation) — mirrors Invoice.order_id, keeping Order/Route untouched.
+model StandingOrderOccurrence {
+  id              String   @id @default(uuid()) @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
+  standingOrderId String   @map("standing_order_id") @db.Uuid
+  periodKey       String   @map("period_key")
+  orderId         String?  @map("order_id") @db.Uuid
+  routeId         String?  @map("route_id") @db.Uuid
+  generatedAt     DateTime @default(now()) @map("generated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdBy       String?  @map("created_by") @db.Uuid
+
+  standingOrder StandingOrder @relation(fields: [standingOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([standingOrderId, periodKey])
+  @@index([orgId])
+  @@index([orderId])
+  @@index([routeId])
+}
+
 // ─────────────────────────────── billing, comms & system (§9.6) ───────────────────────────────
 
 model Invoice {
@@ -942,7 +1054,7 @@ model InvoiceLine {
   invoiceId   String   @map("invoice_id") @db.Uuid
   description String
   quantity    Int      @default(1)
-  unitAmount  Decimal  @db.Decimal(12, 2) @map("unit_amount")
+  unitAmount  Decimal  @map("unit_amount") @db.Decimal(12, 2)
   amount      Decimal  @db.Decimal(12, 2)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -972,8 +1084,8 @@ model Payment {
   captureMethod         String        @default("automatic") @map("capture_method")
   // Denormalized money state (cents-exact via Decimal): captured-so-far + refunded-so-far drive the
   // partial-refund ceiling without re-summing children. Advanced ONLY on a webhook-confirmed event.
-  capturedAmount        Decimal       @default(0) @db.Decimal(12, 2) @map("captured_amount")
-  refundedAmount        Decimal       @default(0) @db.Decimal(12, 2) @map("refunded_amount")
+  capturedAmount        Decimal       @default(0) @map("captured_amount") @db.Decimal(12, 2)
+  refundedAmount        Decimal       @default(0) @map("refunded_amount") @db.Decimal(12, 2)
   capturedAt            DateTime?     @map("captured_at")
   attempts              Int           @default(0)
   lastError             String?       @map("last_error")

@@ -230,6 +230,16 @@ export enum RouteStopKind {
 }
 
 /**
+ * [DERIVED — Track A] RouteStop.stop_kind — concierge/lobby handoff (condo B2B, PRD §14).
+ * Orthogonal to {@link RouteStopKind} (the pickup/delivery operation): this marks WHERE the
+ * handoff happens — a single building concierge/lobby point vs an individual unit/address.
+ */
+export enum RouteStopHandoff {
+  DIRECT = 'DIRECT',
+  CONCIERGE = 'CONCIERGE',
+}
+
+/**
  * [§5 NORMATIVE] RouteStop lifecycle — PRD §5.4 (also §9.5).
  *   PENDING → EN_ROUTE → ARRIVED → IN_PROGRESS → COMPLETED|FAILED|SKIPPED
  */
@@ -259,6 +269,25 @@ export enum InvoiceStatus {
   PAID = 'PAID',
   OVERDUE = 'OVERDUE',
   VOID = 'VOID',
+}
+
+/**
+ * [DERIVED — Track A] Account.billing_mode — per-account billing terms (PRD §9.1).
+ * PER_ORDER = one invoice per order (Inc-12 specialty default); BATCH_PERIODIC = one periodic
+ * invoice batching a period's billable orders (B2B building account). Cost-center splits = Phase 2.
+ */
+export enum BillingMode {
+  PER_ORDER = 'PER_ORDER',
+  BATCH_PERIODIC = 'BATCH_PERIODIC',
+}
+
+/**
+ * [DERIVED — Track A] StandingOrder.cadence — recurring-order cadence (RRULE-lite, PRD §9.2/§14).
+ * WEEKLY/BIWEEKLY anchored on a weekday; full RRULE + par/soil/pack-to-par stay deferred (Phase 2).
+ */
+export enum StandingOrderCadence {
+  WEEKLY = 'WEEKLY',
+  BIWEEKLY = 'BIWEEKLY',
 }
 
 /** [DERIVED] Payment.method (§8.4 lists card/wallets/ACH/PAD). */

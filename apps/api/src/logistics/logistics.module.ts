@@ -36,7 +36,8 @@ import { RoutesController } from './routes.controller';
     IdempotencyInterceptor,
   ],
   // Exported so the Increment-9 DriverModule can reuse the proven §5.4 + shift-lifecycle services
-  // behind a driver-self-ownership boundary (no duplication of the state machines).
-  exports: [ShiftService, RouteStopService],
+  // behind a driver-self-ownership boundary (no duplication of the state machines). OptimizerService
+  // is exported so the Track-A RecurringModule reuses the ONE in-house PostGIS sequencer (no duplicate).
+  exports: [ShiftService, RouteStopService, OptimizerService],
 })
 export class LogisticsModule {}

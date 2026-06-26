@@ -13,6 +13,7 @@
 import { PrismaClient } from '@prisma/client';
 import {
   AccountType,
+  BillingMode,
   CustodyStage,
   ItemKind,
   ItemStatus,
@@ -23,8 +24,13 @@ import {
   QuoteStatus,
   RoleScope,
   RoleType,
+  RouteStatus,
+  RouteStopHandoff,
+  RouteStopKind,
+  RouteStopStatus,
   ServiceUnit,
   ServiceVertical,
+  StandingOrderCadence,
   TagBinding,
   TagType,
   UserStatus,
@@ -522,11 +528,188 @@ async function seedLogistics(): Promise<void> {
   console.log('[seed] Logistics ready: 3 Account-A geo sites (N/E/W) + a 2nd driver user (+14165550007).');
 }
 
+// ─────────────────────── Track A (condo B2B) — standing orders + billing terms + a realistic completed route ───────────────────────
+// One cohesive, clearly-labelled honest demo for the Track-A thin slice:
+//   • Account B (business) becomes a condo building account: a downtown condo Site, BATCH_PERIODIC
+//     billing terms (net-30), a LINEN amenity Service, and a WEEKLY-Monday StandingOrder with a
+//     CONCIERGE/lobby handoff (so `POST /v1/standing-orders/run` immediately materializes real Orders).
+//   • Four DELIVERED route-stop orders (with totals) so the batch-invoicing path has billable orders.
+//   • A COMPLETED demo route whose stops carry DISTINCT, realistic arrivedAt/completedAt (12–23 min
+//     on-site, spaced across a morning). THIS IS THE SEED-FIX for the Inc-15 "195,652" anomaly: the
+//     analytics stops/hour = COMPLETED stops ÷ Σ(lastCompleted−firstArrived); API-completed stops sit
+//     milliseconds apart (server-stamped back-to-back), collapsing that denominator → a degenerate
+//     blow-up. A freshly-seeded demo tenant now has a real route with sane on-site spans, so
+//     stops/hour and avg-dwell compute to sane values at the data source.
+const A6 = {
+  condoSite: 'a6000000-0000-4000-8000-000000000001',
+  linenService: 'a6000000-0000-4000-8000-000000000002',
+  standingOrder: 'a6000000-0000-4000-8000-000000000003',
+  route: 'a6000000-0000-4000-8000-000000000010',
+  orders: [
+    'a6000000-0000-4000-8000-000000000101',
+    'a6000000-0000-4000-8000-000000000102',
+    'a6000000-0000-4000-8000-000000000103',
+    'a6000000-0000-4000-8000-000000000104',
+  ],
+  stops: [
+    'a6000000-0000-4000-8000-000000000201',
+    'a6000000-0000-4000-8000-000000000202',
+    'a6000000-0000-4000-8000-000000000203',
+    'a6000000-0000-4000-8000-000000000204',
+  ],
+} as const;
+
+// CityPlace (downtown Toronto) condo — a real GTA coordinate for the demo condo building.
+const CONDO_LNG = -79.3925;
+const CONDO_LAT = 43.641;
+
+async function seedTrackADemo(): Promise<void> {
+  // Condo building Site under Account B (business). Upsert + set its PostGIS point.
+  await prisma.site.upsert({
+    where: { id: A6.condoSite },
+    update: {},
+    create: {
+      id: A6.condoSite,
+      orgId: ID.org,
+      accountId: ID2.accountB,
+      name: 'Demo — Harbourview Condos (B2B building)',
+      address: '10 CityPlace Dr, Toronto, ON',
+      serviceWindows: [{ day: 'MON', start: '07:00', end: '09:00' }],
+      createdBy: ID.owner,
+    },
+  });
+  await prisma.$executeRaw`
+    UPDATE "Site" SET geo = ST_SetSRID(ST_MakePoint(${CONDO_LNG}, ${CONDO_LAT}), 4326)::geography
+    WHERE id = ${A6.condoSite}::uuid`;
+
+  // Account B billing terms → BATCH_PERIODIC (net-30) for the periodic-invoice demo.
+  await prisma.account.update({
+    where: { id: ID2.accountB },
+    data: { billingMode: BillingMode.BATCH_PERIODIC, billingNetDays: 30 },
+  });
+
+  // Amenity LINEN service for the building.
+  await prisma.service.upsert({
+    where: { id: A6.linenService },
+    update: {},
+    create: {
+      id: A6.linenService,
+      orgId: ID.org,
+      vertical: ServiceVertical.LINEN,
+      name: 'Amenity linen (gym/pool) — per piece',
+      unit: ServiceUnit.PIECE,
+      baseRate: '1.2500',
+      createdBy: ID.owner,
+    },
+  });
+
+  // WEEKLY-Monday standing order with a CONCIERGE/lobby handoff. startsOn 2026-06-01 (a Monday) so a
+  // `run` at any later date materializes real Orders. Generation is driven by the job/API — NOT faked.
+  await prisma.standingOrder.upsert({
+    where: { id: A6.standingOrder },
+    update: {},
+    create: {
+      id: A6.standingOrder,
+      orgId: ID.org,
+      accountId: ID2.accountB,
+      siteId: A6.condoSite,
+      serviceId: A6.linenService,
+      vertical: OrderVertical.LINEN,
+      cadence: StandingOrderCadence.WEEKLY,
+      weekday: 1, // Monday
+      pickupWindow: { start: '07:00', end: '09:00' },
+      concierge: true,
+      active: true,
+      startsOn: new Date('2026-06-01T00:00:00.000Z'),
+      nextRunAt: new Date('2026-06-29T00:00:00.000Z'),
+      createdBy: ID.owner,
+    },
+  });
+
+  // Idempotency guard for the heavier order/route/stop block (no upsert on createMany of the route).
+  const existingRoute = await prisma.route.findUnique({ where: { id: A6.route } });
+  if (existingRoute) {
+    console.log('[seed] Track-A demo already present — skipping completed-route phase (idempotent).');
+    console.log(`[seed] Track-A ready: condo standing order ${A6.standingOrder} (WEEKLY Mon, CONCIERGE), Account B = BATCH_PERIODIC net-30.`);
+    return;
+  }
+
+  // Four DELIVERED route-stop orders for the condo (createdAt in June 2026) — billable (totals set), so
+  // the batch-invoicing path has real orders to batch into ONE periodic invoice.
+  const ORDER_MONEY = [
+    { subtotal: '120.00', tax: '15.60', total: '135.60' },
+    { subtotal: '95.00', tax: '12.35', total: '107.35' },
+    { subtotal: '140.00', tax: '18.20', total: '158.20' },
+    { subtotal: '110.00', tax: '14.30', total: '124.30' },
+  ];
+  await prisma.order.createMany({
+    data: A6.orders.map((id, i) => ({
+      id,
+      orgId: ID.org,
+      accountId: ID2.accountB,
+      siteId: A6.condoSite,
+      vertical: OrderVertical.LINEN,
+      type: OrderType.ROUTE_STOP_ORDER,
+      status: OrderStatus.DELIVERED,
+      totals: { ...ORDER_MONEY[i], currency: 'CAD' },
+      createdAt: new Date('2026-06-24T07:00:00.000Z'),
+      createdBy: ID.owner,
+    })),
+    skipDuplicates: true,
+  });
+
+  // A COMPLETED demo route on 2026-06-24 with DISTINCT, realistic on-site spans (the seed-fix). Stop 1 is
+  // the CONCIERGE/lobby handoff; the rest are deliveries at the three GTA sites. Each stop has a time
+  // window so on-time% also computes. firstArrived 07:35 → lastCompleted 10:22 ⇒ ~2.78h, 4 stops ⇒
+  // ~1.44 stops/hour; dwell avg (23+15+15+12)/4 = 16.25 min — both SANE (no 195,652 blow-up).
+  await prisma.route.create({
+    data: {
+      id: A6.route,
+      orgId: ID.org,
+      date: new Date('2026-06-24T00:00:00.000Z'),
+      status: RouteStatus.COMPLETED,
+      optimized: true,
+      createdAt: new Date('2026-06-24T06:30:00.000Z'),
+      createdBy: ID.owner,
+    },
+  });
+  const at = (iso: string): Date => new Date(iso);
+  const STOPS = [
+    { kind: RouteStopKind.PICKUP, stopKind: RouteStopHandoff.CONCIERGE, siteId: A6.condoSite, win: ['07:00', '08:00'], arr: '07:35', done: '07:58' },
+    { kind: RouteStopKind.DELIVERY, stopKind: RouteStopHandoff.DIRECT, siteId: ID.siteNorth, win: ['08:30', '09:00'], arr: '08:40', done: '08:55' },
+    { kind: RouteStopKind.DELIVERY, stopKind: RouteStopHandoff.DIRECT, siteId: ID.siteEast, win: ['09:15', '09:45'], arr: '09:25', done: '09:40' },
+    { kind: RouteStopKind.DELIVERY, stopKind: RouteStopHandoff.DIRECT, siteId: ID.siteWest, win: ['10:00', '10:30'], arr: '10:10', done: '10:22' },
+  ];
+  await prisma.routeStop.createMany({
+    data: STOPS.map((s, i) => ({
+      id: A6.stops[i],
+      orgId: ID.org,
+      routeId: A6.route,
+      seq: i + 1,
+      accountId: ID2.accountB,
+      siteId: s.siteId,
+      orderId: A6.orders[i],
+      kind: s.kind,
+      stopKind: s.stopKind,
+      timeWindow: { start: at(`2026-06-24T${s.win[0]}:00Z`).toISOString(), end: at(`2026-06-24T${s.win[1]}:00Z`).toISOString() },
+      status: RouteStopStatus.COMPLETED,
+      arrivedAt: at(`2026-06-24T${s.arr}:00Z`),
+      completedAt: at(`2026-06-24T${s.done}:00Z`),
+      createdBy: ID.owner,
+    })),
+    skipDuplicates: true,
+  });
+
+  console.log('[seed] Track-A ready: condo standing order (WEEKLY Mon, CONCIERGE); Account B = BATCH_PERIODIC net-30;');
+  console.log('       4 DELIVERED condo orders + a COMPLETED route with realistic on-site spans (analytics stops/hour ~1.44, dwell ~16min).');
+}
+
 async function main(): Promise<void> {
   await seedDemoOrder();
   await seedAuthFixtures();
   await seedPricing();
   await seedLogistics();
+  await seedTrackADemo();
 }
 
 main()

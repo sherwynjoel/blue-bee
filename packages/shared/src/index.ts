@@ -17,3 +17,4 @@ export * from './payments';
 export * from './owner';
 export * from './analytics';
 export * from './admin';
+export * from './recurring';

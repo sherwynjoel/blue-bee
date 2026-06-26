@@ -8,7 +8,7 @@ import type {
 import { ApiError } from './problem';
 import type { TokenStore } from './token-store';
 
-export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface RequestOpts {
   body?: unknown;

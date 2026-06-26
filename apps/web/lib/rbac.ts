@@ -22,6 +22,12 @@ export const ANALYTICS_COMMERCIAL_ROLES: RoleType[] = [RoleType.OWNER, RoleType.
 export const ANALYTICS_SCORECARD_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE, RoleType.CSR];
 // Admin (Inc 16) — OWNER only (§17.3 admin row), mirrors the server @Roles(OWNER).
 export const ADMIN_ROLES: RoleType[] = [RoleType.OWNER];
+// Track-A B2B accounts console — MIRRORS the server @Roles on the account/standing-order/billing routes.
+// Account directory reads + the generated feed: org-wide ops + finance staff.
+export const ACCOUNTS_READ_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE, RoleType.DISPATCHER, RoleType.CSR];
+// Standing-order management (create/edit/delete/run): ops (OWNER/DISPATCHER).
+export const STANDING_ORDER_WRITE_ROLES: RoleType[] = [RoleType.OWNER, RoleType.DISPATCHER];
+// Billing terms + batch invoicing reuse the finance gate (FINANCE_ROLES = OWNER/FINANCE).
 
 export function roleNames(me: MeResponse | null): RoleType[] {
   return me ? me.user.roles.map((r) => r.role) : [];
@@ -48,4 +54,7 @@ export const can = {
   analyticsCommercial: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_COMMERCIAL_ROLES),
   analyticsScorecard: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_SCORECARD_ROLES),
   admin: (me: MeResponse | null) => hasAnyRole(me, ADMIN_ROLES),
+  // Track-A B2B accounts console.
+  accounts: (me: MeResponse | null) => hasAnyRole(me, ACCOUNTS_READ_ROLES),
+  standingOrderWrite: (me: MeResponse | null) => hasAnyRole(me, STANDING_ORDER_WRITE_ROLES),
 };

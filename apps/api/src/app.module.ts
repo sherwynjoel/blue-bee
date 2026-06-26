@@ -20,6 +20,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
 import { RecurringModule } from './recurring/recurring.module';
 import { AccountModule } from './account/account.module';
+import { AccountsModule } from './accounts/accounts.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -59,6 +60,7 @@ import { AccountModule } from './account/account.module';
     AdminModule,
     RecurringModule,
     AccountModule,
+    AccountsModule,
     HealthModule,
   ],
 })

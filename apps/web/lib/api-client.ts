@@ -46,6 +46,22 @@ import type {
   StopExceptionDto,
 } from '@blue-bee/shared';
 import type {
+  AccountDetailView,
+  AccountListResult,
+  BatchInvoiceDto,
+  BillingTermsView,
+  CreateStandingOrderDto,
+  GeneratedForAccountView,
+  GenerationResult,
+  ListAccountsQuery,
+  ListStandingOrdersQuery,
+  RunGenerationDto,
+  SetBillingTermsDto,
+  StandingOrderOccurrenceView,
+  StandingOrderView,
+  UpdateStandingOrderDto,
+} from '@blue-bee/shared';
+import type {
   DriverView,
   ManifestView,
   OrderDetail,
@@ -55,6 +71,13 @@ import type {
   ShiftView,
   VehicleView,
 } from './types';
+
+/** Standing-order list page (cursor-paginated) — the server's list shape. */
+export interface StandingOrderListResult {
+  standingOrders: StandingOrderView[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
 
 /** The §5.4 stop transitions the OPS console can drive (colon-action routes). */
 export type StopAction = 'depart' | 'arrive' | 'start' | 'complete' | 'fail' | 'skip';
@@ -271,6 +294,61 @@ export class ConsoleApiClient extends ApiClient {
     for (const [k, v] of Object.entries(query)) if (v) p.set(k, String(v));
     const qs = p.toString();
     return this.request('GET', `/admin/audit-logs${qs ? `?${qs}` : ''}`);
+  }
+
+  // ───────────── Track-A: B2B accounts (condo console) ─────────────
+
+  /** Account directory (org-scoped, cursor-paginated). */
+  listAccounts(query: ListAccountsQuery = { limit: 25 }): Promise<AccountListResult> {
+    const p = new URLSearchParams();
+    if (query.limit != null) p.set('limit', String(query.limit));
+    if (query.cursor) p.set('cursor', query.cursor);
+    const qs = p.toString();
+    return this.request('GET', `/accounts${qs ? `?${qs}` : ''}`);
+  }
+  getAccount(id: string): Promise<AccountDetailView> {
+    return this.request('GET', `/accounts/${id}`);
+  }
+
+  // standing / recurring orders (CRUD + the org-wide generation run)
+  listStandingOrders(query: ListStandingOrdersQuery = { limit: 50 }): Promise<StandingOrderListResult> {
+    const p = new URLSearchParams();
+    if (query.limit != null) p.set('limit', String(query.limit));
+    if (query.cursor) p.set('cursor', query.cursor);
+    if (query.accountId) p.set('accountId', query.accountId);
+    if (query.active != null) p.set('active', String(query.active));
+    const qs = p.toString();
+    return this.request('GET', `/standing-orders${qs ? `?${qs}` : ''}`);
+  }
+  getStandingOrderOccurrences(id: string): Promise<{ standingOrderId: string; occurrences: StandingOrderOccurrenceView[] }> {
+    return this.request('GET', `/standing-orders/${id}/occurrences`);
+  }
+  createStandingOrder(dto: CreateStandingOrderDto): Promise<StandingOrderView> {
+    return this.request('POST', '/standing-orders', { body: dto });
+  }
+  updateStandingOrder(id: string, dto: UpdateStandingOrderDto): Promise<StandingOrderView> {
+    return this.request('PATCH', `/standing-orders/${id}`, { body: dto });
+  }
+  deleteStandingOrder(id: string): Promise<void> {
+    return this.request('DELETE', `/standing-orders/${id}`);
+  }
+  /** Run ONE org-wide generation pass (materializes ALL the org's due standing orders — not per-account). */
+  runStandingOrderGeneration(dto: RunGenerationDto = {}): Promise<GenerationResult> {
+    return this.request('POST', '/standing-orders/run', { body: dto });
+  }
+
+  // per-account billing terms + the batch/periodic invoice + the generated feed
+  getBillingTerms(accountId: string): Promise<BillingTermsView> {
+    return this.request('GET', `/accounts/${accountId}/billing-terms`);
+  }
+  setBillingTerms(accountId: string, dto: SetBillingTermsDto): Promise<BillingTermsView> {
+    return this.request('PUT', `/accounts/${accountId}/billing-terms`, { body: dto });
+  }
+  batchInvoice(accountId: string, dto: BatchInvoiceDto): Promise<InvoiceView> {
+    return this.request('POST', `/accounts/${accountId}/invoices/batch`, { body: dto });
+  }
+  getGeneratedForAccount(accountId: string): Promise<GeneratedForAccountView> {
+    return this.request('GET', `/accounts/${accountId}/generated`);
   }
 }
 

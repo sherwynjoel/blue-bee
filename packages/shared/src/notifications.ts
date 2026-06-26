@@ -21,6 +21,11 @@ import { DevicePlatform } from './enums';
 export const NOTIFICATION_EVENTS = {
   GEOFENCE_APPROACHING: 'geofence.approaching',
   GEOFENCE_ARRIVED: 'geofence.arrived',
+  // Payments / billing (Increment 12). Receipt + dunning go to the owning customer; a dispute
+  // alert goes to org owner/finance staff (recipient scoping differs per event — see the engine).
+  PAYMENT_RECEIPT: 'payment.receipt',
+  PAYMENT_FAILED: 'payment.failed',
+  PAYMENT_DISPUTE: 'payment.dispute',
 } as const;
 export type NotificationEventType = (typeof NOTIFICATION_EVENTS)[keyof typeof NOTIFICATION_EVENTS];
 

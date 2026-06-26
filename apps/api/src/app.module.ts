@@ -14,6 +14,7 @@ import { DriverModule } from './driver/driver.module';
 import { StorageModule } from './media/storage/storage.module';
 import { MediaModule } from './media/media.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { PaymentsModule } from './payments/payments.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -42,6 +43,7 @@ import { CatalogModule } from './catalog/catalog.module';
     OrdersModule,
     MediaModule,
     CatalogModule,
+    PaymentsModule,
     RealtimeModule,
     NotificationsModule,
     TrackingModule,

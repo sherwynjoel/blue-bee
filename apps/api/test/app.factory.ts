@@ -20,7 +20,8 @@ function configure(app: INestApplication): void {
 /** Boots the full app exactly as main.ts does (URI /v1 versioning + problem+json + OpenAPI). */
 export async function createTestApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app = moduleRef.createNestApplication();
+  // rawBody:true mirrors main.ts so the Stripe webhook e2e verifies signatures against the raw body.
+  const app = moduleRef.createNestApplication({ rawBody: true });
   configure(app);
   await app.init();
   return app;

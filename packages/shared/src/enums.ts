@@ -279,6 +279,23 @@ export enum PaymentStatus {
   REFUNDED = 'REFUNDED',
 }
 
+/** [DERIVED] Refund.status (Increment 12). Mirrors Stripe refund status. */
+export enum RefundStatus {
+  PENDING = 'PENDING',
+  SUCCEEDED = 'SUCCEEDED',
+  FAILED = 'FAILED',
+  CANCELED = 'CANCELED',
+}
+
+/** [DERIVED] Dispute.status (Increment 12). Maps from the Stripe charge.dispute lifecycle. */
+export enum DisputeStatus {
+  OPEN = 'OPEN',
+  UNDER_REVIEW = 'UNDER_REVIEW',
+  WON = 'WON',
+  LOST = 'LOST',
+  CLOSED = 'CLOSED',
+}
+
 /** [§9 LITERAL] Claim/CreditNote.type (§9.6: damage|loss|service). */
 export enum ClaimType {
   DAMAGE = 'DAMAGE',

@@ -127,6 +127,7 @@ export class NotificationService {
           channel,
           status,
           urgent,
+          sourceType: 'GeofenceEvent',
           sourceId: ev.geofenceEventId,
           dedupeKey: `${ev.geofenceEventId}:${r.userId}:${channel}`,
           scheduledFor,
@@ -177,6 +178,7 @@ export class NotificationService {
     channel: CommsChannel;
     status: NotificationStatus;
     urgent: boolean;
+    sourceType: string;
     sourceId: string;
     dedupeKey: string;
     scheduledFor: Date | null;
@@ -192,13 +194,125 @@ export class NotificationService {
       ) VALUES (
         ${id}::uuid, ${row.orgId}::uuid, ${row.userId}::uuid, ${row.eventType},
         ${row.channel}::"CommsChannel", ${JSON.stringify(row.payload)}::jsonb,
-        ${row.status}::"NotificationStatus", 'GeofenceEvent', ${row.sourceId}::uuid, ${row.dedupeKey},
+        ${row.status}::"NotificationStatus", ${row.sourceType}, ${row.sourceId}::uuid, ${row.dedupeKey},
         ${row.urgent}, 0, ${row.lastError}, ${row.scheduledFor}, now(), now(), NULL
       )
       ON CONFLICT ("dedupe_key") DO NOTHING
       RETURNING id::text AS "id"
     `);
     return rows[0]?.id ?? null;
+  }
+
+  // ─────────────────────────── payment notifications (Increment 12) ───────────────────────────
+
+  /**
+   * Dispatch a payment-rail notification (receipt / dunning / dispute alert) through the SAME outbox
+   * engine as geofence alerts — matrix → preference/quiet-hours → render → ONE idempotent row per
+   * (source × event × recipient × channel). `recipientScope` decides WHO (§17.3): 'customer' resolves
+   * the owning customer(s) of the order (receipts + dunning); 'staff' resolves org owner/finance
+   * (dispute alerts). Fully isolated (never throws) so a notification failure can never corrupt the
+   * payment state the webhook just committed.
+   */
+  async dispatchPayment(input: {
+    orgId: string;
+    eventType: string;
+    /** Durable dedup source row id (uuid) — the Payment or Dispute id. */
+    sourceType: 'Payment' | 'Dispute';
+    sourceId: string;
+    orderId: string | null;
+    recipientScope: 'customer' | 'staff';
+    amount?: string | null;
+    currency?: string | null;
+    reason?: string | null;
+  }): Promise<void> {
+    try {
+      const channels = this.config.matrix[input.eventType] ?? [];
+      if (channels.length === 0) return;
+
+      const recipients =
+        input.recipientScope === 'staff'
+          ? await this.recipients.resolveOrgStaffRecipients(input.orgId)
+          : input.orderId
+            ? await this.recipients.resolveOrderRecipients(input.orgId, input.orderId)
+            : [];
+      if (recipients.length === 0) return;
+
+      const orderRef = input.orderId ? shortOrderRef(input.orderId) : `#${input.sourceId.slice(0, 8)}`;
+      const urgent = this.config.urgentEventTypes.has(input.eventType);
+      const now = new Date();
+      let anyDue = false;
+
+      for (const r of recipients) {
+        const pref = await this.preferences.load(input.orgId, r.userId);
+        for (const channel of channels) {
+          const decision = decideChannel(
+            pref,
+            channel,
+            urgent,
+            now,
+            this.config.quietHours.policy,
+            this.config.quietHours.defaultTimezone,
+          );
+          const rendered = renderTemplate(input.eventType, channel, {
+            appName: this.config.appName,
+            orderRef,
+            amount: input.amount,
+            currency: input.currency,
+            reason: input.reason,
+          });
+          const addresses = await this.addressesFor(input.orgId, channel, r);
+
+          let status: NotificationStatus = NotificationStatus.PENDING;
+          let scheduledFor: Date | null = null;
+          let lastError: string | null = null;
+          let dueNow = false;
+          if (decision.action === 'suppress') {
+            status = NotificationStatus.SUPPRESSED;
+            lastError = decision.reason;
+          } else if (addresses.length === 0) {
+            status = NotificationStatus.SUPPRESSED;
+            lastError = 'no destination address for channel';
+          } else if (decision.action === 'defer') {
+            scheduledFor = decision.scheduledFor;
+          } else {
+            dueNow = true;
+          }
+
+          const insertedId = await this.insertOnce({
+            orgId: input.orgId,
+            userId: r.userId,
+            eventType: input.eventType,
+            channel,
+            status,
+            urgent,
+            sourceType: input.sourceType,
+            sourceId: input.sourceId,
+            dedupeKey: `${input.sourceId}:${input.eventType}:${r.userId}:${channel}`,
+            scheduledFor,
+            lastError,
+            payload: {
+              recipients: addresses,
+              subject: rendered.subject,
+              title: rendered.title,
+              body: rendered.body,
+              eventType: input.eventType,
+              orderId: input.orderId,
+            },
+          });
+          if (insertedId && dueNow) anyDue = true;
+        }
+      }
+
+      if (anyDue && this.config.retry.kickOnDispatch) {
+        void this.processor.drainDue().catch((err) => {
+          const reason = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`payment notification drain kick failed: ${reason}`);
+        });
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`payment notification dispatch failed (${input.eventType} ${input.sourceId}): ${reason}`);
+    }
   }
 }
 

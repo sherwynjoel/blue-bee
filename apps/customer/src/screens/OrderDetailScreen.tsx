@@ -163,7 +163,20 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
           {qa.quote.expiresAt ? <Text style={styles.muted}>Valid until {shortDate(qa.quote.expiresAt)}</Text> : null}
 
           {qa.approved ? (
-            <Text testID="quote-approved" style={styles.approved}>✓ Approved</Text>
+            <View>
+              <Text testID="quote-approved" style={styles.approved}>✓ Approved</Text>
+              {order.totals?.paymentStatus === 'PAID' ? (
+                <Text testID="paid-badge" style={styles.approved}>✓ Paid</Text>
+              ) : order.totals?.paymentStatus === 'REFUNDED' ? (
+                <Text testID="refunded-badge" style={styles.muted}>Refunded</Text>
+              ) : order.totals?.paymentStatus === 'PARTIALLY_REFUNDED' ? (
+                <Text testID="refunded-badge" style={styles.muted}>Partially refunded</Text>
+              ) : (
+                <TouchableOpacity testID="pay-cta" style={styles.payCta} onPress={() => navigation.navigate('Pay', { orderId })}>
+                  <Text style={styles.payCtaText}>Pay {money(qa.quote.total, order.totals?.currency)}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           ) : qa.declined ? (
             <Text testID="quote-declined" style={styles.declined}>Declined</Text>
           ) : qa.actionable ? (
@@ -180,7 +193,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
               <TouchableOpacity testID="decline-quote" style={styles.declineBtn} onPress={() => void onDecline()} disabled={acting}>
                 <Text style={styles.declineBtnText}>Decline</Text>
               </TouchableOpacity>
-              <Text style={styles.muted}>No payment is taken now.</Text>
+              <Text style={styles.muted}>You can pay after approving.</Text>
             </View>
           ) : null}
         </Card>
@@ -287,6 +300,8 @@ const styles = StyleSheet.create({
   muted: { color: '#57606a', marginTop: 4 },
   estimate: { fontSize: 18, fontWeight: '700', color: '#1a7f37' },
   approved: { color: '#1a7f37', fontWeight: '700', marginTop: 10, fontSize: 16 },
+  payCta: { backgroundColor: '#1f883d', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 10 },
+  payCtaText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   declined: { color: '#cf222e', fontWeight: '700', marginTop: 10, fontSize: 16 },
   warn: { color: '#9a6700' },
   quoteActions: { marginTop: 12, gap: 8 },

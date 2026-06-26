@@ -85,4 +85,22 @@ describe('CustomerApiClient routes', () => {
     expect(calls[0]!.url).toBe('http://api/v1/services');
     expect(calls[1]!.url).toBe('http://api/v1/sites');
   });
+
+  // ── Pay (Increment 12) ──
+  it('createPaymentIntent POSTs /orders/:id/payment-intent (no client amount in the body)', async () => {
+    const { client, last } = setup(201, { paymentId: 'p1', clientSecret: 'pi_x_secret_y', amount: '293.80', currency: 'CAD', status: 'PENDING', publishableKey: null });
+    const res = await client.createPaymentIntent('o1');
+    expect(last().url).toBe('http://api/v1/orders/o1/payment-intent');
+    expect(last().method).toBe('POST');
+    expect(last().body).toEqual({}); // body carries NO amount — the server computes it from the quote
+    expect(res.clientSecret).toBe('pi_x_secret_y');
+  });
+
+  it('getPayment + getInvoice hit the read endpoints', async () => {
+    const { client, calls } = setup(200, {});
+    await client.getPayment('o1');
+    await client.getInvoice('o1');
+    expect(calls[0]!.url).toBe('http://api/v1/orders/o1/payment');
+    expect(calls[1]!.url).toBe('http://api/v1/orders/o1/invoice');
+  });
 });

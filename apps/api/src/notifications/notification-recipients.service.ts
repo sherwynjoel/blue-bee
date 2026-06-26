@@ -41,6 +41,22 @@ export class NotificationRecipientsService {
     `);
   }
 
+  /**
+   * Org-staff recipients for an internal alert (Increment 12 — dispute alerts go to owner/finance,
+   * §17.3). ORG-scoped OWNER/FINANCE grants, ACTIVE users only. Server-internal, so the query
+   * carries an EXPLICIT org_id and never resolves a user outside the org.
+   */
+  async resolveOrgStaffRecipients(orgId: string): Promise<RecipientUser[]> {
+    return this.prisma.$queryRaw<RecipientUser[]>(Prisma.sql`
+      SELECT DISTINCT u.id::text AS "userId", u.name AS "name", u.email AS "email", u.phone AS "phone"
+      FROM "UserRole" ur
+      JOIN "User" u ON u.id = ur.user_id AND u.status = 'ACTIVE'
+      WHERE ur.org_id = ${orgId}::uuid
+        AND ur.role IN ('OWNER', 'FINANCE')
+        AND ur.scope = 'ORG'
+    `);
+  }
+
   /** ACTIVE push tokens for a user (explicit org). The PUSH channel's destination addresses. */
   async activePushTokens(orgId: string, userId: string): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<{ token: string }[]>(Prisma.sql`

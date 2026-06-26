@@ -25,3 +25,26 @@ export function centsToMoney(cents: number): string {
 export function toMoney(dollars: number): string {
   return centsToMoney(roundCents(dollars));
 }
+
+/**
+ * Parse a fixed-2 money string (a Prisma `Decimal(12,2)` rendering, e.g. "293.80" or "-12.00") to
+ * integer cents — the minor-unit form Stripe charges in (Increment 12). Exact (no float math on the
+ * cents): splits on the decimal point. Throws on a malformed string so a bad amount can never charge.
+ */
+export function moneyToCents(money: string): number {
+  const m = /^(-)?(\d+)(?:\.(\d{1,2}))?$/.exec(money.trim());
+  if (!m) throw new Error(`moneyToCents: malformed money string "${money}"`);
+  const sign = m[1] ? -1 : 1;
+  const whole = Number(m[2]);
+  const frac = m[3] ? Number(m[3].padEnd(2, '0')) : 0;
+  return sign * (whole * 100 + frac);
+}
+
+/**
+ * Normalize a money value to a fixed-2 string. Prisma's `Decimal.toString()` drops trailing zeros
+ * ("293.80" → "293.8"), so any Decimal(12,2) column read back must pass through here before crossing
+ * the wire (Increment 12 — payment/invoice/refund amounts). Accepts a Decimal-like or a string.
+ */
+export function decimalMoney(v: { toString(): string } | string): string {
+  return centsToMoney(moneyToCents(typeof v === 'string' ? v : v.toString()));
+}

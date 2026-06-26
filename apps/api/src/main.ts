@@ -9,7 +9,9 @@ import { ProblemJsonFilter } from './common/problem-json.filter';
 import { RedisIoAdapter } from './realtime/redis-io.adapter';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody:true captures the unparsed request body (on req.rawBody) so the Stripe webhook can verify
+  // the signature against the exact bytes (Increment 12). All other routes still receive parsed JSON.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   app.enableShutdownHooks();
 
   // Socket.IO realtime gateway (Increment 6) with the Redis adapter — emits/disconnects fan

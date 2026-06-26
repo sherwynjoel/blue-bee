@@ -23,6 +23,8 @@ export interface OrderTotals {
   tax?: string;
   total?: string;
   taxRate?: string;
+  /** The order's billing state, mirrored by the webhook (Increment 12). */
+  paymentStatus?: 'PAID' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
 }
 
 export interface TimeWindowJson {

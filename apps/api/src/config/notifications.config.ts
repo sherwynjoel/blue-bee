@@ -123,6 +123,21 @@ export function loadNotificationsConfig(): NotificationsConfig {
       nullableStr('NOTIF_MATRIX_GEOFENCE_ARRIVED'),
       defaultGeofenceChannels,
     ),
+    // ── Payments / billing (Increment 12, §17.2). Receipt = a durable confirmation (email + push);
+    //    dunning = a failed-payment notice the customer must act on (email + SMS + push); dispute =
+    //    an internal owner/finance alert (email). All per-event overridable via NOTIF_MATRIX_*.
+    [NOTIFICATION_EVENTS.PAYMENT_RECEIPT]: parseChannels(
+      nullableStr('NOTIF_MATRIX_PAYMENT_RECEIPT'),
+      [CommsChannel.EMAIL, CommsChannel.PUSH],
+    ),
+    [NOTIFICATION_EVENTS.PAYMENT_FAILED]: parseChannels(
+      nullableStr('NOTIF_MATRIX_PAYMENT_FAILED'),
+      [CommsChannel.EMAIL, CommsChannel.SMS, CommsChannel.PUSH],
+    ),
+    [NOTIFICATION_EVENTS.PAYMENT_DISPUTE]: parseChannels(
+      nullableStr('NOTIF_MATRIX_PAYMENT_DISPUTE'),
+      [CommsChannel.EMAIL],
+    ),
   };
 
   return {
@@ -131,6 +146,8 @@ export function loadNotificationsConfig(): NotificationsConfig {
     urgentEventTypes: parseEventSet(nullableStr('NOTIF_URGENT_EVENT_TYPES'), [
       NOTIFICATION_EVENTS.GEOFENCE_APPROACHING,
       NOTIFICATION_EVENTS.GEOFENCE_ARRIVED,
+      // Dunning bypasses quiet-hours — the customer has a bounded re-attempt window.
+      NOTIFICATION_EVENTS.PAYMENT_FAILED,
     ]),
     quietHours: {
       policy: str('NOTIF_QUIET_HOURS_POLICY', 'defer') === 'suppress' ? 'suppress' : 'defer',

@@ -46,3 +46,9 @@ process.env.AWS_SECRET_ACCESS_KEY = 'minioadmin';
 process.env.MEDIA_ENSURE_BUCKET = 'true';
 // Small enough to exercise the too-large path cheaply (declare a byteSize over this → rejected).
 process.env.MEDIA_MAX_BYTES = '5242880';
+
+// ── Payments / billing (Increment 12) ── no STRIPE_SECRET_KEY ⇒ the deterministic LocalPaymentProvider
+// (no live outbound calls). The webhook signing secret is a TEST HMAC secret shared by the e2e signer
+// (StripeEventVerifier.signTestPayload) and the verifier — the genuine signature path, no network.
+// (Drop a real sk_test_… + whsec_… here to upgrade to the live test-mode loop.)
+process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_local_blue_bee';

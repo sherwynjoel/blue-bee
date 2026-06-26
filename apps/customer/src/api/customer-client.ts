@@ -2,11 +2,15 @@ import type {
   ApproveQuoteDto,
   BookOrderDto,
   ConfirmMediaDto,
+  CreatePaymentIntentDto,
   CustomerSitesResult,
   DeclineQuoteDto,
+  InvoiceView,
   ListOrdersQuery,
   MediaResult,
   OrderTrackingResult,
+  PaymentIntentResponse,
+  PaymentView,
   PresignMediaDto,
   PresignMediaResult,
   ServiceCatalogResult,
@@ -69,6 +73,24 @@ export class CustomerApiClient extends ApiClient {
   /** REST source-of-truth poll: last-known of the order's one vehicle + first ETA + a channelToken. */
   getOrderTracking(orderId: string): Promise<OrderTrackingResult> {
     return this.request('GET', `/orders/${orderId}/tracking`);
+  }
+
+  // ───────────── pay (Increment 12 — Stripe PaymentSheet; client gets the client_secret only) ─────────────
+
+  /** Create/re-attempt the PaymentIntent for an approved order. Amount is computed server-side from
+   *  the approved quote (never sent by the client). Idempotency-Key makes a retry replay-safe. */
+  createPaymentIntent(orderId: string, idempotencyKey?: string, dto: CreatePaymentIntentDto = {}): Promise<PaymentIntentResponse> {
+    return this.request('POST', `/orders/${orderId}/payment-intent`, { body: dto, idempotencyKey });
+  }
+
+  /** The order's latest payment — polled after PaymentSheet to confirm the WEBHOOK-confirmed success. */
+  getPayment(orderId: string): Promise<PaymentView | null> {
+    return this.request('GET', `/orders/${orderId}/payment`);
+  }
+
+  /** The order's invoice/receipt (or null). */
+  getInvoice(orderId: string): Promise<InvoiceView | null> {
+    return this.request('GET', `/orders/${orderId}/invoice`);
   }
 
   // ───────────── media (Increment 10) ─────────────

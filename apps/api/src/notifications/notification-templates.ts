@@ -14,6 +14,12 @@ export interface TemplateData {
   orderRef: string;
   /** Remaining ETA in whole minutes (approaching only); null/absent ⇒ omit the time phrase. */
   etaMinutes?: number | null;
+  /** Money amount as a fixed-2 dollar string (payment events). */
+  amount?: string | null;
+  /** ISO 4217 currency (payment events). */
+  currency?: string | null;
+  /** Dispute/refund reason or short note (payment events). */
+  reason?: string | null;
 }
 
 export interface RenderedTemplate {
@@ -33,6 +39,13 @@ function etaPhrase(mins?: number | null): string {
 function driverNoun(d: TemplateData): string {
   const who = d.driverName && d.driverName.trim() ? ` ${d.driverName.trim()}` : '';
   return `Your ${d.appName} driver${who}`;
+}
+
+/** "$293.80 CAD" / "your" (when no amount) — for payment templates. */
+function moneyPhrase(d: TemplateData): string {
+  if (!d.amount || !d.amount.trim()) return 'your';
+  const cur = d.currency && d.currency.trim() ? ` ${d.currency.trim().toUpperCase()}` : '';
+  return `$${d.amount.trim()}${cur}`;
 }
 
 /** Convert ETA seconds → whole minutes for the "~N min" phrase (min 1 when positive). */
@@ -62,6 +75,40 @@ export function renderTemplate(eventType: string, channel: CommsChannel, data: T
       }
       if (channel === CommsChannel.PUSH) {
         return { title: `${data.appName} — driver arrived`, body: line };
+      }
+      return { body: `${data.appName}: ${line}` }; // SMS
+    }
+    case NOTIFICATION_EVENTS.PAYMENT_RECEIPT: {
+      const amt = moneyPhrase(data);
+      const line = `Payment of ${amt} received for order ${data.orderRef}. Thank you!`;
+      if (channel === CommsChannel.EMAIL) {
+        return { subject: `Your ${data.appName} receipt for order ${data.orderRef}`, body: `${line}\n\nThis is your receipt — keep it for your records.` };
+      }
+      if (channel === CommsChannel.PUSH) {
+        return { title: `${data.appName} — payment received`, body: line };
+      }
+      return { body: `${data.appName}: ${line}` }; // SMS
+    }
+    case NOTIFICATION_EVENTS.PAYMENT_FAILED: {
+      const amt = moneyPhrase(data);
+      const line = `We couldn't process your ${amt} payment for order ${data.orderRef}. Please try again in the app.`;
+      if (channel === CommsChannel.EMAIL) {
+        return { subject: `Action needed: payment failed for order ${data.orderRef}`, body: line };
+      }
+      if (channel === CommsChannel.PUSH) {
+        return { title: `${data.appName} — payment failed`, body: line };
+      }
+      return { body: `${data.appName}: ${line}` }; // SMS
+    }
+    case NOTIFICATION_EVENTS.PAYMENT_DISPUTE: {
+      const amt = moneyPhrase(data);
+      const why = data.reason && data.reason.trim() ? ` (reason: ${data.reason.trim()})` : '';
+      const line = `A payment dispute for ${amt} was opened on order ${data.orderRef}${why}. Review and respond in the dashboard.`;
+      if (channel === CommsChannel.EMAIL) {
+        return { subject: `Dispute opened on order ${data.orderRef}`, body: line };
+      }
+      if (channel === CommsChannel.PUSH) {
+        return { title: `${data.appName} — dispute opened`, body: line };
       }
       return { body: `${data.appName}: ${line}` }; // SMS
     }

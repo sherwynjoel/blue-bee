@@ -44,6 +44,20 @@ jest.mock('expo-file-system', () => ({
   FileSystemUploadType: { BINARY_CONTENT: 1 },
 }));
 
+// @stripe/stripe-react-native (Increment 12): the native PaymentSheet bridge isn't available under
+// Node. Default mock = a successful sheet; component tests override useStripe to drive failure/cancel.
+jest.mock('@stripe/stripe-react-native', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    StripeProvider: ({ children }) => React.createElement(React.Fragment, null, children),
+    useStripe: () => ({
+      initPaymentSheet: jest.fn(async () => ({})),
+      presentPaymentSheet: jest.fn(async () => ({})),
+    }),
+  };
+});
+
 // react-native-maps: lightweight stand-ins so screens that render a map still mount in tests.
 jest.mock('react-native-maps', () => {
   const React = require('react');

@@ -37,7 +37,7 @@ export class OrderStateMachine {
     tx: Prisma.TransactionClient,
     order: Pick<Order, 'id' | 'orgId' | 'status' | 'heldFrom'>,
     to: OrderStatus,
-    opts: { actorId: string; reason?: string; extraAudit?: Record<string, unknown> },
+    opts: { actorId: string | null; reason?: string; extraAudit?: Record<string, unknown> },
   ): Promise<OrderStatus> {
     const from = order.status as unknown as OrderStatus;
     const heldFrom = (order.heldFrom as unknown as OrderStatus | null) ?? null;

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { View } from 'react-native';
 import { OrderStatus } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useFocusEffect, type RouteProp } from '@react-navigation/native';
@@ -8,6 +8,8 @@ import type { OrderDetail } from '../api/types';
 import type { RootStackParamList } from '../navigation';
 import { money, orderRef, shortDate, shortTime } from '../format';
 import { Badge, Card, ErrorBox, Loading, Row, type Tone } from '../components/ui';
+import { Button, Screen, Text, useTheme } from '../components/kit';
+import { haptics } from '../components/haptics';
 
 type Route = RouteProp<RootStackParamList, 'OrderDetail'>;
 
@@ -25,6 +27,7 @@ function paymentTone(s?: string): Tone {
  * authoritative `quote:approve|:decline` — a 409 (the quote moved/expired) re-syncs to the truth.
  */
 export function OrderDetailScreen({ route }: { route: Route }): React.ReactElement {
+  const t = useTheme();
   const { orderId } = route.params;
   const { client } = useSession();
   const [order, setOrder] = useState<OrderDetail | null>(null);
@@ -51,18 +54,22 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
   );
 
   const act = useCallback(
-    async (fn: () => Promise<OrderDetail>, okMsg: string): Promise<void> => {
+    async (fn: () => Promise<OrderDetail>, okMsg: string, success: boolean): Promise<void> => {
       setActing(true);
       setActionMsg(null);
       try {
         setOrder(await fn());
+        if (success) haptics.success();
+        else haptics.warning();
         setActionMsg(okMsg);
       } catch (e) {
         // 409 = the server's atomic claim moved (expired / already acted) → re-sync to the truth.
         if (e instanceof ApiError && e.isConflict) {
           await load();
+          haptics.warning();
           setActionMsg(e.message || 'This quote changed — refreshed to the latest.');
         } else {
+          haptics.error();
           setActionMsg(e instanceof ApiError ? e.message : 'That action could not be completed.');
         }
       } finally {
@@ -80,43 +87,54 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
   const pay = order.totals?.paymentStatus;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="order-detail">
-      <View style={styles.headerRow}>
-        <Text style={styles.ref}>{orderRef(order.id)}</Text>
+    <Screen scroll testID="order-detail">
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text variant="title1" mono>
+          {orderRef(order.id)}
+        </Text>
         <Badge tone="blue">{humanize(order.status)}</Badge>
       </View>
-      <Text style={styles.sub}>Booked {shortDate(order.createdAt)}</Text>
+      <Text variant="footnote" color={t.color.textMuted} style={{ marginTop: 4 }}>
+        Booked {shortDate(order.createdAt)}
+      </Text>
 
       {quote ? (
         <Card title="Quote">
           <Row label="Subtotal" value={money(quote.subtotal, order.totals?.currency)} />
           <Row label="Tax" value={money(quote.tax, order.totals?.currency)} />
           <Row label="Total" value={money(quote.total, order.totals?.currency)} bold />
-          {quote.expiresAt ? <Text style={styles.muted}>Valid until {shortDate(quote.expiresAt)}</Text> : null}
+          {quote.expiresAt ? (
+            <Text variant="caption" color={t.color.textFaint} style={{ marginTop: 6 }}>
+              Valid until {shortDate(quote.expiresAt)}
+            </Text>
+          ) : null}
           {pay ? (
-            <View style={{ marginTop: 8 }}>
+            <View style={{ marginTop: 10 }}>
               <Badge tone={paymentTone(pay)}>{humanize(pay)}</Badge>
             </View>
           ) : null}
 
           {isQuoted ? (
-            <View style={styles.actions}>
-              <TouchableOpacity
+            <View style={{ marginTop: 14, gap: 10 }}>
+              <Button
                 testID="approve-quote"
-                style={[styles.approveBtn, acting && styles.btnDisabled]}
-                onPress={() => void act(() => client.approveQuote(orderId), 'Quote approved — work can start.')}
+                label="Approve quote"
+                icon="check-circle"
+                onPress={() => void act(() => client.approveQuote(orderId), 'Quote approved — work can start.', true)}
+                busy={acting}
                 disabled={acting}
-              >
-                {acting ? <ActivityIndicator color="#fff" /> : <Text style={styles.approveText}>Approve quote</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity
+                haptic="none"
+                fullWidth
+              />
+              <Button
                 testID="decline-quote"
-                style={styles.declineBtn}
-                onPress={() => void act(() => client.declineQuote(orderId), 'Quote declined.')}
+                label="Decline"
+                onPress={() => void act(() => client.declineQuote(orderId), 'Quote declined.', false)}
                 disabled={acting}
-              >
-                <Text style={styles.declineText}>Decline</Text>
-              </TouchableOpacity>
+                variant="secondary"
+                haptic="none"
+                fullWidth
+              />
             </View>
           ) : null}
         </Card>
@@ -124,23 +142,39 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
 
       <Card title="Chain of custody">
         {order.items.length === 0 ? (
-          <Text style={styles.muted}>No items yet.</Text>
+          <Text variant="subhead" color={t.color.textMuted}>
+            No items yet.
+          </Text>
         ) : (
           order.items.map((it) => (
-            <View key={it.id} style={styles.itemBlock} testID={`item-${it.id}`}>
-              <Text style={styles.itemTitle}>
+            <View key={it.id} style={{ marginBottom: 14 }} testID={`item-${it.id}`}>
+              <Text variant="subhead" weight="700" style={{ marginBottom: 8 }}>
                 {it.kind} · {humanize(it.status)}
               </Text>
               {it.custodyEvents.length === 0 ? (
-                <Text style={styles.muted}>No scans yet.</Text>
+                <Text variant="footnote" color={t.color.textMuted}>
+                  No scans yet.
+                </Text>
               ) : (
                 it.custodyEvents
                   .slice()
                   .sort((a, b) => (a.occurredAt < b.occurredAt ? -1 : 1))
                   .map((c) => (
-                    <View key={c.id} style={styles.custodyRow}>
-                      <Text style={styles.custodyStage}>{humanize(c.stage)}</Text>
-                      <Text style={styles.custodyTime}>
+                    <View
+                      key={c.id}
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        paddingVertical: 5,
+                        borderLeftWidth: 2,
+                        borderLeftColor: t.color.success,
+                        paddingLeft: 12,
+                        marginLeft: 4,
+                      }}
+                    >
+                      <Text variant="footnote">{humanize(c.stage)}</Text>
+                      <Text variant="caption" color={t.color.textFaint} mono tabular>
                         {shortDate(c.occurredAt)} {shortTime(c.occurredAt)}
                       </Text>
                     </View>
@@ -152,31 +186,10 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
       </Card>
 
       {actionMsg ? (
-        <Text testID="action-msg" style={styles.actionMsg}>
+        <Text testID="action-msg" variant="subhead" color={t.color.textMuted} center style={{ marginTop: 14 }}>
           {actionMsg}
         </Text>
       ) : null}
-    </ScrollView>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f8fa' },
-  content: { padding: 16, paddingBottom: 40 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ref: { fontSize: 22, fontWeight: '700', color: '#1f2328' },
-  sub: { color: '#57606a', marginTop: 4 },
-  muted: { color: '#57606a', marginTop: 4 },
-  actions: { marginTop: 14, gap: 8 },
-  approveBtn: { backgroundColor: '#1f883d', borderRadius: 8, padding: 14, alignItems: 'center' },
-  approveText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  declineBtn: { borderWidth: 1, borderColor: '#cf222e', borderRadius: 8, padding: 12, alignItems: 'center' },
-  declineText: { color: '#cf222e', fontWeight: '600' },
-  btnDisabled: { opacity: 0.5 },
-  itemBlock: { marginBottom: 14 },
-  itemTitle: { fontWeight: '700', color: '#1f2328', marginBottom: 6 },
-  custodyRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderLeftWidth: 2, borderLeftColor: '#dafbe1', paddingLeft: 10, marginLeft: 4 },
-  custodyStage: { color: '#1f2328' },
-  custodyTime: { color: '#8c959f', fontSize: 12 },
-  actionMsg: { textAlign: 'center', color: '#1f2328', marginTop: 14, fontStyle: 'italic' },
-});

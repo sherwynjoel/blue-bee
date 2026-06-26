@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { useSession } from '../session/SessionProvider';
 import { ApiError } from '../api/problem';
+import { useTheme } from '../theme';
+import { Button, Input, Text } from '../components/kit';
 
 /**
  * Phone-OTP login (PRD §8.1; the shared Increment-2 flow). Request a code → enter it → verify. In dev
  * the console SMS transport echoes the code (`devCode`), so the flow is testable without a real phone.
  */
 export function LoginScreen(): React.ReactElement {
+  const t = useTheme();
   const { requestOtp, login } = useSession();
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [phone, setPhone] = useState('');
@@ -45,77 +48,70 @@ export function LoginScreen(): React.ReactElement {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Text style={styles.title}>Blue Bee Owner</Text>
-      <Text style={styles.tagline}>Your fleet, today&apos;s numbers, and anything on fire.</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, justifyContent: 'center', padding: 24, gap: 14, backgroundColor: t.color.canvas }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={{ alignItems: 'center', marginBottom: 8, gap: 12 }}>
+        <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: t.color.azureTint, alignItems: 'center', justifyContent: 'center' }}>
+          <Text variant="title1">🐝</Text>
+        </View>
+        <Text variant="title1" center>
+          Blue Bee Owner
+        </Text>
+        <Text variant="subhead" color={t.color.textMuted} center>
+          Your fleet, today&apos;s numbers, and anything on fire.
+        </Text>
+      </View>
 
       {step === 'phone' ? (
         <>
-          <Text style={styles.label}>Your phone number</Text>
-          <TextInput
+          <Text variant="footnote" color={t.color.textMuted}>
+            Your phone number
+          </Text>
+          <Input
             testID="phone-input"
-            style={styles.input}
             value={phone}
             onChangeText={setPhone}
             placeholder="+14165550001"
             keyboardType="phone-pad"
             autoCapitalize="none"
             autoCorrect={false}
+            icon="phone"
           />
-          <PrimaryButton testID="send-code" label="Send code" onPress={sendCode} busy={busy} disabled={phone.trim().length < 8} />
+          <Button testID="send-code" label="Send code" onPress={sendCode} busy={busy} disabled={phone.trim().length < 8} size="lg" iconRight="arrow-right" />
         </>
       ) : (
         <>
-          <Text style={styles.label}>Enter the 6-digit code sent to {phone}</Text>
-          <TextInput
-            testID="code-input"
-            style={styles.input}
-            value={code}
-            onChangeText={setCode}
-            placeholder="123456"
-            keyboardType="number-pad"
-            maxLength={6}
-          />
-          {devCode ? <Text style={styles.devHint}>dev code: {devCode}</Text> : null}
-          <PrimaryButton testID="verify" label="Verify & sign in" onPress={verify} busy={busy} disabled={code.trim().length !== 6} />
-          <TouchableOpacity onPress={() => setStep('phone')} disabled={busy}>
-            <Text style={styles.linkText}>Use a different number</Text>
-          </TouchableOpacity>
+          <Text variant="footnote" color={t.color.textMuted}>
+            Enter the 6-digit code sent to {phone}
+          </Text>
+          <Input testID="code-input" value={code} onChangeText={setCode} placeholder="123456" keyboardType="number-pad" maxLength={6} big />
+          {devCode ? (
+            <Text variant="caption" color={t.color.textFaint}>
+              dev code: {devCode}
+            </Text>
+          ) : null}
+          <Button testID="verify" label="Verify & sign in" onPress={verify} busy={busy} disabled={code.trim().length !== 6} size="lg" icon="check" />
+          <Pressable
+            onPress={() => setStep('phone')}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Use a different number"
+            style={{ alignSelf: 'center', minHeight: 48, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text variant="subhead" weight="600" color={t.color.azure}>
+              Use a different number
+            </Text>
+          </Pressable>
         </>
       )}
 
       {error ? (
-        <Text style={styles.error} testID="login-error">
+        <Text testID="login-error" variant="subhead" color={t.color.danger} center style={{ marginTop: 4 }}>
           {error}
         </Text>
       ) : null}
     </KeyboardAvoidingView>
   );
 }
-
-function PrimaryButton(props: { label: string; onPress: () => void; busy?: boolean; disabled?: boolean; testID?: string }): React.ReactElement {
-  return (
-    <TouchableOpacity
-      testID={props.testID}
-      style={[styles.button, (props.disabled || props.busy) && styles.buttonDisabled]}
-      onPress={props.onPress}
-      disabled={props.disabled || props.busy}
-    >
-      {props.busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{props.label}</Text>}
-    </TouchableOpacity>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff', gap: 12 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1f2937', textAlign: 'center' },
-  tagline: { fontSize: 14, color: '#6b7280', textAlign: 'center', marginBottom: 24 },
-  label: { fontSize: 14, color: '#374151' },
-  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 14, fontSize: 18 },
-  devHint: { color: '#6b7280', fontSize: 12 },
-  button: { backgroundColor: '#1f6feb', borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 8 },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  linkText: { color: '#1f6feb', textAlign: 'center', marginTop: 12 },
-  error: { color: '#b91c1c', marginTop: 12, textAlign: 'center' },
-});

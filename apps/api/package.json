@@ -13,6 +13,7 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "db:bootstrap": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' prisma/bootstrap.ts",
     "db:studio": "prisma studio",
     "test": "jest --config jest.config.js",
     "test:e2e": "jest --config jest-e2e.config.js --runInBand"

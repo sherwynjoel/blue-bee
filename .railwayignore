@@ -1,0 +1,12 @@
+# Railway `up` upload excludes (Increment 14b). `railway up` already honours .gitignore (so node_modules
+# / dist / .next / .turbo are out); these trim the upload further to what the api/web/postgres images
+# actually COPY (root manifests + packages/* + apps/api + apps/web + infra/Dockerfile.postgres).
+# Do NOT add packages/, apps/api, apps/web, infra/, or the root manifests here — the builds need them.
+.git
+apps/customer
+apps/driver
+apps/owner
+docs
+handoffs
+*.md
+**/*.log

@@ -1,0 +1,42 @@
+# Docker build context excludes (Increment 14b). The build context is the repo ROOT for both the
+# apps/api and apps/web images; each Dockerfile COPYies only the workspaces it needs. These excludes
+# keep the context small and ensure NO secrets or host-built artifacts ever enter an image.
+# (Railway's upload already honours .gitignore; this is the docker-build layer.)
+
+# Dependencies (re-installed in-image)
+**/node_modules
+
+# Build outputs (re-built in-image)
+**/dist
+**/build
+**/.next
+**/.expo
+**/.expo-shared
+**/.turbo
+**/out
+**/*.tsbuildinfo
+
+# Secrets / env — NEVER copy these into an image
+**/.env
+**/.env.*
+*.pem
+**/google-service-account*.json
+**/serviceAccountKey*.json
+
+# VCS / CI / editor / OS
+.git
+.github
+.vscode
+**/.DS_Store
+Thumbs.db
+
+# Tests / coverage / logs
+**/coverage
+**/.nyc_output
+**/*.log
+
+# Native build artifacts
+**/ios/Pods
+**/android/.gradle
+**/*.keystore
+**/*.jks

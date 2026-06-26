@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { PaymentStatus, type InvoiceView, type PaymentView } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -9,6 +10,8 @@ import type { RootStackParamList } from '../navigation';
 import { usePresentPayment } from '../pay/use-payment-sheet';
 import { isPayable, payAmount, pollPaymentConfirmed } from '../pay/payment-controller';
 import { money, orderRef } from '../format';
+import { useTheme } from '../../theme';
+import { BeeMark, Button, Card, Divider, KeyValue, Text, fireHaptic } from '../../components/ui';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Pay'>;
 type Phase = 'loading' | 'idle' | 'starting' | 'presenting' | 'confirming' | 'paid' | 'processing' | 'failed' | 'notpayable';
@@ -24,6 +27,7 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 export function PayScreen({ navigation, route }: Props): React.ReactElement {
   const { orderId } = route.params;
   const { client } = useSession();
+  const { colors, space } = useTheme();
   const present = usePresentPayment();
   const [phase, setPhase] = useState<Phase>('loading');
   const [amount, setAmount] = useState<string | null>(null);
@@ -82,6 +86,7 @@ export function PayScreen({ navigation, route }: Props): React.ReactElement {
       if (confirmed?.status === PaymentStatus.SUCCEEDED) {
         setPayment(confirmed);
         setReceipt(await client.getInvoice(orderId));
+        fireHaptic('success');
         setPhase('paid');
       } else if (confirmed?.status === PaymentStatus.FAILED) {
         setError('Your payment could not be completed. Please try again.');
@@ -95,57 +100,115 @@ export function PayScreen({ navigation, route }: Props): React.ReactElement {
     }
   }, [client, orderId, present]);
 
-  if (phase === 'loading') return <ActivityIndicator testID="pay-loading" style={styles.center} size="large" color="#1f6feb" />;
+  if (phase === 'loading')
+    return (
+      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
+        <ActivityIndicator testID="pay-loading" size="large" color={colors.azure} />
+      </View>
+    );
+
+  const busy = phase === 'starting' || phase === 'presenting' || phase === 'confirming';
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.ref}>{orderRef(orderId)}</Text>
-      {amount ? <Text testID="pay-amount" style={styles.amount}>{money(amount, currency)}</Text> : null}
-
+    <ScrollView style={{ backgroundColor: colors.canvas }} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {phase === 'paid' ? (
-        <View testID="receipt" style={styles.card}>
-          <Text style={styles.paidBadge}>✓ Paid</Text>
-          <Text style={styles.cardTitle}>Receipt</Text>
-          {receipt?.lines.map((l, i) => (
-            <View key={i} style={styles.kv}>
-              <Text style={styles.kvLabel}>{l.description}</Text>
-              <Text style={styles.kvValue}>{money(l.amount, currency)}</Text>
+        <View testID="receipt">
+          <View style={styles.celebrate}>
+            <View style={[styles.tick, { backgroundColor: colors.onSuccessTint }]}>
+              <Feather name="check" size={34} color="#FFFFFF" />
             </View>
-          ))}
-          <View style={styles.kv}>
-            <Text style={[styles.kvLabel, styles.bold]}>Total paid</Text>
-            <Text style={[styles.kvValue, styles.bold]}>{money(receipt?.total ?? payment?.amount ?? amount ?? '0', currency)}</Text>
+            <Text variant="title2" weight="700" center style={{ marginTop: 16 }}>
+              Payment complete
+            </Text>
+            <Text variant="subhead" color="secondary" center style={{ marginTop: 4 }}>
+              Thanks — a receipt for {orderRef(orderId)} is below.
+            </Text>
           </View>
-          <TouchableOpacity testID="done-button" style={styles.secondaryBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.secondaryBtnText}>Done</Text>
-          </TouchableOpacity>
+
+          <Card title="Receipt" style={{ marginTop: space.xl }}>
+            {receipt?.lines.map((l, i) => (
+              <KeyValue key={i} label={l.description} value={money(l.amount, currency)} />
+            ))}
+            <Divider spacing={8} />
+            <KeyValue label="Total paid" value={money(receipt?.total ?? payment?.amount ?? amount ?? '0', currency)} total />
+          </Card>
+
+          <Button testID="done-button" label="Done" variant="outline" tone="neutral" icon="check" onPress={() => navigation.goBack()} style={{ marginTop: space.lg }} />
         </View>
       ) : phase === 'processing' ? (
-        <View style={styles.card}>
-          <Text testID="pay-status" style={styles.processing}>Payment received — we’re confirming it now. You’ll get a receipt shortly.</Text>
-          <TouchableOpacity testID="refresh-button" style={styles.secondaryBtn} onPress={() => void load()}>
-            <Text style={styles.secondaryBtnText}>Refresh</Text>
-          </TouchableOpacity>
-        </View>
+        <Card style={styles.statusCard}>
+          <ActivityIndicator color={colors.warning} />
+          <Text testID="pay-status" variant="subhead" color="warning" center style={{ marginTop: 12 }}>
+            Payment received — we’re confirming it now. You’ll get a receipt shortly.
+          </Text>
+          <Button testID="refresh-button" label="Refresh" variant="outline" icon="refresh-cw" onPress={() => void load()} style={{ marginTop: 16 }} />
+        </Card>
       ) : phase === 'notpayable' ? (
-        <Text testID="pay-status" style={styles.muted}>This order isn’t ready for payment.</Text>
+        <Card style={styles.statusCard}>
+          <Feather name="clock" size={26} color={colors.textTertiary} />
+          <Text testID="pay-status" variant="subhead" color="secondary" center style={{ marginTop: 10 }}>
+            This order isn’t ready for payment yet.
+          </Text>
+        </Card>
       ) : (
-        <View style={styles.card}>
-          {error ? <Text testID="pay-error" style={styles.error}>{error}</Text> : null}
-          <Text style={styles.muted}>Pay securely with card, Apple Pay, or Google Pay. Your card details never touch our servers.</Text>
-          <TouchableOpacity
-            testID="pay-button"
-            style={[styles.payBtn, (phase === 'starting' || phase === 'presenting' || phase === 'confirming') && styles.btnDisabled]}
-            onPress={() => void pay()}
-            disabled={phase === 'starting' || phase === 'presenting' || phase === 'confirming'}
-          >
-            {phase === 'starting' || phase === 'presenting' || phase === 'confirming' ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.payBtnText}>{phase === 'failed' ? 'Try again' : `Pay ${amount ? money(amount, currency) : ''}`}</Text>
-            )}
-          </TouchableOpacity>
-          {phase === 'confirming' ? <Text testID="pay-status" style={styles.muted}>Confirming your payment…</Text> : null}
+        <View>
+          <Card padding={20}>
+            <Text variant="footnote" color="secondary">
+              {orderRef(orderId)}
+            </Text>
+            <Text variant="caption" color="tertiary" style={{ marginTop: 12 }}>
+              AMOUNT DUE
+            </Text>
+            {amount ? (
+              <Text testID="pay-amount" variant="display" weight="700" tabular style={{ marginTop: 2 }}>
+                {money(amount, currency)}
+              </Text>
+            ) : null}
+            <Text variant="footnote" color="tertiary" style={{ marginTop: 2 }}>
+              Includes HST.
+            </Text>
+          </Card>
+
+          <Card style={{ marginTop: space.lg }}>
+            {error ? (
+              <View style={[styles.errorBox, { backgroundColor: colors.dangerTint }]}>
+                <Feather name="alert-circle" size={16} color={colors.danger} />
+                <Text testID="pay-error" variant="footnote" color="danger" style={{ marginLeft: 8, flex: 1 }}>
+                  {error}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.secureRow}>
+              <Feather name="lock" size={16} color={colors.success} />
+              <Text variant="footnote" color="secondary" style={{ marginLeft: 8, flex: 1 }}>
+                Pay with card, Apple Pay, or Google Pay. Your card details never touch our servers.
+              </Text>
+            </View>
+
+            <Button
+              testID="pay-button"
+              label={phase === 'failed' ? 'Try again' : `Pay ${amount ? money(amount, currency) : ''}`}
+              icon={phase === 'failed' ? 'refresh-cw' : 'lock'}
+              tone="azure"
+              onPress={() => void pay()}
+              busy={busy}
+              disabled={busy}
+              style={{ marginTop: space.md }}
+            />
+            {phase === 'confirming' ? (
+              <Text testID="pay-status" variant="footnote" color="secondary" center style={{ marginTop: 10 }}>
+                Confirming your payment…
+              </Text>
+            ) : null}
+          </Card>
+
+          <View style={styles.trustRow}>
+            <BeeMark size={22} />
+            <Text variant="caption" color="tertiary" style={{ marginLeft: 8 }}>
+              Secured by Stripe · Blue Bee
+            </Text>
+          </View>
         </View>
       )}
     </ScrollView>
@@ -153,24 +216,12 @@ export function PayScreen({ navigation, route }: Props): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f8fa' },
-  content: { padding: 16, gap: 8 },
+  content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  ref: { fontSize: 16, color: '#57606a' },
-  amount: { fontSize: 32, fontWeight: '800', color: '#1f2328', marginBottom: 8 },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#eaeef2', gap: 8 },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#1f2328' },
-  paidBadge: { color: '#1a7f37', fontWeight: '800', fontSize: 20 },
-  kv: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
-  kvLabel: { color: '#57606a' },
-  kvValue: { color: '#1f2328' },
-  bold: { fontWeight: '700', color: '#1f2328' },
-  muted: { color: '#57606a' },
-  processing: { color: '#9a6700', fontSize: 15 },
-  payBtn: { backgroundColor: '#1f883d', borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 4 },
-  payBtnText: { color: '#fff', fontWeight: '700', fontSize: 17 },
-  btnDisabled: { opacity: 0.6 },
-  secondaryBtn: { borderWidth: 1, borderColor: '#1f6feb', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 8 },
-  secondaryBtnText: { color: '#1f6feb', fontWeight: '600' },
-  error: { color: '#b91c1c' },
+  celebrate: { alignItems: 'center', paddingTop: 24 },
+  tick: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+  statusCard: { alignItems: 'center', paddingVertical: 28 },
+  errorBox: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, padding: 12, marginBottom: 12 },
+  secureRow: { flexDirection: 'row', alignItems: 'center' },
+  trustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 20 },
 });

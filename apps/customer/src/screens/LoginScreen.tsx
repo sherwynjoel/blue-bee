@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@blue-bee/api-client';
 import { useSession } from '../session/SessionProvider';
+import { useTheme } from '../../theme';
+import { BeeMark, Button, Input, Text } from '../../components/ui';
 
 /**
  * Phone-OTP login (PRD §8.1, Increment 2 flow) — the SAME proven flow as the driver app, on the
  * shared session seam. Request a code → enter it → verify. In dev the console SMS transport echoes
- * the code (`devCode`), so the flow is testable without a real phone.
+ * the code (`devCode`), so the flow is testable without a real phone. Daylight reskin: branded bee
+ * hero, calm number entry, clear states.
  */
 export function LoginScreen(): React.ReactElement {
   const { requestOtp, login } = useSession();
+  const { colors, space } = useTheme();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -46,77 +52,90 @@ export function LoginScreen(): React.ReactElement {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Text style={styles.title}>Blue Bee</Text>
-      <Text style={styles.subtitle}>Specialty cleaning, tracked door to door.</Text>
+    <KeyboardAvoidingView
+      style={[styles.flex, { backgroundColor: colors.canvas }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.hero}>
+          <BeeMark size={84} />
+          <Text variant="display" weight="700" style={{ marginTop: space.xl }}>
+            Blue Bee
+          </Text>
+          <Text variant="subhead" color="secondary" center style={{ marginTop: 6 }}>
+            Specialty cleaning, tracked door to door.
+          </Text>
+        </View>
 
-      {step === 'phone' ? (
-        <>
-          <Text style={styles.label}>Your phone number</Text>
-          <TextInput
-            testID="phone-input"
-            style={styles.input}
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="+14165550010"
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <PrimaryButton testID="send-code" label="Send code" onPress={sendCode} busy={busy} disabled={phone.trim().length < 8} />
-        </>
-      ) : (
-        <>
-          <Text style={styles.label}>Enter the 6-digit code sent to {phone}</Text>
-          <TextInput
-            testID="code-input"
-            style={styles.input}
-            value={code}
-            onChangeText={setCode}
-            placeholder="123456"
-            keyboardType="number-pad"
-            maxLength={6}
-          />
-          {devCode ? <Text style={styles.devHint}>dev code: {devCode}</Text> : null}
-          <PrimaryButton testID="verify" label="Verify & sign in" onPress={verify} busy={busy} disabled={code.trim().length !== 6} />
-          <TouchableOpacity onPress={() => setStep('phone')} disabled={busy}>
-            <Text style={styles.linkText}>Use a different number</Text>
-          </TouchableOpacity>
-        </>
-      )}
+        {step === 'phone' ? (
+          <View style={styles.form}>
+            <Input
+              testID="phone-input"
+              label="Your phone number"
+              icon="phone"
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="+1 416 555 0010"
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="go"
+              onSubmitEditing={() => phone.trim().length >= 8 && void sendCode()}
+            />
+            <Button testID="send-code" label="Send code" icon="arrow-right" onPress={sendCode} busy={busy} disabled={phone.trim().length < 8} />
+          </View>
+        ) : (
+          <View style={styles.form}>
+            <Text variant="subhead" color="secondary">
+              Enter the 6-digit code sent to{' '}
+              <Text variant="subhead" weight="600">
+                {phone}
+              </Text>
+            </Text>
+            <Input
+              testID="code-input"
+              value={code}
+              onChangeText={setCode}
+              placeholder="123456"
+              keyboardType="number-pad"
+              maxLength={6}
+              textAlign="center"
+              style={styles.codeInput}
+            />
+            {devCode ? (
+              <View style={[styles.devHint, { backgroundColor: colors.honeyTint }]}>
+                <Text variant="footnote" style={{ color: colors.onHoney }}>
+                  Dev code: <Text variant="footnote" weight="700" mono style={{ color: colors.onHoney }}>{devCode}</Text>
+                </Text>
+              </View>
+            ) : null}
+            <Button testID="verify" label="Verify & sign in" onPress={verify} busy={busy} disabled={code.trim().length !== 6} />
+            <Button variant="ghost" tone="neutral" label="Use a different number" onPress={() => setStep('phone')} disabled={busy} haptic="selection" />
+          </View>
+        )}
 
-      {error ? (
-        <Text style={styles.error} testID="login-error">
-          {error}
-        </Text>
-      ) : null}
+        {error ? (
+          <View style={[styles.error, { backgroundColor: colors.dangerTint }]}>
+            <Text testID="login-error" variant="footnote" color="danger" center>
+              {error}
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function PrimaryButton(props: { label: string; onPress: () => void; busy?: boolean; disabled?: boolean; testID?: string }): React.ReactElement {
-  return (
-    <TouchableOpacity
-      testID={props.testID}
-      style={[styles.button, (props.disabled || props.busy) && styles.buttonDisabled]}
-      onPress={props.onPress}
-      disabled={props.disabled || props.busy}
-    >
-      {props.busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{props.label}</Text>}
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff', gap: 12 },
-  title: { fontSize: 32, fontWeight: '700', color: '#1f2937', textAlign: 'center' },
-  subtitle: { fontSize: 14, color: '#6b7280', textAlign: 'center', marginBottom: 24 },
-  label: { fontSize: 14, color: '#374151' },
-  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 14, fontSize: 18 },
-  devHint: { color: '#6b7280', fontSize: 12 },
-  button: { backgroundColor: '#1f6feb', borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 8 },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  linkText: { color: '#1f6feb', textAlign: 'center', marginTop: 12 },
-  error: { color: '#b91c1c', marginTop: 12, textAlign: 'center' },
+  flex: { flex: 1 },
+  content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 },
+  hero: { alignItems: 'center', marginBottom: 40 },
+  form: { gap: 14 },
+  codeInput: { fontSize: 26, letterSpacing: 8, fontVariant: ['tabular-nums'] },
+  devHint: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  error: { borderRadius: 12, padding: 12, marginTop: 18 },
 });

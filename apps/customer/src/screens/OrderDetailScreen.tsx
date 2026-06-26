@@ -1,14 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { PhotoKind } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useFocusEffect, type NavigationProp, type RouteProp } from '@react-navigation/native';
@@ -17,9 +9,10 @@ import type { OrderDetail, ItemView } from '../api/types';
 import type { RootStackParamList } from '../navigation';
 import { StatusTimeline } from '../components/StatusTimeline';
 import { hasActiveStop, preexistingDamageItems, quoteActionability } from '../orders/quote';
-import { statusLabel } from '../orders/timeline';
 import { capturePhotoToOrder, MediaCaptureError, type CaptureSource } from '../media/capture';
 import { money, orderRef, rangeText, shortDate } from '../format';
+import { useTheme } from '../../theme';
+import { Badge, Button, Card, KeyValue, Divider, Sheet, StatusPill, Text, fireHaptic } from '../../components/ui';
 
 type Nav = NavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'OrderDetail'>;
@@ -33,11 +26,22 @@ type Route = RouteProp<RootStackParamList, 'OrderDetail'>;
 export function OrderDetailScreen({ navigation, route }: { navigation: Nav; route: Route }): React.ReactElement {
   const { orderId } = route.params;
   const { client } = useSession();
+  const { colors, space } = useTheme();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [actionTone, setActionTone] = useState<'success' | 'danger' | 'neutral'>('neutral');
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const [photoSheet, setPhotoSheet] = useState<{ itemId: string; kind: PhotoKind } | null>(null);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [zoom, setZoom] = useState<string | null>(null);
+
+  const flash = (msg: string, tone: 'success' | 'danger' | 'neutral' = 'neutral') => {
+    setActionMsg(msg);
+    setActionTone(tone);
+  };
 
   const load = useCallback(async (): Promise<void> => {
     setError(null);
@@ -59,16 +63,18 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
   const onApprove = useCallback(async () => {
     setActing(true);
     setActionMsg(null);
+    fireHaptic('medium');
     try {
       setOrder(await client.approveQuote(orderId));
-      setActionMsg('Quote approved — we’ll start your cleaning.');
+      fireHaptic('success');
+      flash('Quote approved — we’ll start your cleaning.', 'success');
     } catch (e) {
       // 409 = the server's atomic claim moved (expired / already approved) → re-sync to truth.
       if (e instanceof ApiError && e.isConflict) {
         await load();
-        setActionMsg(e.message || 'This quote changed; we’ve refreshed it.');
+        flash(e.message || 'This quote changed; we’ve refreshed it.', 'neutral');
       } else {
-        setActionMsg(e instanceof ApiError ? e.message : 'Could not approve the quote.');
+        flash(e instanceof ApiError ? e.message : 'Could not approve the quote.', 'danger');
       }
     } finally {
       setActing(false);
@@ -76,17 +82,19 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
   }, [client, orderId, load]);
 
   const onDecline = useCallback(async () => {
+    setDeclineOpen(false);
     setActing(true);
     setActionMsg(null);
     try {
       setOrder(await client.declineQuote(orderId));
-      setActionMsg('Quote declined.');
+      fireHaptic('warning');
+      flash('Quote declined.', 'neutral');
     } catch (e) {
       if (e instanceof ApiError && e.isConflict) {
         await load();
-        setActionMsg(e.message || 'This quote changed; we’ve refreshed it.');
+        flash(e.message || 'This quote changed; we’ve refreshed it.', 'neutral');
       } else {
-        setActionMsg(e instanceof ApiError ? e.message : 'Could not decline the quote.');
+        flash(e instanceof ApiError ? e.message : 'Could not decline the quote.', 'danger');
       }
     } finally {
       setActing(false);
@@ -96,39 +104,38 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
   const addPhoto = useCallback(
     async (itemId: string, kind: PhotoKind, source: CaptureSource) => {
       setActionMsg(null);
+      setUploadingFor(itemId);
       try {
         const result = await capturePhotoToOrder(client, { orderId, itemId, kind }, source);
         if (result) {
           await load();
-          setActionMsg('Photo added.');
+          fireHaptic('success');
+          flash('Photo added.', 'success');
         }
       } catch (e) {
-        if (e instanceof MediaCaptureError) setActionMsg(e.message);
-        else setActionMsg(e instanceof ApiError ? e.message : 'Could not add the photo.');
+        if (e instanceof MediaCaptureError) flash(e.message, 'danger');
+        else flash(e instanceof ApiError ? e.message : 'Could not add the photo.', 'danger');
+      } finally {
+        setUploadingFor(null);
       }
     },
     [client, orderId, load],
   );
 
-  const promptPhoto = useCallback(
-    (itemId: string, kind: PhotoKind) => {
-      Alert.alert('Add photo', `Add a ${kind.toLowerCase()} photo`, [
-        { text: 'Take photo', onPress: () => void addPhoto(itemId, kind, 'camera') },
-        { text: 'Choose from library', onPress: () => void addPhoto(itemId, kind, 'library') },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    },
-    [addPhoto],
-  );
-
-  if (loading) return <ActivityIndicator testID="detail-loading" style={styles.center} size="large" color="#1f6feb" />;
+  if (loading)
+    return (
+      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
+        <ActivityIndicator testID="detail-loading" size="large" color={colors.azure} />
+      </View>
+    );
   if (error || !order)
     return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{error ?? 'Order not found.'}</Text>
-        <TouchableOpacity onPress={() => void load()}>
-          <Text style={styles.link}>Try again</Text>
-        </TouchableOpacity>
+      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
+        <Feather name="alert-circle" size={28} color={colors.danger} />
+        <Text variant="headline" weight="600" center style={{ marginTop: 12 }}>
+          {error ?? 'Order not found.'}
+        </Text>
+        <Button label="Try again" variant="outline" icon="refresh-cw" onPress={() => void load()} fullWidth={false} style={{ marginTop: 16 }} />
       </View>
     );
 
@@ -138,17 +145,41 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
   const est = order.totals?.estimateRange;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={{ backgroundColor: colors.canvas }} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.headerRow}>
-        <Text style={styles.ref}>{orderRef(order.id)}</Text>
-        <Text style={styles.badge}>{statusLabel(order.status)}</Text>
+        <View>
+          <Text variant="title2" weight="700" mono>
+            {orderRef(order.id)}
+          </Text>
+          <Text variant="footnote" color="secondary" style={{ marginTop: 2 }}>
+            Booked {shortDate(order.createdAt)}
+          </Text>
+        </View>
+        <StatusPill status={order.status} />
       </View>
-      <Text style={styles.sub}>Booked {shortDate(order.createdAt)}</Text>
 
       {showTrack ? (
-        <TouchableOpacity testID="track-cta" style={styles.trackCta} onPress={() => navigation.navigate('Track', { orderId })}>
-          <Text style={styles.trackCtaText}>🚚 Track my truck</Text>
-        </TouchableOpacity>
+        <Pressable
+          testID="track-cta"
+          onPress={() => navigation.navigate('Track', { orderId })}
+          accessibilityRole="button"
+          accessibilityLabel="Track my truck"
+        >
+          <Card style={[styles.trackCta, { backgroundColor: colors.azure, borderColor: colors.azure }]}>
+            <View style={styles.trackIcon}>
+              <Feather name="truck" size={20} color={colors.onAzure} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="headline" weight="700" style={{ color: colors.onAzure }}>
+                Track my truck
+              </Text>
+              <Text variant="footnote" style={{ color: colors.onAzure, opacity: 0.85, marginTop: 1 }}>
+                Live location & ETA
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={22} color={colors.onAzure} />
+          </Card>
+        </Pressable>
       ) : null}
 
       <Card title="Progress">
@@ -156,67 +187,99 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       </Card>
 
       {qa.quote ? (
-        <Card title="Quote">
-          <Row label="Subtotal" value={money(qa.quote.subtotal, order.totals?.currency)} />
-          <Row label="Tax" value={money(qa.quote.tax, order.totals?.currency)} />
-          <Row label="Total" value={money(qa.quote.total, order.totals?.currency)} bold />
-          {qa.quote.expiresAt ? <Text style={styles.muted}>Valid until {shortDate(qa.quote.expiresAt)}</Text> : null}
+        <Card title="Quote" titleAccessory={qa.approved ? <Badge label="Approved" tone="success" /> : qa.declined ? <Badge label="Declined" tone="danger" /> : qa.actionable ? <Badge label="Action needed" tone="honey" /> : undefined}>
+          <KeyValue label="Subtotal" value={money(qa.quote.subtotal, order.totals?.currency)} />
+          <KeyValue label="Tax (HST)" value={money(qa.quote.tax, order.totals?.currency)} />
+          <Divider spacing={8} />
+          <KeyValue label="Total" value={money(qa.quote.total, order.totals?.currency)} total />
+          {qa.quote.expiresAt ? (
+            <Text variant="footnote" color="tertiary" style={{ marginTop: 6 }}>
+              Valid until {shortDate(qa.quote.expiresAt)}
+            </Text>
+          ) : null}
 
           {qa.approved ? (
-            <View>
-              <Text testID="quote-approved" style={styles.approved}>✓ Approved</Text>
+            <View style={{ marginTop: space.md }}>
+              <View style={styles.approvedRow}>
+                <Feather name="check-circle" size={18} color={colors.success} />
+                <Text testID="quote-approved" variant="subhead" weight="600" color="success" style={{ marginLeft: 6 }}>
+                  Approved
+                </Text>
+              </View>
               {order.totals?.paymentStatus === 'PAID' ? (
-                <Text testID="paid-badge" style={styles.approved}>✓ Paid</Text>
+                <View style={[styles.paidRow, { backgroundColor: colors.successTint }]}>
+                  <Feather name="check-circle" size={18} color={colors.success} />
+                  <Text testID="paid-badge" variant="subhead" weight="700" color="success" style={{ marginLeft: 6 }}>
+                    Paid
+                  </Text>
+                </View>
               ) : order.totals?.paymentStatus === 'REFUNDED' ? (
-                <Text testID="refunded-badge" style={styles.muted}>Refunded</Text>
+                <Text testID="refunded-badge" variant="subhead" color="secondary" style={{ marginTop: 8 }}>
+                  Refunded
+                </Text>
               ) : order.totals?.paymentStatus === 'PARTIALLY_REFUNDED' ? (
-                <Text testID="refunded-badge" style={styles.muted}>Partially refunded</Text>
+                <Text testID="refunded-badge" variant="subhead" color="secondary" style={{ marginTop: 8 }}>
+                  Partially refunded
+                </Text>
               ) : (
-                <TouchableOpacity testID="pay-cta" style={styles.payCta} onPress={() => navigation.navigate('Pay', { orderId })}>
-                  <Text style={styles.payCtaText}>Pay {money(qa.quote.total, order.totals?.currency)}</Text>
-                </TouchableOpacity>
+                <Button
+                  testID="pay-cta"
+                  label={`Pay ${money(qa.quote.total, order.totals?.currency)}`}
+                  icon="credit-card"
+                  tone="azure"
+                  onPress={() => navigation.navigate('Pay', { orderId })}
+                  style={{ marginTop: space.md }}
+                />
               )}
             </View>
           ) : qa.declined ? (
-            <Text testID="quote-declined" style={styles.declined}>Declined</Text>
+            <View style={styles.approvedRow}>
+              <Feather name="x-circle" size={18} color={colors.danger} />
+              <Text testID="quote-declined" variant="subhead" weight="600" color="danger" style={{ marginLeft: 6 }}>
+                Declined
+              </Text>
+            </View>
           ) : qa.actionable ? (
-            <View style={styles.quoteActions}>
-              {qa.expired ? <Text style={styles.warn}>This quote may have expired — we’ll confirm.</Text> : null}
-              <TouchableOpacity
-                testID="approve-quote"
-                style={[styles.approveBtn, acting && styles.btnDisabled]}
-                onPress={() => void onApprove()}
-                disabled={acting}
-              >
-                {acting ? <ActivityIndicator color="#fff" /> : <Text style={styles.approveBtnText}>Approve quote</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity testID="decline-quote" style={styles.declineBtn} onPress={() => void onDecline()} disabled={acting}>
-                <Text style={styles.declineBtnText}>Decline</Text>
-              </TouchableOpacity>
-              <Text style={styles.muted}>You can pay after approving.</Text>
+            <View style={{ marginTop: space.md, gap: 10 }}>
+              {qa.expired ? (
+                <Text variant="footnote" color="warning">
+                  This quote may have expired — we’ll confirm.
+                </Text>
+              ) : null}
+              <Button testID="approve-quote" label="Approve quote" icon="check" tone="azure" onPress={() => void onApprove()} busy={acting} disabled={acting} haptic="none" />
+              <Button testID="decline-quote" label="Decline" tone="danger" variant="outline" onPress={() => setDeclineOpen(true)} disabled={acting} haptic="none" />
+              <Text variant="footnote" color="tertiary" center>
+                You can pay after approving.
+              </Text>
             </View>
           ) : null}
         </Card>
       ) : est ? (
         <Card title="Estimate">
-          <Text style={styles.estimate}>{rangeText(est.low, est.high, est.currency)}</Text>
-          <Text style={styles.muted}>{est.basis ?? 'Rough pre-intake estimate; final quote after measurement.'}</Text>
+          <Text variant="title2" weight="700" color="azure" tabular>
+            {rangeText(est.low, est.high, est.currency)}
+          </Text>
+          <Text variant="footnote" color="secondary" style={{ marginTop: 4 }}>
+            {est.basis ?? 'Rough pre-intake estimate; final quote after measurement.'}
+          </Text>
         </Card>
       ) : null}
 
       {damageItems.length > 0 ? (
-        <Card title="Pre-existing condition">
-          <Text testID="damage-notice" style={styles.warn}>
-            We noted pre-existing damage during intake. Please review the photo below.
-          </Text>
+        <Card title="Pre-existing condition" titleAccessory={<Feather name="info" size={18} color={colors.warning} />}>
+          <View style={[styles.damageNotice, { backgroundColor: colors.warningTint }]}>
+            <Text testID="damage-notice" variant="footnote" color="warning" style={{ lineHeight: 19 }}>
+              We noted some pre-existing wear during intake — nothing caused by us. Please review the photo below so we’re on the same page.
+            </Text>
+          </View>
           {damageItems.map((it) => {
             const ack = it.inspections.find((ins) => ins.preexistingDamage);
             return (
-              <View key={it.id} style={{ marginTop: 8 }}>
-                <Text style={styles.muted}>
+              <View key={it.id} style={{ marginTop: 12 }}>
+                <Text variant="footnote" color="secondary">
                   {it.kind} — {ack?.ackAt ? `acknowledged ${shortDate(ack.ackAt)}` : 'awaiting acknowledgement'}
                 </Text>
-                <PhotoRow item={it} />
+                <PhotoRow item={it} onZoom={setZoom} />
               </View>
             );
           })}
@@ -224,100 +287,142 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       ) : null}
 
       <Card title="Items & photos">
-        {order.items.map((it) => (
-          <View key={it.id} style={styles.itemBlock} testID={`item-${it.id}`}>
-            <Text style={styles.itemTitle}>
-              {it.kind} · {it.status}
-            </Text>
-            <PhotoRow item={it} />
-            <View style={styles.photoActions}>
-              <TouchableOpacity testID={`add-before-${it.id}`} style={styles.photoBtn} onPress={() => promptPhoto(it.id, PhotoKind.BEFORE)}>
-                <Text style={styles.photoBtnText}>+ Before</Text>
-              </TouchableOpacity>
-              <TouchableOpacity testID={`add-after-${it.id}`} style={styles.photoBtn} onPress={() => promptPhoto(it.id, PhotoKind.AFTER)}>
-                <Text style={styles.photoBtnText}>+ After</Text>
-              </TouchableOpacity>
+        {order.items.map((it, i) => (
+          <View
+            key={it.id}
+            testID={`item-${it.id}`}
+            style={[styles.itemBlock, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline, paddingTop: 14 }]}
+          >
+            <View style={styles.itemHead}>
+              <Text variant="subhead" weight="600">
+                {it.kind}
+              </Text>
+              <Badge label={it.status.replace(/_/g, ' ').toLowerCase()} tone="neutral" />
             </View>
+            <PhotoRow item={it} onZoom={setZoom} />
+            {uploadingFor === it.id ? (
+              <View style={styles.uploading}>
+                <ActivityIndicator color={colors.azure} />
+                <Text variant="footnote" color="secondary" style={{ marginLeft: 8 }}>
+                  Uploading photo…
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.photoActions}>
+                <Button testID={`add-before-${it.id}`} label="Before" icon="camera" variant="outline" size="sm" fullWidth={false} onPress={() => setPhotoSheet({ itemId: it.id, kind: PhotoKind.BEFORE })} haptic="selection" />
+                <Button testID={`add-after-${it.id}`} label="After" icon="camera" variant="outline" size="sm" fullWidth={false} onPress={() => setPhotoSheet({ itemId: it.id, kind: PhotoKind.AFTER })} haptic="selection" />
+              </View>
+            )}
           </View>
         ))}
       </Card>
 
       {actionMsg ? (
-        <Text testID="action-msg" style={styles.actionMsg}>
-          {actionMsg}
-        </Text>
+        <View
+          style={[
+            styles.actionMsgBox,
+            { backgroundColor: actionTone === 'success' ? colors.successTint : actionTone === 'danger' ? colors.dangerTint : colors.subtle },
+          ]}
+        >
+          <Feather
+            name={actionTone === 'success' ? 'check-circle' : actionTone === 'danger' ? 'alert-circle' : 'info'}
+            size={16}
+            color={actionTone === 'success' ? colors.success : actionTone === 'danger' ? colors.danger : colors.textSecondary}
+          />
+          <Text
+            testID="action-msg"
+            variant="footnote"
+            color={actionTone === 'success' ? 'success' : actionTone === 'danger' ? 'danger' : 'secondary'}
+            style={{ marginLeft: 8, flex: 1 }}
+          >
+            {actionMsg}
+          </Text>
+        </View>
       ) : null}
+
+      {/* Photo source picker */}
+      <Sheet visible={!!photoSheet} onClose={() => setPhotoSheet(null)} title={`Add a ${photoSheet?.kind?.toLowerCase() ?? ''} photo`}>
+        <Button
+          label="Take a photo"
+          icon="camera"
+          onPress={() => {
+            const t = photoSheet;
+            setPhotoSheet(null);
+            if (t) void addPhoto(t.itemId, t.kind, 'camera');
+          }}
+          style={{ marginBottom: 10 }}
+        />
+        <Button
+          label="Choose from library"
+          icon="image"
+          variant="outline"
+          onPress={() => {
+            const t = photoSheet;
+            setPhotoSheet(null);
+            if (t) void addPhoto(t.itemId, t.kind, 'library');
+          }}
+        />
+      </Sheet>
+
+      {/* Decline confirmation */}
+      <Sheet visible={declineOpen} onClose={() => setDeclineOpen(false)} title="Decline this quote?">
+        <Text variant="subhead" color="secondary" style={{ marginBottom: 16 }}>
+          We won’t start the cleaning. You can always book again later.
+        </Text>
+        <Button label="Decline quote" tone="danger" icon="x" onPress={() => void onDecline()} style={{ marginBottom: 10 }} />
+        <Button label="Keep my quote" variant="ghost" tone="neutral" onPress={() => setDeclineOpen(false)} haptic="selection" />
+      </Sheet>
+
+      {/* Tap-to-zoom lightbox */}
+      <Modal visible={!!zoom} transparent animationType="fade" onRequestClose={() => setZoom(null)} statusBarTranslucent>
+        <Pressable style={styles.lightbox} onPress={() => setZoom(null)} accessibilityLabel="Close photo">
+          {zoom ? <Image source={{ uri: zoom }} style={styles.lightboxImg} resizeMode="contain" /> : null}
+          <View style={styles.lightboxClose}>
+            <Feather name="x" size={24} color="#FFFFFF" />
+          </View>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
 
-function PhotoRow({ item }: { item: ItemView }): React.ReactElement | null {
+function PhotoRow({ item, onZoom }: { item: ItemView; onZoom: (uri: string) => void }): React.ReactElement {
+  const { colors } = useTheme();
   const photos = item.photos.filter((p) => p.downloadUrl);
-  if (photos.length === 0) return <Text style={styles.muted}>No photos yet.</Text>;
+  if (photos.length === 0)
+    return (
+      <Text variant="footnote" color="tertiary" style={{ marginTop: 8 }}>
+        No photos yet.
+      </Text>
+    );
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip} contentContainerStyle={{ gap: 8 }}>
       {photos.map((p) => (
-        <Image key={p.id} testID={`photo-${p.id}`} source={{ uri: p.downloadUrl! }} style={styles.photo} />
+        <Pressable key={p.id} onPress={() => onZoom(p.downloadUrl!)} accessibilityLabel={`${p.kind.toLowerCase()} photo`}>
+          <Image testID={`photo-${p.id}`} source={{ uri: p.downloadUrl! }} style={[styles.photo, { backgroundColor: colors.subtle }]} />
+        </Pressable>
       ))}
     </ScrollView>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }): React.ReactElement {
-  return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }): React.ReactElement {
-  return (
-    <View style={styles.kv}>
-      <Text style={styles.kvLabel}>{label}</Text>
-      <Text style={[styles.kvValue, bold && styles.kvBold]}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f8fa' },
-  content: { padding: 16, gap: 4 },
+  content: { padding: 20, gap: 14, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ref: { fontSize: 22, fontWeight: '700', color: '#1f2328' },
-  badge: { fontSize: 14, color: '#0969da', fontWeight: '600' },
-  sub: { color: '#57606a', marginBottom: 8 },
-  trackCta: { backgroundColor: '#1a7f37', borderRadius: 10, padding: 14, alignItems: 'center', marginVertical: 8 },
-  trackCtaText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginTop: 12, borderWidth: 1, borderColor: '#eaeef2' },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#1f2328', marginBottom: 10 },
-  kv: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
-  kvLabel: { color: '#57606a' },
-  kvValue: { color: '#1f2328' },
-  kvBold: { fontWeight: '700' },
-  muted: { color: '#57606a', marginTop: 4 },
-  estimate: { fontSize: 18, fontWeight: '700', color: '#1a7f37' },
-  approved: { color: '#1a7f37', fontWeight: '700', marginTop: 10, fontSize: 16 },
-  payCta: { backgroundColor: '#1f883d', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 10 },
-  payCtaText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  declined: { color: '#cf222e', fontWeight: '700', marginTop: 10, fontSize: 16 },
-  warn: { color: '#9a6700' },
-  quoteActions: { marginTop: 12, gap: 8 },
-  approveBtn: { backgroundColor: '#1f883d', borderRadius: 8, padding: 14, alignItems: 'center' },
-  approveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  declineBtn: { borderWidth: 1, borderColor: '#cf222e', borderRadius: 8, padding: 12, alignItems: 'center' },
-  declineBtnText: { color: '#cf222e', fontWeight: '600' },
-  btnDisabled: { opacity: 0.5 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  trackCta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  trackIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  approvedRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  paidRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginTop: 10 },
+  damageNotice: { borderRadius: 12, padding: 12 },
   itemBlock: { marginBottom: 14 },
-  itemTitle: { fontWeight: '600', color: '#1f2328', marginBottom: 6 },
-  photoStrip: { flexDirection: 'row', marginVertical: 6 },
-  photo: { width: 90, height: 90, borderRadius: 8, marginRight: 8, backgroundColor: '#eaeef2' },
-  photoActions: { flexDirection: 'row', gap: 8 },
-  photoBtn: { borderWidth: 1, borderColor: '#1f6feb', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14 },
-  photoBtnText: { color: '#1f6feb', fontWeight: '600' },
-  actionMsg: { textAlign: 'center', color: '#1f2328', marginTop: 14, fontStyle: 'italic' },
-  link: { color: '#1f6feb' },
-  error: { color: '#b91c1c', textAlign: 'center' },
+  itemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  photoStrip: { marginVertical: 8 },
+  photo: { width: 96, height: 96, borderRadius: 12 },
+  photoActions: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  uploading: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  actionMsgBox: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, padding: 12 },
+  lightbox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
+  lightboxImg: { width: '92%', height: '80%' },
+  lightboxClose: { position: 'absolute', top: 56, right: 24 },
 });

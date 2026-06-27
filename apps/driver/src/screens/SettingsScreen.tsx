@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { View } from 'react-native';
 import { ApiError } from '@blue-bee/api-client';
 import { useSession } from '../session/SessionProvider';
+import { useTheme } from '../theme';
+import { Button, Card, Screen, Text } from '../components/kit';
 
 /**
  * Settings → account management. The store-required "Delete account" lives here: a two-step confirm
@@ -9,6 +11,7 @@ import { useSession } from '../session/SessionProvider';
  * anonymizes) and signs the device out. "Sign out" is the non-destructive exit.
  */
 export function SettingsScreen(): React.ReactElement {
+  const t = useTheme();
   const { me, client, logout } = useSession();
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -27,66 +30,59 @@ export function SettingsScreen(): React.ReactElement {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.label}>Signed in as</Text>
-        <Text testID="settings-name" style={styles.value}>{me?.user.name ?? '—'}</Text>
-        {me?.user.phone ? <Text style={styles.muted}>{me.user.phone}</Text> : null}
-      </View>
+    <Screen>
+      <Card>
+        <Text variant="footnote" color={t.color.textMuted}>
+          Signed in as
+        </Text>
+        <Text testID="settings-name" variant="title3" style={{ marginTop: 4 }}>
+          {me?.user.name ?? '—'}
+        </Text>
+        {me?.user.phone ? (
+          <Text variant="subhead" color={t.color.textMuted} mono style={{ marginTop: 2 }}>
+            {me.user.phone}
+          </Text>
+        ) : null}
+      </Card>
 
-      <TouchableOpacity testID="signout" style={styles.signout} onPress={() => void logout()} disabled={deleting}>
-        <Text style={styles.signoutText}>Sign out</Text>
-      </TouchableOpacity>
+      <View style={{ height: t.spacing.lg }} />
+      <Button testID="signout" label="Sign out" onPress={() => void logout()} disabled={deleting} variant="secondary" icon="log-out" fullWidth />
 
-      <View style={styles.danger}>
-        <Text style={styles.dangerTitle}>Delete account</Text>
-        <Text style={styles.dangerBody}>
-          Permanently deletes your account and personal data (name, phone, devices, notifications, and
-          your driver licence on file). This cannot be undone. Completed-shift records are kept as
-          anonymized operational records.
+      <View style={{ height: t.spacing.xl }} />
+      <Card style={{ borderColor: t.color.dangerTint, backgroundColor: t.color.dangerTint }}>
+        <Text variant="headline" color={t.color.dangerInk}>
+          Delete account
+        </Text>
+        <Text variant="footnote" color={t.color.textMuted} style={{ marginTop: 8, lineHeight: 20 }}>
+          Permanently deletes your account and personal data (name, phone, devices, notifications, and your
+          driver licence on file). This cannot be undone. Completed-shift records are kept as anonymized
+          operational records.
         </Text>
 
-        {error ? <Text testID="delete-error" style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <Text testID="delete-error" variant="subhead" color={t.color.dangerInk} style={{ marginTop: 12 }}>
+            {error}
+          </Text>
+        ) : null}
 
         {!confirming ? (
-          <TouchableOpacity testID="delete-account" style={styles.deleteBtn} onPress={() => setConfirming(true)}>
-            <Text style={styles.deleteBtnText}>Delete account</Text>
-          </TouchableOpacity>
+          <Button testID="delete-account" label="Delete account" onPress={() => setConfirming(true)} variant="danger" icon="trash-2" fullWidth style={{ marginTop: 14 }} />
         ) : (
-          <View testID="delete-confirm" style={styles.confirmRow}>
-            <Text style={styles.confirmText}>Are you sure? This is permanent.</Text>
-            <View style={styles.confirmButtons}>
-              <TouchableOpacity testID="cancel-delete" style={styles.cancelBtn} onPress={() => setConfirming(false)} disabled={deleting}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity testID="confirm-delete" style={styles.deleteBtn} onPress={() => void onConfirmDelete()} disabled={deleting}>
-                <Text style={styles.deleteBtnText}>{deleting ? 'Deleting…' : 'Confirm delete'}</Text>
-              </TouchableOpacity>
+          <View testID="delete-confirm" style={{ marginTop: 14, gap: 12 }}>
+            <Text variant="subhead" weight="600">
+              Are you sure? This is permanent.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Button testID="cancel-delete" label="Cancel" onPress={() => setConfirming(false)} disabled={deleting} variant="secondary" fullWidth />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button testID="confirm-delete" label="Confirm delete" onPress={() => void onConfirmDelete()} busy={deleting} disabled={deleting} variant="danger" haptic="warning" fullWidth />
+              </View>
             </View>
           </View>
         )}
-      </View>
-    </View>
+      </Card>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f8fa', padding: 16, gap: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 10, padding: 16, borderWidth: 1, borderColor: '#eaeef2' },
-  label: { color: '#57606a', fontSize: 13 },
-  value: { fontSize: 18, fontWeight: '700', color: '#1f2328', marginTop: 4 },
-  muted: { color: '#57606a', marginTop: 4 },
-  signout: { padding: 14, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#d0d7de' },
-  signoutText: { color: '#1f2328', fontWeight: '600', fontSize: 15 },
-  danger: { backgroundColor: '#fff', borderRadius: 10, padding: 16, borderWidth: 1, borderColor: '#ffccc7' },
-  dangerTitle: { fontSize: 16, fontWeight: '700', color: '#b91c1c' },
-  dangerBody: { color: '#57606a', marginTop: 8, lineHeight: 20 },
-  error: { color: '#b91c1c', marginTop: 12 },
-  deleteBtn: { backgroundColor: '#b91c1c', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 12 },
-  deleteBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  confirmRow: { marginTop: 12, gap: 12 },
-  confirmText: { color: '#1f2328', fontWeight: '600' },
-  confirmButtons: { flexDirection: 'row', gap: 12 },
-  cancelBtn: { flex: 1, padding: 14, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#d0d7de' },
-  cancelText: { color: '#1f2328', fontWeight: '600' },
-});

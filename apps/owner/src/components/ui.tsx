@@ -1,92 +1,115 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { Badge as KitBadge, Button, Text } from './kit';
+import { useTheme, type Tone as KitTone } from '../theme';
 
-/** Shared owner-app UI primitives so every screen renders loading / error / empty the same way. */
+/**
+ * Shared owner-app UI primitives so every screen renders loading / error / empty the same way. This is
+ * a thin, Daylight-themed compatibility layer over the shared kit — it keeps the original public API
+ * (Loading / ErrorBox / EmptyState / Card / Row / Badge + the legacy Tone vocabulary) so screens and
+ * tests are untouched, while everything now renders on the operator design system.
+ */
 
 export function Loading({ label }: { label?: string }): React.ReactElement {
+  const t = useTheme();
   return (
-    <View style={styles.center} testID="loading">
-      <ActivityIndicator size="large" color="#1f6feb" />
-      {label ? <Text style={styles.muted}>{label}</Text> : null}
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, backgroundColor: t.color.canvas }} testID="loading">
+      <ActivityIndicator size="large" color={t.color.azure} />
+      {label ? (
+        <Text variant="subhead" color={t.color.textMuted} center>
+          {label}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void }): React.ReactElement {
+  const t = useTheme();
   return (
-    <View style={styles.center} testID="error">
-      <Text style={styles.error}>{message}</Text>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24, backgroundColor: t.color.canvas }} testID="error">
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: t.color.dangerTint, alignItems: 'center', justifyContent: 'center' }}>
+        <Feather name="alert-triangle" size={28} color={t.color.dangerInk} />
+      </View>
+      <Text variant="subhead" color={t.color.textMuted} center>
+        {message}
+      </Text>
       {onRetry ? (
-        <TouchableOpacity onPress={onRetry} testID="retry">
-          <Text style={styles.link}>Try again</Text>
-        </TouchableOpacity>
+        <View style={{ alignSelf: 'stretch', paddingHorizontal: 24 }}>
+          <Button testID="retry" label="Try again" onPress={onRetry} variant="secondary" icon="refresh-cw" fullWidth />
+        </View>
       ) : null}
     </View>
   );
 }
 
 export function EmptyState({ message, testID }: { message: string; testID?: string }): React.ReactElement {
+  const t = useTheme();
   return (
-    <View style={styles.center} testID={testID ?? 'empty'}>
-      <Text style={styles.muted}>{message}</Text>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, backgroundColor: t.color.canvas }} testID={testID ?? 'empty'}>
+      <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: t.color.successTint, alignItems: 'center', justifyContent: 'center' }}>
+        <Feather name="check" size={32} color={t.color.successInk} />
+      </View>
+      <Text variant="title3" center>
+        All clear
+      </Text>
+      <Text variant="subhead" color={t.color.textMuted} center>
+        {message}
+      </Text>
     </View>
   );
 }
 
 export function Card({ title, children }: { title?: string; children: React.ReactNode }): React.ReactElement {
+  const t = useTheme();
   return (
-    <View style={styles.card}>
-      {title ? <Text style={styles.cardTitle}>{title}</Text> : null}
+    <View
+      style={{
+        backgroundColor: t.color.surface,
+        borderRadius: t.radius.card,
+        padding: t.spacing.lg,
+        marginTop: t.spacing.md,
+        borderWidth: 1,
+        borderColor: t.color.hairline,
+        ...t.shadow.card,
+      }}
+    >
+      {title ? (
+        <Text variant="headline" style={{ marginBottom: 10 }}>
+          {title}
+        </Text>
+      ) : null}
       {children}
     </View>
   );
 }
 
 export function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }): React.ReactElement {
+  const t = useTheme();
   return (
-    <View style={styles.kv}>
-      <Text style={styles.kvLabel}>{label}</Text>
-      <Text style={[styles.kvValue, bold && styles.kvBold]}>{value}</Text>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4, gap: 12 }}>
+      <Text variant="subhead" color={t.color.textMuted}>
+        {label}
+      </Text>
+      <Text variant="subhead" weight={bold ? '700' : '500'} color={t.color.text} style={{ flexShrink: 1, textAlign: 'right' }}>
+        {value}
+      </Text>
     </View>
   );
 }
 
+/** The legacy owner tone vocabulary, mapped onto the Daylight semantic tones. */
 export type Tone = 'green' | 'amber' | 'red' | 'blue' | 'gray';
 
+const TONE_MAP: Record<Tone, KitTone> = {
+  green: 'success',
+  amber: 'warning',
+  red: 'danger',
+  blue: 'azure',
+  gray: 'neutral',
+};
+
 export function Badge({ tone = 'gray', children }: { tone?: Tone; children: React.ReactNode }): React.ReactElement {
-  return (
-    <View style={[styles.badge, badgeTone[tone]]}>
-      <Text style={[styles.badgeText, badgeTextTone[tone]]}>{children}</Text>
-    </View>
-  );
+  return <KitBadge tone={TONE_MAP[tone]}>{children}</KitBadge>;
 }
-
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
-  muted: { color: '#57606a', textAlign: 'center' },
-  error: { color: '#b91c1c', textAlign: 'center' },
-  link: { color: '#1f6feb', fontWeight: '600' },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginTop: 12, borderWidth: 1, borderColor: '#eaeef2' },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#1f2328', marginBottom: 10 },
-  kv: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  kvLabel: { color: '#57606a' },
-  kvValue: { color: '#1f2328' },
-  kvBold: { fontWeight: '700' },
-  badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
-  badgeText: { fontSize: 12, fontWeight: '700' },
-});
-
-const badgeTone: Record<Tone, object> = {
-  green: { backgroundColor: '#dafbe1' },
-  amber: { backgroundColor: '#fff8c5' },
-  red: { backgroundColor: '#ffebe9' },
-  blue: { backgroundColor: '#ddf4ff' },
-  gray: { backgroundColor: '#eaeef2' },
-};
-const badgeTextTone: Record<Tone, object> = {
-  green: { color: '#1a7f37' },
-  amber: { color: '#9a6700' },
-  red: { color: '#cf222e' },
-  blue: { color: '#0969da' },
-  gray: { color: '#57606a' },
-};

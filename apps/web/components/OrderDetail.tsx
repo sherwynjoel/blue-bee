@@ -11,6 +11,7 @@ import { statusLabel } from '@/lib/order-status';
 import { humanize, money, orderRef, shortDate } from '@/lib/format';
 import type { ItemView, OrderDetail as Order } from '@/lib/types';
 import { Badge, Card, ErrorBox, KV, Skeleton, SkeletonText, StatusPill } from './ui';
+import { CostCenterPicker } from './CostCenters';
 import { StatusTimeline } from './StatusTimeline';
 import { OrderActions } from './order/OrderActions';
 import { QuotePanel } from './order/QuotePanel';
@@ -81,6 +82,17 @@ export function OrderDetailView({ orderId }: { orderId: string }): React.ReactEl
               >
                 Open billing <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
+            </Card>
+          )}
+          {can.accounts(me) && (
+            <Card title="Cost centre">
+              <CostCenterPicker
+                orderId={order.id}
+                accountId={order.accountId}
+                value={order.costCenterId}
+                canWrite={can.accounts(me)}
+                onChanged={(costCenterId) => setOrder({ ...order, costCenterId })}
+              />
             </Card>
           )}
         </div>

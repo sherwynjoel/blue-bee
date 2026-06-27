@@ -41,6 +41,7 @@ import {
   Th,
 } from './ui';
 import { RequireCapability } from './AppShell';
+import { CostCenterPicker, CostCenterSplitStat, CostCentersTab } from './CostCenters';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const apiErr = (e: unknown, fallback: string): string => (e instanceof ApiError ? e.message : fallback);
@@ -63,10 +64,11 @@ export function AccountDetail({ accountId }: { accountId: string }): React.React
   );
 }
 
-type TabKey = 'overview' | 'orders' | 'manifests' | 'exceptions';
+type TabKey = 'overview' | 'orders' | 'cost-centers' | 'manifests' | 'exceptions';
 const TABS: { value: TabKey; label: string }[] = [
   { value: 'overview', label: 'Overview' },
   { value: 'orders', label: 'Orders' },
+  { value: 'cost-centers', label: 'Cost centres' },
   { value: 'manifests', label: 'Manifests' },
   { value: 'exceptions', label: 'Exceptions' },
 ];
@@ -131,6 +133,11 @@ function AccountDetailInner({ accountId }: { accountId: string }): React.ReactEl
               <OrdersTab accountId={accountId} />
             </div>
           )}
+          {tab === 'cost-centers' && (
+            <div role="tabpanel">
+              <CostCentersTab accountId={accountId} sites={state.data.sites} />
+            </div>
+          )}
           {tab === 'manifests' && (
             <div role="tabpanel">
               <ManifestsTab accountId={accountId} />
@@ -173,7 +180,14 @@ function ScorecardCard({ accountId }: { accountId: string }): React.ReactElement
             metric={state.data.metrics.monthlySpend}
             render={(v) => `${money(v.total, state.data!.currency)} · ${money(v.perMonth, state.data!.currency)}/mo`}
           />
-          <Stat label="Cost-center split" metric={state.data.metrics.costCenterSplit} render={() => '—'} />
+          <div
+            className="rounded-card border border-hairline bg-subtle p-3.5"
+            data-testid="stat-Cost-center split"
+            title="The real per-centre split for this period, from the cost-centre report."
+          >
+            <div className="mb-1.5 text-caption font-semibold uppercase tracking-wide text-tertiary">Cost-centre split</div>
+            <CostCenterSplitStat accountId={accountId} from={state.data.range.from} to={state.data.range.to} />
+          </div>
         </div>
       )}
     </Card>
@@ -689,13 +703,16 @@ function orderTone(status: string): 'green' | 'amber' | 'red' | 'blue' {
 
 /** The account's orders — reads the proven order listing (server delegates), confined to the account. */
 function OrdersTab({ accountId }: { accountId: string }): React.ReactElement {
-  const { client } = useSession();
+  const { client, me } = useSession();
   const state = useAsync<OrderListResult>(() => client.getAccountOrders(accountId, { limit: 50 }), [accountId]);
+  // Cost-centre attribution: one account-scoped list powers every row's picker (no N-row fetch).
+  const centres = useAsync(() => client.listCostCenters(accountId), [accountId]);
+  const canAttribute = can.accounts(me);
   const orderTotal = (o: OrderSummary): string | null => o.totals?.total ?? o.quotes?.[0]?.total ?? null;
   return (
     <Card title="Orders">
       {!state.data && state.loading ? (
-        <TableSkeleton rows={5} cols={5} />
+        <TableSkeleton rows={5} cols={6} />
       ) : !state.data && state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data || state.data.orders.length === 0 ? (
@@ -712,6 +729,7 @@ function OrdersTab({ accountId }: { accountId: string }): React.ReactElement {
               <Th>Status</Th>
               <Th>Vertical</Th>
               <Th numeric>Amount</Th>
+              <Th>Cost centre</Th>
               <Th>Created</Th>
             </tr>
           </thead>
@@ -724,6 +742,20 @@ function OrdersTab({ accountId }: { accountId: string }): React.ReactElement {
                 </Td>
                 <Td>{humanize(o.vertical)}</Td>
                 <Td numeric className="text-secondary">{money(orderTotal(o), o.totals?.currency ?? 'CAD')}</Td>
+                <Td>
+                  {!centres.data && centres.loading ? (
+                    <Skeleton className="h-8 w-40 rounded-input" />
+                  ) : (
+                    <CostCenterPicker
+                      orderId={o.id}
+                      accountId={accountId}
+                      value={o.costCenterId}
+                      costCenters={centres.data?.costCenters ?? []}
+                      canWrite={canAttribute}
+                      variant="inline"
+                    />
+                  )}
+                </Td>
                 <Td className="text-secondary">{shortDate(o.createdAt)}</Td>
               </tr>
             ))}

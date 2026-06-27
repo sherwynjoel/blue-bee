@@ -13,6 +13,7 @@ const mockClient = {
   analyticsOperational: jest.fn(),
   analyticsCommercial: jest.fn(),
   accountScorecard: jest.fn(),
+  getCostCenterReport: jest.fn(),
 };
 let mockMe: MeResponse;
 jest.mock('@/lib/session', () => ({ useSession: () => ({ client: mockClient, me: mockMe }) }));
@@ -122,6 +123,8 @@ beforeEach(() => {
   mockClient.analyticsOperational.mockResolvedValue(operational);
   mockClient.analyticsCommercial.mockResolvedValue(commercial);
   mockClient.accountScorecard.mockResolvedValue(scorecard);
+  // The wired scorecard "Cost-center split" tile reads the per-centre report for the same window.
+  mockClient.getCostCenterReport.mockResolvedValue({ accountId: 'acct-a', from: '', to: '', currency: 'CAD', rows: [], grandTotal: { subtotal: '0.00', tax: '0.00', total: '0.00' } });
 });
 
 describe('AnalyticsHome (console, RBAC-gated)', () => {

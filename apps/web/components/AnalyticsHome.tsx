@@ -30,6 +30,7 @@ import {
   cn,
 } from './ui';
 import { RequireCapability } from './AppShell';
+import { CostCenterSplitStat } from './CostCenters';
 
 /** Default window: the last 30 days, as YYYY-MM-DD date-input strings. */
 function defaultRange(): { from: string; to: string } {
@@ -288,7 +289,9 @@ function ScorecardSection({ range }: { range: Range }): React.ReactElement {
               render={(v) => `${money(v.total, state.data!.currency)} · ${money(v.perMonth, state.data!.currency)}/mo`}
               mono
             />
-            <Stat label="Cost-center split" metric={state.data.metrics.costCenterSplit} render={() => '—'} />
+            <StatTile label="Cost-center split" title="The real per-centre split for this period, from the cost-centre report.">
+              <CostCenterSplitStat accountId={state.data.accountId} from={state.data.range.from} to={state.data.range.to} />
+            </StatTile>
           </StatGrid>
         </>
       )}

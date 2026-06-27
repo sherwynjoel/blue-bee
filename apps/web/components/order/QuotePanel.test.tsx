@@ -13,7 +13,7 @@ function me(...roles: RoleType[]): MeResponse {
   return { user: { userId: 'u', orgId: 'g', name: 'Sam', phone: null, email: null, roles: roles.map((role) => ({ role, scope: 'ORG' as never, scopeId: null })), accountIds: [], siteIds: [] }, org: { id: 'g', name: 'Org' } };
 }
 function order(over: Partial<OrderDetail>): OrderDetail {
-  return { id: 'o1', orgId: 'g', accountId: 'a', siteId: null, vertical: 'SPECIALTY', type: 'JOB', status: OrderStatus.INTAKE_INSPECTED, heldFrom: null, scheduledPickupWindow: null, scheduledDeliveryWindow: null, totals: { currency: 'CAD' }, createdAt: 'c', updatedAt: 'u', items: [], quotes: [], routeStops: [], ...over };
+  return { id: 'o1', orgId: 'g', accountId: 'a', siteId: null, costCenterId: null, vertical: 'SPECIALTY', type: 'JOB', status: OrderStatus.INTAKE_INSPECTED, heldFrom: null, scheduledPickupWindow: null, scheduledDeliveryWindow: null, totals: { currency: 'CAD' }, createdAt: 'c', updatedAt: 'u', items: [], quotes: [], routeStops: [], ...over };
 }
 
 beforeEach(() => jest.clearAllMocks());

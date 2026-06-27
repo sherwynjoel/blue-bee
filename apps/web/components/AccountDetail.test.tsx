@@ -25,6 +25,8 @@ const mockClient = {
   updateStandingOrder: jest.fn(),
   deleteStandingOrder: jest.fn(),
   runStandingOrderGeneration: jest.fn(),
+  getCostCenterReport: jest.fn(),
+  listCostCenters: jest.fn(),
 };
 let mockMe: MeResponse;
 jest.mock('@/lib/session', () => ({ useSession: () => ({ client: mockClient, me: mockMe }) }));
@@ -122,6 +124,9 @@ beforeEach(() => {
   mockClient.updateStandingOrder.mockResolvedValue({ ...SO, active: false });
   mockClient.deleteStandingOrder.mockResolvedValue(undefined);
   mockClient.runStandingOrderGeneration.mockResolvedValue({ asOf: '2026-06-26T00:00:00.000Z', standingOrdersConsidered: 1, occurrencesCreated: 1, ordersCreated: 1, routesCreated: 1, routeFailures: 0 });
+  // Harbourview has no cost centres → the scorecard split tile fetches the report and shows an honest "—".
+  mockClient.getCostCenterReport.mockResolvedValue({ accountId: 'acct-b', from: SCORECARD.range.from, to: SCORECARD.range.to, currency: 'CAD', rows: [], grandTotal: { subtotal: '0.00', tax: '0.00', total: '0.00' } });
+  mockClient.listCostCenters.mockResolvedValue({ costCenters: [] });
 });
 
 describe('AccountDetail (B2B account console, full management)', () => {
@@ -136,9 +141,10 @@ describe('AccountDetail (B2B account console, full management)', () => {
     expect(mockClient.getBillingTerms).toHaveBeenCalledWith('acct-b');
 
     expect(await screen.findByText('Harbourview Condos')).toBeInTheDocument();
-    // scorecard — real value + honest Phase-2 badge (never a fake number)
+    // scorecard — real value + the wired cost-centre split tile (honest "No split this period" with no centres)
     expect(within(await screen.findByTestId('stat-On-time')).getByText('100%')).toBeInTheDocument();
-    expect(within(screen.getByTestId('stat-Cost-center split')).getByText('Phase 2')).toBeInTheDocument();
+    expect(await within(screen.getByTestId('stat-Cost-center split')).findByText('No split this period')).toBeInTheDocument();
+    await waitFor(() => expect(mockClient.getCostCenterReport).toHaveBeenCalledWith('acct-b', expect.objectContaining({ from: SCORECARD.range.from, to: SCORECARD.range.to })));
     // standing order row
     const row = await screen.findByTestId('so-so-1');
     expect(within(row).getByText('Weekly')).toBeInTheDocument();

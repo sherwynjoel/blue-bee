@@ -31,6 +31,9 @@ const mockClient = {
   getAccountOrders: jest.fn(),
   getAccountManifests: jest.fn(),
   getAccountExceptions: jest.fn(),
+  getCostCenterReport: jest.fn(),
+  listCostCenters: jest.fn(),
+  attachOrderCostCenter: jest.fn(),
 };
 let mockMe: MeResponse;
 jest.mock('@/lib/session', () => ({ useSession: () => ({ client: mockClient, me: mockMe }) }));
@@ -63,6 +66,7 @@ const ORDERS: OrderListResult = {
       vertical: 'LINEN',
       accountId: 'acct-b',
       siteId: 'site-1',
+      costCenterId: null,
       totals: { total: '135.60', currency: 'CAD' },
       createdAt: '2026-06-24T07:00:00.000Z',
       quotes: [],
@@ -114,6 +118,9 @@ beforeEach(() => {
   mockClient.getServices.mockResolvedValue({ services: [] });
   mockClient.getGeneratedForAccount.mockResolvedValue({ accountId: 'acct-b', occurrences: [], orderCount: 0, routeCount: 0 });
   mockClient.getBillingTerms.mockResolvedValue({ accountId: 'acct-b', billingMode: 'BATCH_PERIODIC', billingNetDays: 30 });
+  // Cost centres: the overview scorecard tile reads the report; the Orders tab picker reads the list.
+  mockClient.getCostCenterReport.mockResolvedValue({ accountId: 'acct-b', from: '', to: '', currency: 'CAD', rows: [], grandTotal: { subtotal: '0.00', tax: '0.00', total: '0.00' } });
+  mockClient.listCostCenters.mockResolvedValue({ costCenters: [] });
   // Portal tabs.
   mockClient.getAccountOrders.mockResolvedValue(ORDERS);
   mockClient.getAccountManifests.mockResolvedValue(MANIFESTS);

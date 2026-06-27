@@ -1,4 +1,4 @@
-import { ApiClient, type TokenStore } from '@blue-bee/api-client';
+import { ApiClient, ApiError, type TokenStore } from '@blue-bee/api-client';
 import type {
   AccountScorecard,
   AddStopDto,
@@ -49,8 +49,15 @@ import type {
   AccountDetailView,
   AccountListResult,
   AccountManifestsResult,
+  AttachOrderCostCenterDto,
   BatchInvoiceDto,
   BillingTermsView,
+  CostCenterListResult,
+  CostCenterReportView,
+  CostCenterView,
+  CreateCostCenterDto,
+  OrderCostCenterView,
+  UpdateCostCenterDto,
   CreateResidentDto,
   CreateStandingOrderDto,
   DropToLostFoundDto,
@@ -384,6 +391,46 @@ export class ConsoleApiClient extends ApiClient {
     return this.request('GET', `/accounts/${accountId}/exceptions`);
   }
 
+  // ───────────── Track-A: cost centres (split billing — PRD §B4.1/§A5.2/§B5.2) ─────────────
+
+  /** An account's cost centres (org-scoped; OWNER/FINANCE/DISPATCHER/CSR). `active` filters in/active. */
+  listCostCenters(accountId: string, query: { active?: boolean } = {}): Promise<CostCenterListResult> {
+    const qs = query.active != null ? `?active=${String(query.active)}` : '';
+    return this.request('GET', `/accounts/${accountId}/cost-centers${qs}`);
+  }
+  /** Create a cost centre under an account (FINANCE; code unique per account → 409). */
+  createCostCenter(accountId: string, dto: CreateCostCenterDto): Promise<CostCenterView> {
+    return this.request('POST', `/accounts/${accountId}/cost-centers`, { body: dto });
+  }
+  /** Rename / re-classify / activate-deactivate a cost centre by id (FINANCE; `code` is immutable). */
+  updateCostCenter(id: string, dto: UpdateCostCenterDto): Promise<CostCenterView> {
+    return this.request('PATCH', `/cost-centers/${id}`, { body: dto });
+  }
+  /** Attach (or detach with `costCenterId: null`) a cost centre to an order (OWNER/FINANCE/DISPATCHER/CSR). */
+  attachOrderCostCenter(orderId: string, dto: AttachOrderCostCenterDto): Promise<OrderCostCenterView> {
+    return this.request('PUT', `/orders/${orderId}/cost-center`, { body: dto });
+  }
+  /** Per-cost-centre period totals over [from, to) (ISO-8601; from < to). Includes an Unassigned bucket. */
+  getCostCenterReport(accountId: string, q: { from: string; to: string }): Promise<CostCenterReportView> {
+    const p = new URLSearchParams({ from: q.from, to: q.to });
+    return this.request('GET', `/accounts/${accountId}/cost-centers/report?${p.toString()}`);
+  }
+  /**
+   * The §B5.2 cost-centre CSV export — fetches the real `text/csv` attachment bytes for [from, to).
+   * Returns the blob + the server's filename; the browser download (objectURL + anchor) stays in the
+   * component so this transport is SSR-safe. Same `/v1` base + bearer as `request`; non-2xx → ApiError.
+   */
+  async downloadCostCenterReportCsv(accountId: string, q: { from: string; to: string }): Promise<{ blob: Blob; filename: string }> {
+    const token = await this.accessToken();
+    const p = new URLSearchParams({ from: q.from, to: q.to });
+    const res = await fetch(`${this.base}/accounts/${accountId}/cost-centers/report.csv?${p.toString()}`, {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw await ApiError.from(res);
+    const blob = await res.blob();
+    return { blob, filename: attachmentFilename(res.headers.get('content-disposition')) ?? `cost-centres-${accountId}.csv` };
+  }
+
   // ───────────── Track-B: resident personal clothing (care homes) ─────────────
 
   /** A site's residents (audited server-side). */
@@ -449,6 +496,21 @@ function rangeQs(range: AnalyticsRange): string {
   if (range.to) p.set('to', range.to);
   const qs = p.toString();
   return qs ? `?${qs}` : '';
+}
+
+/** Pull the filename out of a `Content-Disposition: attachment; filename="…"` header (RFC 6266, quoted or bare). */
+function attachmentFilename(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ''));
+    } catch {
+      /* fall through to the plain filename */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1] ? plain[1].trim() : null;
 }
 
 /** A §5.4 stop transition returns the updated stop (status + exception/timestamps). */

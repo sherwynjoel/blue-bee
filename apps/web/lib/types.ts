@@ -98,6 +98,8 @@ export interface OrderDetail {
   orgId: string;
   accountId: string;
   siteId: string | null;
+  /** Track-A Phase 2 cost-centre attribution (null = Unassigned). Carried by the order read; powers the picker. */
+  costCenterId: string | null;
   vertical: string;
   type: string;
   status: OrderStatus;
@@ -118,6 +120,8 @@ export interface OrderSummary {
   vertical: string;
   accountId: string;
   siteId: string | null;
+  /** Track-A Phase 2 cost-centre attribution (null = Unassigned). Carried by the list read; powers the account picker. */
+  costCenterId: string | null;
   totals: OrderTotals | null;
   createdAt: string;
   quotes: QuoteView[];

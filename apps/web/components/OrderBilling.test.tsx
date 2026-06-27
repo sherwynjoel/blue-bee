@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { RoleType, type MeResponse } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 
@@ -29,6 +29,28 @@ describe('OrderBilling (finance, OWNER/FINANCE-gated)', () => {
     expect(screen.getByText(/Refundable/)).toBeInTheDocument();
     expect(screen.getByText('PAID')).toBeInTheDocument();
     expect(screen.getByText(/HST/)).toBeInTheDocument();
+  });
+
+  it('renders the cost-centre split breakdown reconciling to the invoice total (real condo seed → 615.85)', async () => {
+    mockClient.getPayment.mockResolvedValue(succeeded);
+    mockClient.getInvoice.mockResolvedValue({
+      ...invoice,
+      number: 'DEMO-CONDO-2026-06',
+      status: 'ISSUED',
+      subtotal: '545.00',
+      tax: '70.85',
+      total: '615.85',
+      costCenterBreakdown: [
+        { costCenterId: 'm', code: 'AMEN', name: 'Amenity (gym/pool)', subtotal: '209.00', tax: '27.17', total: '236.17' },
+        { costCenterId: 'a', code: 'TWR-A', name: 'Tower A', subtotal: '184.00', tax: '23.92', total: '207.92' },
+        { costCenterId: 'b', code: 'TWR-B', name: 'Tower B', subtotal: '152.00', tax: '19.76', total: '171.76' },
+      ],
+    });
+    render(<OrderBilling orderId="o1" />);
+    await screen.findByTestId('cost-center-breakdown');
+    expect(within(screen.getByTestId('ccb-a')).getByText(/207\.92/)).toBeInTheDocument();
+    expect(within(screen.getByTestId('ccb-total')).getByText(/615\.85/)).toBeInTheDocument();
+    expect(screen.getByTestId('ccb-reconciles')).toHaveTextContent(/Reconciles to the invoice total/);
   });
 
   it('refuses a refund larger than the refundable balance (client guard, server also enforces)', async () => {

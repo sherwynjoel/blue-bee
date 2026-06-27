@@ -11,6 +11,7 @@ import { can } from '@/lib/rbac';
 import { money, orderRef, shortDate } from '@/lib/format';
 import { Button, Card, EmptyState, ErrorBox, Field, Input, KV, SkeletonText, StatusPill } from './ui';
 import type { Tone } from './ui';
+import { CostCenterBreakdownTable } from './CostCenters';
 import { RequireCapability } from './AppShell';
 
 export function OrderBilling({ orderId }: { orderId: string }): React.ReactElement {
@@ -200,6 +201,8 @@ function InvoiceBody({ invoice }: { invoice: InvoiceView }): React.ReactElement 
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={2} /> Paid {shortDate(invoice.paidAt)}
         </p>
       )}
+      {/* Track-A Phase 2: a batch invoice's per-cost-centre split (reconciles to the total above). */}
+      <CostCenterBreakdownTable invoice={invoice} />
     </div>
   );
 }

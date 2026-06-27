@@ -16,6 +16,7 @@ import {
   BillingMode,
   ClaimStatus,
   ClaimType,
+  CostCenterKind,
   CustodyStage,
   GarmentStatus,
   InvoiceStatus,
@@ -1242,18 +1243,59 @@ async function seedLiveFleet(): Promise<void> {
   console.log(`[seed] Branch4 §D ready: 3 vehicles + 3 drivers on ACTIVE shifts; route1 IN_PROGRESS (EN_ROUTE stop w/ live ETA + a COMPLETED POD), route2 PUBLISHED; ${pings.length} GpsPings → fleet/live shows moving vehicles.`);
 }
 
+// ─────────────────────── Integration reconcile — cost centres on the demo condo (Phase-2 split billing) ───────────────────────
+// The cost-centre backend (Branch 5) shipped with NO demo rows and the rich seed predates it. This small,
+// idempotent block attaches 3 cost centres (Tower A / Tower B / Amenity) to the seeded condo account,
+// attributes its 3 DELIVERED orders + the batch invoice's lines + the 2 standing orders, and writes a
+// reconciling costCenterBreakdown — so the B2B split-invoice view demos with REAL data. Additive; no schema
+// change. Each bucket's HST derives from its subtotal (13%); the buckets sum EXACTLY to the invoice
+// (545.00 / 70.85 / 615.85), byte-identical to what the batch-invoice engine's buildCostCenterBreakdown emits.
+async function seedCostCenters(): Promise<void> {
+  const CC = [
+    { id: cid(51), code: 'TWR-A', name: 'Tower A', kind: CostCenterKind.WING, site: cid(11), order: cid(101), line: cid(411), subtotal: 184 },
+    { id: cid(52), code: 'TWR-B', name: 'Tower B', kind: CostCenterKind.WING, site: cid(12), order: cid(102), line: cid(412), subtotal: 152 },
+    { id: cid(53), code: 'AMEN', name: 'Amenity (gym/pool)', kind: CostCenterKind.AMENITY, site: cid(13), order: cid(103), line: cid(413), subtotal: 209 },
+  ];
+  // The condo orders/invoice/lines exist only after seedCondoMultiSite's guarded block ran — guard on that.
+  if (!(await prisma.order.findUnique({ where: { id: cid(101) } }))) {
+    console.log('[seed] Integration cost-centres skipped — condo demo orders absent.');
+    return;
+  }
+  for (const c of CC) {
+    await prisma.costCenter.upsert({
+      where: { id: c.id },
+      update: {},
+      create: { id: c.id, orgId: ID.org, accountId: CONDO_ACCOUNT, siteId: c.site, code: c.code, name: c.name, kind: c.kind, active: true, createdBy: ID.owner },
+    });
+    await prisma.order.update({ where: { id: c.order }, data: { costCenterId: c.id } }); // idempotent (same id on re-run)
+    await prisma.invoiceLine.update({ where: { id: c.line }, data: { costCenterId: c.id } });
+  }
+  // Propagate to the two condo standing orders (so generated orders inherit the split automatically).
+  await prisma.standingOrder.update({ where: { id: cid(21) }, data: { costCenterId: cid(51) } });
+  await prisma.standingOrder.update({ where: { id: cid(22) }, data: { costCenterId: cid(52) } });
+
+  // Reconciling breakdown on the seeded batch invoice (buckets sorted by code asc, like the engine).
+  const hst = (s: number): number => Math.round(s * 0.13 * 100) / 100;
+  const breakdown = [...CC]
+    .sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
+    .map((c) => ({ costCenterId: c.id, code: c.code, name: c.name, subtotal: c.subtotal.toFixed(2), tax: hst(c.subtotal).toFixed(2), total: (Math.round((c.subtotal + hst(c.subtotal)) * 100) / 100).toFixed(2) }));
+  await prisma.invoice.update({ where: { id: cid(401) }, data: { costCenterBreakdown: breakdown } });
+
+  console.log(`[seed] Integration cost-centres ready: 3 on condo account (Tower A/B + Amenity), 3 orders + invoice lines attributed, 2 standing orders propagated, batch invoice split ${breakdown.map((b) => b.code + '=' + b.total).join(' ')}.`);
+}
+
 // ─────────────────────── seeded-counts summary (DoD evidence the screens will be full) ───────────────────────
 async function printSummary(): Promise<void> {
-  const [accounts, sites, residents, garments, vehicles, drivers, shifts, routes, stops, pings, invoices, payments, standingOrders, lostFound, photos] = await Promise.all([
+  const [accounts, sites, residents, garments, vehicles, drivers, shifts, routes, stops, pings, invoices, payments, standingOrders, lostFound, photos, costCenters] = await Promise.all([
     prisma.account.count(), prisma.site.count(), prisma.resident.count(), prisma.item.count({ where: { kind: ItemKind.GARMENT } }),
     prisma.vehicle.count(), prisma.driver.count(), prisma.shift.count(), prisma.route.count(), prisma.routeStop.count(), prisma.gpsPing.count(),
-    prisma.invoice.count(), prisma.payment.count(), prisma.standingOrder.count(), prisma.lostFoundItem.count(), prisma.photo.count(),
+    prisma.invoice.count(), prisma.payment.count(), prisma.standingOrder.count(), prisma.lostFoundItem.count(), prisma.photo.count(), prisma.costCenter.count(),
   ]);
   const byStatus = await prisma.order.groupBy({ by: ['status'], _count: { _all: true } });
   console.log('\n[seed] ───────────────── seeded demo counts (Branch 4 evidence) ─────────────────');
   console.log(`[seed]  accounts=${accounts} sites=${sites} residents=${residents} garments=${garments}`);
   console.log(`[seed]  vehicles=${vehicles} drivers=${drivers} shifts=${shifts} routes=${routes} routeStops=${stops} gpsPings=${pings}`);
-  console.log(`[seed]  invoices=${invoices} payments=${payments} standingOrders=${standingOrders} lostFound=${lostFound} photos=${photos}`);
+  console.log(`[seed]  invoices=${invoices} payments=${payments} standingOrders=${standingOrders} lostFound=${lostFound} photos=${photos} costCenters=${costCenters}`);
   console.log('[seed]  orders by status:');
   for (const r of byStatus.sort((a, b) => a.status.localeCompare(b.status))) console.log(`[seed]    ${r.status.padEnd(28)} ${r._count._all}`);
   console.log('[seed] ──────────────────────────────────────────────────────────────────────────\n');
@@ -1268,6 +1310,7 @@ async function main(): Promise<void> {
   await seedTrackBDemo();
   // ── Branch 4 — rich demo enrichment (order matters: fleet references condo + residential sites/orders) ──
   await seedCondoMultiSite();
+  await seedCostCenters(); // integration reconcile — split-billing demo data on the condo account
   await seedResidentialSpecialty();
   await seedCareHomeEastWing();
   await seedLiveFleet();

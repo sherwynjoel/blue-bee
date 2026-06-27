@@ -2,12 +2,13 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { ArrowRight, PackageSearch } from 'lucide-react';
 import { OrderStatus } from '@blue-bee/shared';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { statusLabel } from '@/lib/order-status';
 import { money, orderRef, shortDate } from '@/lib/format';
-import { Badge, Card, EmptyState, ErrorBox, Loading, Select } from './ui';
+import { Card, EmptyState, ErrorBox, PageHeader, Select, StatusPill, Table, TableSkeleton, Td, Th } from './ui';
 
 /** The orders queue — `GET /v1/orders` (row-scoped), filterable by §5.1 status. The console hub. */
 export function OrdersQueue(): React.ReactElement {
@@ -17,65 +18,83 @@ export function OrdersQueue(): React.ReactElement {
   const { data, loading, error, reload } = useAsync(() => client.listOrders({ limit: 50, status: status ? (status as OrderStatus) : undefined }), [status]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-bb-ink">Orders</h1>
-        <div className="w-64">
-          <Select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All statuses</option>
-            {Object.values(OrderStatus).map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Orders"
+        subtitle="Live operator queue across the §5.1 lifecycle."
+        actions={
+          <div className="w-64">
+            <Select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">All statuses</option>
+              {Object.values(OrderStatus).map((s) => (
+                <option key={s} value={s}>
+                  {statusLabel(s)}
+                </option>
+              ))}
+            </Select>
+          </div>
+        }
+      />
 
-      <Card>
+      <Card padded={false}>
         {loading ? (
-          <Loading />
+          <div className="p-5">
+            <TableSkeleton rows={6} cols={5} />
+          </div>
         ) : error ? (
-          <ErrorBox message={error} onRetry={reload} />
+          <div className="p-5">
+            <ErrorBox message={error} onRetry={reload} />
+          </div>
         ) : !data || data.orders.length === 0 ? (
-          <EmptyState title="No orders here" message="No orders match this filter." />
+          <div className="p-5">
+            <EmptyState
+              icon={<PackageSearch className="h-5 w-5" strokeWidth={1.75} />}
+              title="No orders here"
+              message="No orders match this filter. Clear the filter to see the full queue."
+            />
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="px-1.5 pb-1.5">
+            <Table>
               <thead>
-                <tr className="border-b border-bb-line text-left text-bb-sub">
-                  <th className="py-2 pr-4 font-medium">Order</th>
-                  <th className="py-2 pr-4 font-medium">Status</th>
-                  <th className="py-2 pr-4 font-medium">Total / estimate</th>
-                  <th className="py-2 pr-4 font-medium">Booked</th>
-                  <th className="py-2 font-medium" />
+                <tr>
+                  <Th>Order</Th>
+                  <Th>Status</Th>
+                  <Th numeric>Total / estimate</Th>
+                  <Th>Booked</Th>
+                  <Th />
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="stagger">
                 {data.orders.map((o) => {
                   const est = o.totals?.estimateRange;
                   const total = o.totals?.total;
                   return (
-                    <tr key={o.id} className="border-b border-bb-line last:border-0" data-testid={`order-row-${o.id}`}>
-                      <td className="py-3 pr-4 font-mono font-medium text-bb-ink">{orderRef(o.id)}</td>
-                      <td className="py-3 pr-4">
-                        <Badge tone={statusTone(o.status)}>{statusLabel(o.status)}</Badge>
-                      </td>
-                      <td className="py-3 pr-4 text-bb-ink">
+                    <tr key={o.id} className="border-b border-hairline transition-colors duration-fast last:border-0 hover:bg-subtle" data-testid={`order-row-${o.id}`}>
+                      <Td className="font-mono font-medium tabular-nums">{orderRef(o.id)}</Td>
+                      <Td>
+                        <StatusPill tone={statusTone(o.status)}>{statusLabel(o.status)}</StatusPill>
+                      </Td>
+                      <Td numeric>
                         {total ? money(total, o.totals?.currency) : est ? `${money(est.low, est.currency)}–${money(est.high, est.currency)}` : '—'}
-                      </td>
-                      <td className="py-3 pr-4 text-bb-sub">{shortDate(o.createdAt)}</td>
-                      <td className="py-3 text-right">
-                        <Link href={`/orders/${o.id}`} className="font-semibold text-bb-blue hover:underline">
-                          Open →
+                      </Td>
+                      <Td className="text-secondary">{shortDate(o.createdAt)}</Td>
+                      <Td className="text-right">
+                        <Link
+                          href={`/orders/${o.id}`}
+                          className="inline-flex items-center gap-1 font-semibold text-primary transition-colors duration-fast hover:text-primary-hover focus-visible:outline-none focus-visible:shadow-focus rounded"
+                        >
+                          Open <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                         </Link>
-                      </td>
+                      </Td>
                     </tr>
                   );
                 })}
               </tbody>
-            </table>
-            {data.hasMore && <p className="mt-3 text-xs text-bb-sub">Showing the latest {data.orders.length}. Refine with the status filter to see more.</p>}
+            </Table>
+            {data.hasMore && (
+              <p className="px-3 py-3 text-caption text-tertiary">Showing the latest {data.orders.length}. Refine with the status filter to see more.</p>
+            )}
           </div>
         )}
       </Card>

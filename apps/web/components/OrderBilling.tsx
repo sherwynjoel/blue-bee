@@ -2,13 +2,15 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { ArrowLeft, CheckCircle2, CreditCard, Receipt } from 'lucide-react';
 import { ApiError } from '@blue-bee/api-client';
 import type { InvoiceView, PaymentView, RefundView } from '@blue-bee/shared';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
-import { humanize, money, orderRef, shortDate } from '@/lib/format';
-import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Loading } from './ui';
+import { money, orderRef, shortDate } from '@/lib/format';
+import { Button, Card, EmptyState, ErrorBox, Field, Input, KV, SkeletonText, StatusPill } from './ui';
+import type { Tone } from './ui';
 import { RequireCapability } from './AppShell';
 
 export function OrderBilling({ orderId }: { orderId: string }): React.ReactElement {
@@ -22,6 +24,10 @@ export function OrderBilling({ orderId }: { orderId: string }): React.ReactEleme
 
 function refundable(p: PaymentView): number {
   return Math.max(0, Number(p.capturedAmount) - Number(p.refundedAmount));
+}
+
+function paymentTone(status: string): Tone {
+  return status === 'SUCCEEDED' ? 'green' : status === 'FAILED' ? 'red' : status === 'REFUNDED' ? 'amber' : 'neutral';
 }
 
 function OrderBillingInner({ orderId }: { orderId: string }): React.ReactElement {
@@ -79,36 +85,65 @@ function OrderBillingInner({ orderId }: { orderId: string }): React.ReactElement
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <Link href={`/orders/${orderId}`} className="text-sm text-bb-sub hover:underline">
-          ← Order {orderRef(orderId)}
+    <div className="space-y-6 animate-fade-up">
+      <div className="space-y-2">
+        <Link
+          href={`/orders/${orderId}`}
+          className="inline-flex items-center gap-1 rounded text-footnote text-secondary underline-offset-2 transition-colors duration-fast hover:text-ink focus-visible:outline-none focus-visible:shadow-focus"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={2} /> Order {orderRef(orderId)}
         </Link>
-        <h1 className="mt-1 text-2xl font-bold text-bb-ink">Billing · {orderRef(orderId)}</h1>
+        <h1 className="text-title1 text-ink">
+          Billing · <span className="font-mono tabular-nums">{orderRef(orderId)}</span>
+        </h1>
       </div>
 
-      {(msg || err) && <div>{err ? <ErrorBox message={err} /> : <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{msg}</p>}</div>}
+      {(msg || err) && (
+        <div>
+          {err ? (
+            <ErrorBox message={err} />
+          ) : (
+            <p className="flex items-center gap-2 rounded-card border border-hairline bg-success-tint p-3 text-footnote font-medium text-success-strong" role="status">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" strokeWidth={2} />
+              {msg}
+            </p>
+          )}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Payment">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-tertiary" aria-hidden="true" strokeWidth={2} /> Payment
+            </span>
+          }
+        >
           {payment.loading ? (
-            <Loading />
+            <SkeletonText lines={5} />
           ) : payment.error ? (
             <ErrorBox message={payment.error} onRetry={payment.reload} />
           ) : !payment.data ? (
-            <EmptyState message="No payment on this order yet." />
+            <EmptyState icon={<CreditCard className="h-5 w-5" strokeWidth={1.75} />} title="No payment yet" message="No payment on this order yet." />
           ) : (
             <PaymentBody payment={payment.data} refundAmount={refundAmount} setRefundAmount={setRefundAmount} onRefund={doRefund} busy={busy === 'refund'} />
           )}
         </Card>
 
-        <Card title="Invoice / receipt" actions={!invoice.data ? <Button onClick={() => void generateInvoice()} loading={busy === 'invoice'}>Generate</Button> : undefined}>
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <Receipt className="h-4 w-4 text-tertiary" aria-hidden="true" strokeWidth={2} /> Invoice / receipt
+            </span>
+          }
+          actions={!invoice.data ? <Button onClick={() => void generateInvoice()} loading={busy === 'invoice'}>Generate</Button> : undefined}
+        >
           {invoice.loading ? (
-            <Loading />
+            <SkeletonText lines={5} />
           ) : invoice.error ? (
             <ErrorBox message={invoice.error} onRetry={invoice.reload} />
           ) : !invoice.data ? (
-            <EmptyState message="No invoice yet. Generate one from the approved quote." />
+            <EmptyState icon={<Receipt className="h-5 w-5" strokeWidth={1.75} />} title="No invoice yet" message="No invoice yet. Generate one from the approved quote." />
           ) : (
             <InvoiceBody invoice={invoice.data} />
           )}
@@ -121,16 +156,16 @@ function OrderBillingInner({ orderId }: { orderId: string }): React.ReactElement
 function PaymentBody({ payment, refundAmount, setRefundAmount, onRefund, busy }: { payment: PaymentView; refundAmount: string; setRefundAmount: (s: string) => void; onRefund: (p: PaymentView) => void; busy: boolean }): React.ReactElement {
   const bal = refundable(payment);
   return (
-    <div className="space-y-2 text-sm">
-      <Row label="Status" value={<Badge tone={payment.status === 'SUCCEEDED' ? 'green' : payment.status === 'FAILED' ? 'red' : payment.status === 'REFUNDED' ? 'amber' : 'neutral'}>{payment.status}</Badge>} />
-      <Row label="Amount" value={money(payment.amount, payment.currency)} />
-      <Row label="Captured" value={money(payment.capturedAmount, payment.currency)} />
-      <Row label="Refunded" value={money(payment.refundedAmount, payment.currency)} />
-      <Row label="Refundable" value={money(bal.toFixed(2), payment.currency)} />
+    <div className="space-y-1">
+      <KV label="Status" value={<StatusPill tone={paymentTone(payment.status)}>{payment.status}</StatusPill>} />
+      <KV label="Amount" value={money(payment.amount, payment.currency)} mono />
+      <KV label="Captured" value={money(payment.capturedAmount, payment.currency)} mono />
+      <KV label="Refunded" value={money(payment.refundedAmount, payment.currency)} mono />
+      <KV label="Refundable" value={money(bal.toFixed(2), payment.currency)} mono />
       {(payment.status === 'SUCCEEDED' || payment.status === 'REFUNDED') && bal > 0 && (
-        <div className="mt-3 space-y-2 border-t border-bb-line pt-3">
+        <div className="mt-3 space-y-3 border-t border-hairline pt-4">
           <Field label="Refund amount (blank = full refund)">
-            <Input type="number" step="any" min="0" max={bal} value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder={`Up to $${bal.toFixed(2)}`} aria-label="Refund amount" />
+            <Input type="number" step="any" min="0" max={bal} value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder={`Up to $${bal.toFixed(2)}`} aria-label="Refund amount" className="font-mono tabular-nums" />
           </Field>
           <Button variant="danger" onClick={() => onRefund(payment)} loading={busy}>
             Issue refund
@@ -143,30 +178,28 @@ function PaymentBody({ payment, refundAmount, setRefundAmount, onRefund, busy }:
 
 function InvoiceBody({ invoice }: { invoice: InvoiceView }): React.ReactElement {
   return (
-    <div className="space-y-2 text-sm">
-      <Row label="Number" value={invoice.number ?? '—'} />
-      <Row label="Status" value={<Badge tone={invoice.status === 'PAID' ? 'green' : invoice.status === 'OVERDUE' ? 'red' : 'amber'}>{invoice.status}</Badge>} />
-      <div className="border-y border-bb-line py-2">
+    <div className="space-y-1">
+      <KV label="Number" value={<span className="font-mono tabular-nums">{invoice.number ?? '—'}</span>} />
+      <KV label="Status" value={<StatusPill tone={invoice.status === 'PAID' ? 'green' : invoice.status === 'OVERDUE' ? 'red' : 'amber'}>{invoice.status}</StatusPill>} />
+      <div className="my-2 space-y-1.5 border-y border-hairline py-3">
         {invoice.lines.map((l, i) => (
-          <div key={i} className="flex justify-between">
-            <span className="text-bb-sub">{l.description}</span>
-            <span className="text-bb-ink">{money(l.amount, invoice.currency)}</span>
+          <div key={i} className="flex items-baseline justify-between gap-4">
+            <span className="text-footnote text-secondary">{l.description}</span>
+            <span className="font-mono tabular-nums text-subhead text-ink">{money(l.amount, invoice.currency)}</span>
           </div>
         ))}
       </div>
-      <Row label="Subtotal" value={money(invoice.subtotal, invoice.currency)} />
-      <Row label="Tax" value={money(invoice.tax, invoice.currency)} />
-      <Row label="Total" value={money(invoice.total, invoice.currency)} bold />
-      {invoice.paidAt && <p className="text-xs text-green-700">Paid {shortDate(invoice.paidAt)}</p>}
-    </div>
-  );
-}
-
-function Row({ label, value, bold }: { label: string; value: React.ReactNode; bold?: boolean }): React.ReactElement {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-bb-sub">{label}</span>
-      <span className={bold ? 'font-bold text-bb-ink' : 'text-bb-ink'}>{value}</span>
+      <KV label="Subtotal" value={money(invoice.subtotal, invoice.currency)} mono />
+      <KV label="Tax" value={money(invoice.tax, invoice.currency)} mono />
+      <div className="flex items-center justify-between gap-4 border-t border-hairline pt-2">
+        <span className="text-subhead font-semibold text-ink">Total</span>
+        <span className="font-mono tabular-nums text-headline text-ink">{money(invoice.total, invoice.currency)}</span>
+      </div>
+      {invoice.paidAt && (
+        <p className="flex items-center gap-1.5 pt-1 text-caption font-medium text-success-strong">
+          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={2} /> Paid {shortDate(invoice.paidAt)}
+        </p>
+      )}
     </div>
   );
 }

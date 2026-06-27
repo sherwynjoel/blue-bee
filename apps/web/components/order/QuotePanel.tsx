@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Send } from 'lucide-react';
 import { OrderStatus, QuoteStatus, RoleType, type QuoteBuildDto } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useSession } from '@/lib/session';
 import { can, hasAnyRole } from '@/lib/rbac';
 import { money, shortDate } from '@/lib/format';
 import type { OrderDetail } from '@/lib/types';
-import { Badge, Button, Field, Input } from '../ui';
+import { Badge, Button, Field, Input, KV } from '../ui';
 
 const QUOTABLE: OrderStatus[] = [OrderStatus.INTAKE_INSPECTED, OrderStatus.DAMAGE_PREEXISTING_FLAGGED];
 
@@ -60,17 +61,23 @@ export function QuotePanel({ order, onChanged }: { order: OrderDetail; onChanged
     const isSent = quote.status === QuoteStatus.SENT && status === OrderStatus.QUOTED;
     return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-bb-ink">Quote</h3>
+        <div className="flex items-center justify-end">
           <Badge tone={quote.status === QuoteStatus.APPROVED ? 'green' : quote.status === QuoteStatus.DECLINED ? 'red' : 'amber'}>{quote.status}</Badge>
         </div>
-        <Row label="Subtotal" value={money(quote.subtotal, order.totals?.currency)} />
-        <Row label="Tax (HST)" value={money(quote.tax, order.totals?.currency)} />
-        <Row label="Total" value={money(quote.total, order.totals?.currency)} bold />
-        {quote.expiresAt && <p className="text-xs text-bb-sub">Valid until {shortDate(quote.expiresAt)}</p>}
+        <div className="rounded-card bg-subtle p-3">
+          <KV label="Subtotal" value={money(quote.subtotal, order.totals?.currency)} mono />
+          <KV label="Tax (HST)" value={money(quote.tax, order.totals?.currency)} mono />
+          <div className="mt-1 border-t border-hairline pt-1">
+            <div className="flex items-center justify-between gap-4 py-1.5">
+              <span className="text-subhead font-semibold text-ink">Total</span>
+              <span className="font-mono text-headline font-semibold tabular-nums text-ink">{money(quote.total, order.totals?.currency)}</span>
+            </div>
+          </div>
+        </div>
+        {quote.expiresAt && <p className="text-caption text-tertiary">Valid until {shortDate(quote.expiresAt)}</p>}
 
         {isSent && hasAnyRole(me, [RoleType.OWNER]) && (
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-2 pt-1">
             <Button loading={busy === 'approve'} onClick={() => void act(() => client.approveQuote(order.id), 'approve')}>
               Approve (on behalf)
             </Button>
@@ -79,8 +86,8 @@ export function QuotePanel({ order, onChanged }: { order: OrderDetail; onChanged
             </Button>
           </div>
         )}
-        {isSent && <p className="text-xs text-bb-sub">Sent to the customer to approve in their app.</p>}
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {isSent && <p className="text-caption text-tertiary">Sent to the customer to approve in their app.</p>}
+        {error && <p className="text-footnote font-medium text-danger">{error}</p>}
       </div>
     );
   }
@@ -89,8 +96,7 @@ export function QuotePanel({ order, onChanged }: { order: OrderDetail; onChanged
   if (QUOTABLE.includes(status) && can.intake(me)) {
     return (
       <div className="space-y-3">
-        <h3 className="font-semibold text-bb-ink">Generate quote</h3>
-        <p className="text-xs text-bb-sub">Priced server-side from the rate card × measured values + HST.</p>
+        <p className="text-footnote text-secondary">Priced server-side from the rate card × measured values + HST.</p>
         <Field label="Quote valid for (days)">
           <Input type="number" min="1" max="365" value={expiresInDays} onChange={(e) => setExpiresInDays(e.target.value)} />
         </Field>
@@ -102,22 +108,13 @@ export function QuotePanel({ order, onChanged }: { order: OrderDetail; onChanged
             <Input type="number" step="any" value={adjAmount} onChange={(e) => setAdjAmount(e.target.value)} placeholder="-10" />
           </Field>
         </div>
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {error && <p className="text-footnote font-medium text-danger">{error}</p>}
         <Button loading={busy === 'generate'} onClick={() => void generate()}>
-          Generate &amp; send quote
+          {busy !== 'generate' && <Send className="h-4 w-4" aria-hidden="true" />} Generate &amp; send quote
         </Button>
       </div>
     );
   }
 
-  return <p className="text-sm text-bb-sub">No quote yet — finish inspecting all items to enable quoting.</p>;
-}
-
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }): React.ReactElement {
-  return (
-    <div className="flex justify-between text-sm">
-      <span className="text-bb-sub">{label}</span>
-      <span className={bold ? 'font-bold text-bb-ink' : 'text-bb-ink'}>{value}</span>
-    </div>
-  );
+  return <p className="text-subhead text-secondary">No quote yet — finish inspecting all items to enable quoting.</p>;
 }

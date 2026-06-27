@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { CalendarClock, PackageCheck, PauseCircle, PlayCircle } from 'lucide-react';
 import { OrderStatus, RoleType } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useSession } from '@/lib/session';
@@ -41,25 +42,25 @@ export function OrderActions({ order, onChanged }: { order: OrderDetail; onChang
     <div className="flex flex-wrap items-center gap-2">
       {s === OrderStatus.REQUESTED && (
         <Button variant="secondary" onClick={() => setModal('pickup')}>
-          Schedule pickup
+          <CalendarClock className="h-4 w-4" aria-hidden="true" /> Schedule pickup
         </Button>
       )}
       {canReceive && (
         <Button variant="secondary" loading={busy === 'receive'} onClick={() => void run(() => client.receivedAtPlant(order.id), 'receive')}>
-          Receive at plant
+          {busy !== 'receive' && <PackageCheck className="h-4 w-4" aria-hidden="true" />} Receive at plant
         </Button>
       )}
       {canHold && (
         <Button variant="secondary" onClick={() => setModal('hold')}>
-          Hold
+          <PauseCircle className="h-4 w-4" aria-hidden="true" /> Hold
         </Button>
       )}
       {s === OrderStatus.ON_HOLD && (
         <Button variant="secondary" loading={busy === 'resume'} onClick={() => void run(() => client.resumeOrder(order.id), 'resume')}>
-          Resume
+          {busy !== 'resume' && <PlayCircle className="h-4 w-4" aria-hidden="true" />} Resume
         </Button>
       )}
-      {error && <span className="text-sm text-red-700">{error}</span>}
+      {error && <span className="text-footnote font-medium text-danger">{error}</span>}
 
       {modal === 'pickup' && <PickupModal onClose={() => setModal(null)} busy={busy === 'pickup'} error={error} onSubmit={(w) => void run(() => client.schedulePickup(order.id, { pickupWindow: w }), 'pickup')} />}
       {modal === 'hold' && <HoldModal onClose={() => setModal(null)} busy={busy === 'hold'} error={error} onSubmit={(reason) => void run(() => client.holdOrder(order.id, { reason }), 'hold')} />}
@@ -84,7 +85,7 @@ function PickupModal({ onClose, onSubmit, busy, error }: { onClose: () => void; 
         <Field label="Window end">
           <Input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} aria-label="Window end" />
         </Field>
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {error && <p className="text-footnote font-medium text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
@@ -111,7 +112,7 @@ function HoldModal({ onClose, onSubmit, busy, error }: { onClose: () => void; on
         <Field label="Reason">
           <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this on hold?" aria-label="Hold reason" />
         </Field>
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {error && <p className="text-footnote font-medium text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel

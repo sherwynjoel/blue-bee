@@ -9,11 +9,27 @@ import {
   type NotificationConfigView,
 } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
+import { Smartphone, Truck, Users, X } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
 import { humanize, shortDate } from '@/lib/format';
-import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Loading, Select } from './ui';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+  StatusPill,
+  Table,
+  TableSkeleton,
+  Td,
+  Th,
+} from './ui';
 import { RequireCapability } from './AppShell';
 import type { VehicleView } from '@/lib/types';
 
@@ -27,8 +43,8 @@ export function AdminHome(): React.ReactElement {
   const { me } = useSession();
   return (
     <RequireCapability allowed={can.admin(me)}>
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-bb-ink">Admin</h1>
+      <div className="space-y-6">
+        <PageHeader title="Admin" subtitle="Users & roles, fleet, devices, and the read-only config + audit viewers." />
         <UsersRolesCard />
         <FleetDevicesCard />
         <NotificationConfigCard />
@@ -86,53 +102,56 @@ function UsersRolesCard(): React.ReactElement {
   return (
     <Card title="Users & roles">
       {state.loading ? (
-        <Loading />
+        <TableSkeleton rows={4} cols={3} />
       ) : state.error ? (
         <ErrorBox message={state.error} onRetry={reload} />
       ) : !state.data || state.data.users.length === 0 ? (
-        <EmptyState message="No users." />
+        <EmptyState icon={<Users className="h-5 w-5" strokeWidth={1.75} />} title="No users yet" message="No users." />
       ) : (
         <>
-          <table className="w-full text-sm">
+          <Table>
             <thead>
-              <tr className="border-b border-bb-line text-left text-bb-sub">
-                <th className="py-2 pr-4 font-medium">User</th>
-                <th className="py-2 pr-4 font-medium">Contact</th>
-                <th className="py-2 font-medium">Roles</th>
+              <tr>
+                <Th>User</Th>
+                <Th>Contact</Th>
+                <Th>Roles</Th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="stagger divide-y divide-hairline">
               {state.data.users.map((u) => (
-                <tr key={u.id} className="border-b border-bb-line last:border-0" data-testid={`user-${u.id}`}>
-                  <td className="py-2 pr-4 font-medium text-bb-ink">{u.name}</td>
-                  <td className="py-2 pr-4 text-bb-sub">{u.phone ?? u.email ?? '—'}</td>
-                  <td className="py-2">
-                    <div className="flex flex-wrap gap-1">
+                <tr key={u.id} data-testid={`user-${u.id}`}>
+                  <Td className="font-medium">{u.name}</Td>
+                  <Td className="text-secondary">{u.phone ?? u.email ?? '—'}</Td>
+                  <Td>
+                    <div className="flex flex-wrap gap-1.5">
                       {u.roles.length === 0 ? (
-                        <span className="text-bb-sub">—</span>
+                        <span className="text-tertiary">—</span>
                       ) : (
                         u.roles.map((r) => (
-                          <span key={r.id} className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">
+                          <span
+                            key={r.id}
+                            className="inline-flex items-center gap-1 rounded-full bg-primary-tint px-2 py-0.5 text-caption font-semibold text-primary-strong"
+                          >
                             {humanize(r.role)}
-                            {r.scope !== 'ORG' && <span className="text-blue-500">·{humanize(r.scope)}</span>}
+                            {r.scope !== 'ORG' && <span className="text-primary">·{humanize(r.scope)}</span>}
                             <button
                               aria-label={`Revoke ${r.role} from ${u.name}`}
-                              className="ml-0.5 font-bold text-blue-500 hover:text-blue-900"
+                              className="-mr-0.5 ml-0.5 inline-flex items-center rounded-full text-primary transition duration-fast hover:text-primary-active focus-visible:outline-none focus-visible:shadow-focus"
                               onClick={() => void revoke(u, r.id)}
                             >
-                              ×
+                              <X className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
                             </button>
                           </span>
                         ))
                       )}
                     </div>
-                  </td>
+                  </Td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
 
-          <form className="mt-4 flex flex-wrap items-end gap-2 border-t border-bb-line pt-4" onSubmit={assign}>
+          <form className="mt-5 flex flex-wrap items-end gap-3 border-t border-hairline pt-5" onSubmit={assign}>
             <Field label="User">
               <Select value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Assign user">
                 <option value="">Select…</option>
@@ -170,7 +189,7 @@ function UsersRolesCard(): React.ReactElement {
               Assign role
             </Button>
           </form>
-          {err && <p className="mt-2 text-sm text-red-700">{err}</p>}
+          {err && <p className="mt-3 text-footnote font-medium text-danger">{err}</p>}
         </>
       )}
     </Card>
@@ -232,24 +251,24 @@ function FleetDevicesCard(): React.ReactElement {
 
   return (
     <Card title="Fleet & devices">
-      {err && <p className="mb-2 text-sm text-red-700">{err}</p>}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {err && <p className="mb-3 text-footnote font-medium text-danger">{err}</p>}
+      <div className="grid gap-8 lg:grid-cols-2">
         {/* drivers + vehicle assignment */}
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-bb-ink">Drivers · default vehicle</h3>
+          <h3 className="mb-3 text-subhead font-semibold text-ink">Drivers · default vehicle</h3>
           {drivers.loading || vehicles.loading ? (
-            <Loading />
+            <TableSkeleton rows={3} cols={2} />
           ) : drivers.error ? (
             <ErrorBox message={drivers.error} onRetry={reload} />
           ) : !drivers.data || drivers.data.drivers.length === 0 ? (
-            <EmptyState message="No drivers." />
+            <EmptyState icon={<Truck className="h-5 w-5" strokeWidth={1.75} />} title="No drivers" message="No drivers." />
           ) : (
-            <table className="w-full text-sm">
-              <tbody>
+            <Table>
+              <tbody className="divide-y divide-hairline">
                 {drivers.data.drivers.map((d) => (
-                  <tr key={d.id} className="border-b border-bb-line last:border-0" data-testid={`driver-${d.id}`}>
-                    <td className="py-2 pr-4 text-bb-ink">{d.name ?? d.userId.slice(0, 8)}</td>
-                    <td className="py-2">
+                  <tr key={d.id} data-testid={`driver-${d.id}`}>
+                    <Td>{d.name ?? d.userId.slice(0, 8)}</Td>
+                    <Td>
                       <Select
                         aria-label={`Vehicle for ${d.name ?? d.id}`}
                         value={d.defaultVehicleId ?? ''}
@@ -262,42 +281,42 @@ function FleetDevicesCard(): React.ReactElement {
                           </option>
                         ))}
                       </Select>
-                    </td>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           )}
         </div>
 
         {/* devices */}
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-bb-ink">Devices</h3>
+          <h3 className="mb-3 text-subhead font-semibold text-ink">Devices</h3>
           {devices.loading ? (
-            <Loading />
+            <TableSkeleton rows={3} cols={4} />
           ) : devices.error ? (
             <ErrorBox message={devices.error} onRetry={reload} />
           ) : !devices.data || devices.data.devices.length === 0 ? (
-            <EmptyState message="No devices." />
+            <EmptyState icon={<Smartphone className="h-5 w-5" strokeWidth={1.75} />} title="No devices" message="No devices." />
           ) : (
-            <table className="w-full text-sm">
-              <tbody>
+            <Table>
+              <tbody className="divide-y divide-hairline">
                 {devices.data.devices.map((dv) => (
-                  <tr key={dv.id} className="border-b border-bb-line last:border-0" data-testid={`device-${dv.id}`}>
-                    <td className="py-2 pr-4 text-bb-ink">{dv.userName ?? dv.userId.slice(0, 8)}</td>
-                    <td className="py-2 pr-4 text-bb-sub">{dv.platform}</td>
-                    <td className="py-2 pr-4 font-mono text-xs text-bb-sub">{dv.pushTokenMasked ?? '—'}</td>
-                    <td className="py-2 text-right">
-                      <button className="text-xs text-red-700 hover:underline" onClick={() => void removeDevice(dv.id)}>
+                  <tr key={dv.id} data-testid={`device-${dv.id}`}>
+                    <Td>{dv.userName ?? dv.userId.slice(0, 8)}</Td>
+                    <Td className="text-secondary">{dv.platform}</Td>
+                    <Td className="font-mono text-caption tabular-nums text-secondary">{dv.pushTokenMasked ?? '—'}</Td>
+                    <Td numeric>
+                      <Button variant="danger" size="sm" onClick={() => void removeDevice(dv.id)}>
                         Remove
-                      </button>
-                    </td>
+                      </Button>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           )}
-          <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={addDevice}>
+          <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={addDevice}>
             <Field label="User">
               <Select value={dUser} onChange={(e) => setDUser(e.target.value)} aria-label="Device user">
                 <option value="">Select…</option>
@@ -336,32 +355,32 @@ function NotificationConfigCard(): React.ReactElement {
   return (
     <Card title="Notification config">
       {state.loading ? (
-        <Loading />
+        <TableSkeleton rows={4} cols={3} />
       ) : state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
       ) : !state.data ? (
         <EmptyState message="No config." />
       ) : (
         <>
-          <p className="mb-3 text-xs text-bb-sub">{state.data.note}</p>
-          <table className="w-full text-sm">
+          <p className="mb-4 text-footnote text-tertiary">{state.data.note}</p>
+          <Table>
             <thead>
-              <tr className="border-b border-bb-line text-left text-bb-sub">
-                <th className="py-2 pr-4 font-medium">Event</th>
-                <th className="py-2 pr-4 font-medium">Channels</th>
-                <th className="py-2 font-medium">Urgent</th>
+              <tr>
+                <Th>Event</Th>
+                <Th>Channels</Th>
+                <Th>Urgent</Th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-hairline">
               {state.data.events.map((ev) => (
-                <tr key={ev.event} className="border-b border-bb-line last:border-0" data-testid={`notif-${ev.event}`}>
-                  <td className="py-2 pr-4 font-mono text-xs">{ev.event}</td>
-                  <td className="py-2 pr-4">{ev.channels.join(', ')}</td>
-                  <td className="py-2">{ev.urgent ? <Badge tone="amber">urgent</Badge> : '—'}</td>
+                <tr key={ev.event} data-testid={`notif-${ev.event}`}>
+                  <Td className="font-mono text-caption tabular-nums">{ev.event}</Td>
+                  <Td className="text-secondary">{ev.channels.join(', ')}</Td>
+                  <Td>{ev.urgent ? <Badge tone="amber">urgent</Badge> : <span className="text-tertiary">—</span>}</Td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         </>
       )}
     </Card>
@@ -410,7 +429,7 @@ function AuditLogCard(): React.ReactElement {
   return (
     <Card title="Audit log">
       <form
-        className="mb-3 flex flex-wrap items-end gap-2"
+        className="mb-4 flex flex-wrap items-end gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           setApplied({ entity: entity.trim(), action: action.trim() });
@@ -430,33 +449,33 @@ function AuditLogCard(): React.ReactElement {
       {err ? (
         <ErrorBox message={err} onRetry={() => void load(true)} />
       ) : loading && entries.length === 0 ? (
-        <Loading />
+        <TableSkeleton rows={5} cols={4} />
       ) : entries.length === 0 ? (
         <EmptyState message="No audit entries." />
       ) : (
         <>
-          <table className="w-full text-sm">
+          <Table>
             <thead>
-              <tr className="border-b border-bb-line text-left text-bb-sub">
-                <th className="py-2 pr-4 font-medium">When</th>
-                <th className="py-2 pr-4 font-medium">Entity</th>
-                <th className="py-2 pr-4 font-medium">Action</th>
-                <th className="py-2 font-medium">Actor</th>
+              <tr>
+                <Th>When</Th>
+                <Th>Entity</Th>
+                <Th>Action</Th>
+                <Th>Actor</Th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-hairline">
               {entries.map((a) => (
-                <tr key={a.id} className="border-b border-bb-line last:border-0" data-testid={`audit-${a.id}`}>
-                  <td className="py-2 pr-4 text-bb-sub">{shortDate(a.at)}</td>
-                  <td className="py-2 pr-4">{a.entity}</td>
-                  <td className="py-2 pr-4 font-mono text-xs">{a.action}</td>
-                  <td className="py-2 text-bb-sub">{a.actorName ?? '—'}</td>
+                <tr key={a.id} data-testid={`audit-${a.id}`}>
+                  <Td className="text-secondary">{shortDate(a.at)}</Td>
+                  <Td>{a.entity}</Td>
+                  <Td className="font-mono text-caption tabular-nums">{a.action}</Td>
+                  <Td className="text-secondary">{a.actorName ?? '—'}</Td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
           {cursor && (
-            <div className="mt-3">
+            <div className="mt-4">
               <Button variant="secondary" loading={loading} onClick={() => void load(false)}>
                 Load more
               </Button>

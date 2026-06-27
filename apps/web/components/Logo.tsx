@@ -16,7 +16,13 @@ const SIZES = {
 export function BeeMark({ className = 'h-7 w-7' }: { className?: string }): React.ReactElement {
   return (
     <svg viewBox="0 0 32 32" className={className} role="img" aria-label="Blue Bee" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="32" height="32" rx="8" fill="#1f6feb" />
+      <defs>
+        <linearGradient id="bbTile" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1E73FF" />
+          <stop offset="1" stopColor="#0B5FFF" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="8" fill="url(#bbTile)" />
       {/* wings */}
       <ellipse cx="10.6" cy="12" rx="4" ry="5.2" fill="#ffffff" fillOpacity="0.55" transform="rotate(-22 10.6 12)" />
       <ellipse cx="21.4" cy="12" rx="4" ry="5.2" fill="#ffffff" fillOpacity="0.55" transform="rotate(22 21.4 12)" />
@@ -27,8 +33,8 @@ export function BeeMark({ className = 'h-7 w-7' }: { className?: string }): Reac
       <circle cx="19.8" cy="5" r="1" fill="#ffffff" />
       {/* striped body */}
       <rect x="12" y="9" width="8" height="15" rx="4" fill="#ffffff" />
-      <rect x="12" y="13" width="8" height="1.8" fill="#1f6feb" />
-      <rect x="12" y="17" width="8" height="1.8" fill="#1f6feb" />
+      <rect x="12" y="13" width="8" height="1.8" fill="#0B5FFF" />
+      <rect x="12" y="17" width="8" height="1.8" fill="#0B5FFF" />
     </svg>
   );
 }

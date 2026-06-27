@@ -4,13 +4,25 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { OrderStatus, RouteStopKind } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
+import { ArrowLeft, ClipboardList, MapPin, Send, Wand2 } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
 import { humanize, orderRef, shortDate } from '@/lib/format';
 import type { ManifestView, RouteView } from '@/lib/types';
 import type { StopAction } from '@/lib/api-client';
-import { Badge, Button, Card, EmptyState, ErrorBox, Field, Loading } from './ui';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  PageHeader,
+  Select,
+  Skeleton,
+  StatusPill,
+} from './ui';
 
 /** Legal §5.4 stop transitions per current status (mirrors the server graph; illegal → server 409). */
 const STOP_ACTIONS: Record<string, StopAction[]> = {
@@ -19,6 +31,16 @@ const STOP_ACTIONS: Record<string, StopAction[]> = {
   ARRIVED: ['start', 'fail'],
   IN_PROGRESS: ['complete', 'fail'],
 };
+
+/** Tone for a route status pill — kept identical to the original mapping. */
+function routeTone(status: string): 'green' | 'neutral' | 'blue' {
+  return status === 'PUBLISHED' || status === 'IN_PROGRESS' ? 'green' : status === 'COMPLETED' ? 'neutral' : 'blue';
+}
+
+/** Tone for a stop status pill — kept identical to the original mapping. */
+function stopTone(status: string): 'green' | 'red' | 'blue' {
+  return status === 'COMPLETED' ? 'green' : status === 'FAILED' || status === 'SKIPPED' ? 'red' : 'blue';
+}
 
 export function RouteDetailView({ routeId }: { routeId: string }): React.ReactElement {
   const { client, me } = useSession();
@@ -41,7 +63,7 @@ export function RouteDetailView({ routeId }: { routeId: string }): React.ReactEl
     if (data) setRoute(data);
   }, [data]);
 
-  if (loading) return <Loading />;
+  if (loading) return <RouteDetailSkeleton />;
   if (error || !route) return <ErrorBox message={error ?? 'Route not found.'} onRetry={reload} />;
 
   const run = async (fn: () => Promise<RouteView>, key: string): Promise<void> => {
@@ -90,96 +112,140 @@ export function RouteDetailView({ routeId }: { routeId: string }): React.ReactEl
   const isDraft = route.status === 'PLANNED';
 
   return (
-    <div className="space-y-4">
-      <div>
-        <Link href="/dispatch" className="text-sm text-bb-sub hover:underline">
-          ← Dispatch
+    <div className="space-y-6 animate-fade-up">
+      <div className="space-y-3">
+        <Link
+          href="/dispatch"
+          className="inline-flex items-center gap-1 text-footnote font-medium text-secondary underline-offset-2 hover:text-ink hover:underline focus-visible:outline-none focus-visible:shadow-focus rounded"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Dispatch
         </Link>
-        <h1 className="mt-1 flex items-center gap-3 text-2xl font-bold text-bb-ink">
-          Route {route.date?.slice(0, 10)}
-          <Badge tone={route.status === 'PUBLISHED' || route.status === 'IN_PROGRESS' ? 'green' : route.status === 'COMPLETED' ? 'neutral' : 'blue'}>{humanize(route.status)}</Badge>
-          {route.optimized && <Badge tone="blue">Optimized</Badge>}
-        </h1>
-        <p className="text-sm text-bb-sub">
-          Driver: {route.driver?.user?.name ?? route.driverId?.slice(0, 8) ?? '—'} · Vehicle: {route.vehicle?.label ?? route.vehicleId?.slice(0, 8) ?? '—'}
-        </p>
+        <PageHeader
+          title={
+            <span className="flex flex-wrap items-center gap-3">
+              <span className="font-mono tabular-nums">Route {route.date?.slice(0, 10)}</span>
+              <StatusPill tone={routeTone(route.status)}>{humanize(route.status)}</StatusPill>
+              {route.optimized && <Badge tone="blue">Optimized</Badge>}
+            </span>
+          }
+          subtitle={
+            <>
+              Driver: {route.driver?.user?.name ?? route.driverId?.slice(0, 8) ?? '—'} · Vehicle:{' '}
+              {route.vehicle?.label ?? route.vehicleId?.slice(0, 8) ?? '—'}
+            </>
+          }
+        />
       </div>
 
       {actionErr && <ErrorBox message={actionErr} />}
 
       {canWrite && isDraft && (
-        <Card title="Plan">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+        <Card title="Plan" subtitle="Assign crew, add stops, then optimize and publish.">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="space-y-3">
               <Field label="Assign driver">
-                <select className="w-full rounded-lg border border-bb-line bg-white px-3 py-2 text-sm" value={driverId} onChange={(e) => setDriverId(e.target.value)} aria-label="Assign driver">
+                <Select value={driverId} onChange={(e) => setDriverId(e.target.value)} aria-label="Assign driver">
                   <option value="">{drivers.loading ? 'Loading drivers…' : drivers.error ? 'Failed to load drivers' : 'Select…'}</option>
                   {(drivers.data ?? []).map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.id.slice(0, 8)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
               <Field label="Assign vehicle">
-                <select className="w-full rounded-lg border border-bb-line bg-white px-3 py-2 text-sm" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} aria-label="Assign vehicle">
+                <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} aria-label="Assign vehicle">
                   <option value="">{vehicles.loading ? 'Loading vehicles…' : vehicles.error ? 'Failed to load vehicles' : 'Select…'}</option>
                   {(vehicles.data ?? []).map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
-              <Button variant="secondary" loading={busy === 'assign'} disabled={!driverId && !vehicleId} onClick={() => void run(() => client.assignRoute(route.id, { driverId: driverId || undefined, vehicleId: vehicleId || undefined }), 'assign')}>
+              <Button
+                variant="secondary"
+                loading={busy === 'assign'}
+                disabled={!driverId && !vehicleId}
+                onClick={() => void run(() => client.assignRoute(route.id, { driverId: driverId || undefined, vehicleId: vehicleId || undefined }), 'assign')}
+              >
                 Assign
               </Button>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Field label="Add a pickup stop (REQUESTED order)">
-                <select className="w-full rounded-lg border border-bb-line bg-white px-3 py-2 text-sm" value={stopOrderId} onChange={(e) => setStopOrderId(e.target.value)} aria-label="Add stop order">
+                <Select value={stopOrderId} onChange={(e) => setStopOrderId(e.target.value)} aria-label="Add stop order">
                   <option value="">{orders.loading ? 'Loading orders…' : orders.error ? 'Failed to load orders' : 'Select an order…'}</option>
                   {(orders.data?.orders ?? []).map((o) => (
                     <option key={o.id} value={o.id}>
                       {orderRef(o.id)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
-              <Button variant="secondary" loading={busy === 'addstop'} disabled={!stopOrderId} onClick={() => void run(async () => { await client.addStop(route.id, { orderId: stopOrderId, kind: RouteStopKind.PICKUP }); setStopOrderId(''); return client.getRoute(route.id); }, 'addstop')}>
+              <Button
+                variant="secondary"
+                loading={busy === 'addstop'}
+                disabled={!stopOrderId}
+                onClick={() => void run(async () => { await client.addStop(route.id, { orderId: stopOrderId, kind: RouteStopKind.PICKUP }); setStopOrderId(''); return client.getRoute(route.id); }, 'addstop')}
+              >
                 Add stop
               </Button>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2 border-t border-bb-line pt-4">
+          <div className="mt-5 flex flex-wrap gap-2 border-t border-hairline pt-5">
             <Button variant="secondary" loading={busy === 'optimize'} onClick={() => void run(() => client.optimizeRoute(route.id), 'optimize')}>
+              <Wand2 className="h-4 w-4" aria-hidden="true" />
               Optimize (PostGIS)
             </Button>
             <Button loading={busy === 'publish'} onClick={() => void run(() => client.publishRoute(route.id), 'publish')}>
+              <Send className="h-4 w-4" aria-hidden="true" />
               Publish
             </Button>
           </div>
         </Card>
       )}
 
-      <Card title={`Stops (${route.stops?.length ?? 0})`} actions={<Button variant="secondary" loading={busy === 'manifest'} onClick={() => void genManifest()}>Manifest</Button>}>
+      <Card
+        title={`Stops (${route.stops?.length ?? 0})`}
+        actions={
+          <Button variant="secondary" loading={busy === 'manifest'} onClick={() => void genManifest()}>
+            <ClipboardList className="h-4 w-4" aria-hidden="true" />
+            Manifest
+          </Button>
+        }
+      >
         {!route.stops || route.stops.length === 0 ? (
-          <EmptyState message="No stops yet. Add a pickup stop above." />
+          <EmptyState
+            icon={<MapPin className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />}
+            title="No stops yet"
+            message="No stops yet. Add a pickup stop above."
+          />
         ) : (
-          <ol className="space-y-2">
+          <ol className="stagger space-y-2">
             {route.stops.map((s) => {
               const actions = canWrite ? STOP_ACTIONS[s.status] ?? [] : [];
               return (
-                <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-bb-line p-3" data-testid={`stop-${s.id}`}>
-                  <div className="text-sm">
-                    <span className="font-medium text-bb-ink">#{s.seq} · {humanize(s.kind)}</span>{' '}
-                    <Badge tone={s.status === 'COMPLETED' ? 'green' : s.status === 'FAILED' || s.status === 'SKIPPED' ? 'red' : 'blue'}>{humanize(s.status)}</Badge>{' '}
-                    {s.orderId && <Link href={`/orders/${s.orderId}`} className="font-mono text-bb-blue hover:underline">{orderRef(s.orderId)}</Link>}
-                    {s.exceptionReason && <span className="ml-2 text-xs text-red-700">({s.exceptionReason})</span>}
+                <li
+                  key={s.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-input border border-hairline bg-subtle p-3 transition-colors duration-fast hover:bg-canvas"
+                  data-testid={`stop-${s.id}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-subhead">
+                    <span className="font-semibold text-ink">
+                      #{s.seq} · {humanize(s.kind)}
+                    </span>
+                    <StatusPill tone={stopTone(s.status)}>{humanize(s.status)}</StatusPill>
+                    {s.orderId && (
+                      <Link href={`/orders/${s.orderId}`} className="font-mono tabular-nums text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:shadow-focus rounded">
+                        {orderRef(s.orderId)}
+                      </Link>
+                    )}
+                    {s.exceptionReason && <span className="text-caption text-danger-strong">({s.exceptionReason})</span>}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap gap-1.5">
                     {actions.map((a) => (
-                      <Button key={a} variant="secondary" loading={busy === `${s.id}:${a}`} onClick={() => void stopAction(s.id, a)} className="!px-2 !py-1 text-xs">
+                      <Button key={a} variant="secondary" size="sm" loading={busy === `${s.id}:${a}`} onClick={() => void stopAction(s.id, a)}>
                         {a}
                       </Button>
                     ))}
@@ -192,22 +258,47 @@ export function RouteDetailView({ routeId }: { routeId: string }): React.ReactEl
       </Card>
 
       {manifest && (
-        <Card title="Manifest">
+        <Card title="Manifest" subtitle={`Generated ${shortDate(manifest.generatedAt)}`}>
           {manifest.lines.length === 0 ? (
-            <EmptyState message="No expected items on this route." />
+            <EmptyState
+              icon={<ClipboardList className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />}
+              message="No expected items on this route."
+            />
           ) : (
-            <ul className="space-y-2 text-sm">
+            <ul className="stagger space-y-2">
               {manifest.lines.map((l) => (
-                <li key={l.stopId} className="rounded-lg border border-bb-line p-2">
-                  <span className="font-medium text-bb-ink">#{l.seq} · {humanize(l.kind)}</span> · {l.expectedItemCount} item(s)
-                  {l.site?.name && <span className="text-bb-sub"> · {l.site.name}</span>}
+                <li key={l.stopId} className="rounded-input border border-hairline bg-subtle p-3 text-subhead">
+                  <span className="font-semibold text-ink">
+                    #{l.seq} · {humanize(l.kind)}
+                  </span>{' '}
+                  · <span className="font-mono tabular-nums">{l.expectedItemCount}</span> item(s)
+                  {l.site?.name && <span className="text-secondary"> · {l.site.name}</span>}
                 </li>
               ))}
             </ul>
           )}
-          <p className="mt-2 text-xs text-bb-sub">Generated {shortDate(manifest.generatedAt)}</p>
         </Card>
       )}
+    </div>
+  );
+}
+
+/** Screen-shaped skeleton for the initial route load. */
+function RouteDetailSkeleton(): React.ReactElement {
+  return (
+    <div className="space-y-6" role="status" aria-label="Loading">
+      <div className="space-y-3">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-80" />
+      </div>
+      <Card title={<Skeleton className="h-5 w-24" />}>
+        <div className="space-y-3">
+          <Skeleton className="h-16 w-full rounded-input" />
+          <Skeleton className="h-16 w-full rounded-input" />
+          <Skeleton className="h-16 w-full rounded-input" />
+        </div>
+      </Card>
     </div>
   );
 }

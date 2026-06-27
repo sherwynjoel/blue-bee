@@ -220,6 +220,8 @@ export class NotificationService {
     sourceType: 'Payment' | 'Dispute';
     sourceId: string;
     orderId: string | null;
+    /** Account fallback for resolving customer recipients when there is no order (invoice-level pay). */
+    accountId?: string | null;
     recipientScope: 'customer' | 'staff';
     amount?: string | null;
     currency?: string | null;
@@ -234,7 +236,9 @@ export class NotificationService {
           ? await this.recipients.resolveOrgStaffRecipients(input.orgId)
           : input.orderId
             ? await this.recipients.resolveOrderRecipients(input.orgId, input.orderId)
-            : [];
+            : input.accountId
+              ? await this.recipients.resolveAccountRecipients(input.orgId, input.accountId)
+              : [];
       if (recipients.length === 0) return;
 
       const orderRef = input.orderId ? shortOrderRef(input.orderId) : `#${input.sourceId.slice(0, 8)}`;

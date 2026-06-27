@@ -24,8 +24,12 @@ import type {
   FleetLiveResult,
   GenerateInvoiceDto,
   InspectionDto,
+  InvoiceListResult,
   InvoiceView,
+  ListInvoicesQuery,
   ListOrdersQuery,
+  PayInvoiceDto,
+  PaymentIntentResponse,
   ListRoutesQuery,
   MediaResult,
   OperationalAnalytics,
@@ -468,6 +472,43 @@ export class ConsoleApiClient extends ApiClient {
   /** Reconcile a pooled garment back to a resident (LOST_FOUND_POOL → RECONCILE). */
   reconcileLostFound(lostFoundId: string, dto: ReconcileDto): Promise<GarmentView> {
     return this.request('POST', `/lost-found/${lostFoundId}/reconcile`, { body: dto });
+  }
+
+  // ───────────── Track-A: B2B self-serve invoice portal (account-admin) ─────────────
+
+  /** The caller's own account's invoices (cursor-paginated; server confines ACCOUNT_* tokens by scope). */
+  listInvoices(query: ListInvoicesQuery = { limit: 25 }): Promise<InvoiceListResult> {
+    const p = new URLSearchParams();
+    if (query.limit != null) p.set('limit', String(query.limit));
+    if (query.cursor) p.set('cursor', query.cursor);
+    if (query.status) p.set('status', query.status);
+    const qs = p.toString();
+    return this.request('GET', `/invoices${qs ? `?${qs}` : ''}`);
+  }
+  /** Invoice detail — header + lines + the cost-centre split (out-of-scope id → 404). */
+  getInvoiceById(id: string): Promise<InvoiceView> {
+    return this.request('GET', `/invoices/${id}`);
+  }
+  /**
+   * Create/re-attempt the invoice PaymentIntent (B2B portal). Amount = the invoice total incl. HST,
+   * computed server-side; returns the client secret only. An idempotency-key makes a timeout/retry
+   * reuse the pending intent (never a double-charge).
+   */
+  payInvoice(id: string, dto: PayInvoiceDto = {}, idempotencyKey?: string): Promise<PaymentIntentResponse> {
+    return this.request('POST', `/invoices/${id}/payment-intent`, { body: dto, idempotencyKey });
+  }
+  /**
+   * The invoice statement as real PDF bytes (account-scoped attachment). Returns the blob + filename;
+   * the browser download (objectURL + anchor) stays in the component so this transport is SSR-safe.
+   */
+  async downloadInvoiceStatement(id: string): Promise<{ blob: Blob; filename: string }> {
+    const token = await this.accessToken();
+    const res = await fetch(`${this.base}/invoices/${id}/statement.pdf`, {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw await ApiError.from(res);
+    const blob = await res.blob();
+    return { blob, filename: attachmentFilename(res.headers.get('content-disposition')) ?? `invoice-${id}.pdf` };
   }
 }
 

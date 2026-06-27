@@ -918,6 +918,20 @@ async function seedCondoMultiSite(): Promise<void> {
     update: {},
     create: { id: CONDO_ACCOUNT, orgId: ID.org, type: AccountType.BUSINESS, name: CONDO_ACCOUNT_NAME, billingMode: BillingMode.BATCH_PERIODIC, billingNetDays: 30, createdBy: ID.owner },
   });
+
+  // The condo property manager (PRD §3.1 "David") — an ACCOUNT_ADMIN confined to THIS account. Drives
+  // the B2B self-serve invoice PORTAL demo: login → my invoices (incl. the per-tower split below) →
+  // detail → Download PDF → Pay. Account-scoped, so they see ONLY Lakeshore's invoices (cross-account → 404).
+  await prisma.user.upsert({
+    where: { id: cid(91) },
+    update: { phone: '+14165550022', name: 'Demo Lakeshore Property Mgr' },
+    create: { id: cid(91), orgId: ID.org, name: 'Demo Lakeshore Property Mgr', phone: '+14165550022', email: 'david@lakeshore-pm.example', authProviders: ['phone'], status: UserStatus.ACTIVE, createdBy: ID.owner },
+  });
+  await prisma.userRole.upsert({
+    where: { id: cid(92) },
+    update: {},
+    create: { id: cid(92), orgId: ID.org, userId: cid(91), role: RoleType.ACCOUNT_ADMIN, scope: RoleScope.ACCOUNT, scopeId: CONDO_ACCOUNT, createdBy: ID.owner },
+  });
   for (const t of CONDO_TOWERS) {
     await prisma.site.upsert({
       where: { id: t.id },
@@ -1011,7 +1025,7 @@ async function seedCondoMultiSite(): Promise<void> {
     skipDuplicates: true,
   });
 
-  console.log(`[seed] Branch4 §A ready: condo "${CONDO_ACCOUNT_NAME}" — 3 towers, 2 standing orders, 6 orders (3 DELIVERED), a COMPLETED run + manifest, 1 BATCH_PERIODIC invoice (net-30, HST ${m.tax}).`);
+  console.log(`[seed] Branch4 §A ready: condo "${CONDO_ACCOUNT_NAME}" — 3 towers, 2 standing orders, 6 orders (3 DELIVERED), a COMPLETED run + manifest, 1 BATCH_PERIODIC invoice (net-30, HST ${m.tax}). Portal admin: +14165550022.`);
 }
 
 // ─────────────────────── Branch 4 §B — residential specialty (Rita-like homeowners) ───────────────────────
@@ -1279,6 +1293,14 @@ async function seedCostCenters(): Promise<void> {
   const breakdown = [...CC]
     .sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
     .map((c) => ({ costCenterId: c.id, code: c.code, name: c.name, subtotal: c.subtotal.toFixed(2), tax: hst(c.subtotal).toFixed(2), total: (Math.round((c.subtotal + hst(c.subtotal)) * 100) / 100).toFixed(2) }));
+  // Fail loud if the per-bucket split (per-bucket HST) ever diverges from the invoice totals (aggregate
+  // HST) — they reconcile today (whole-dollar subtotals); this guard catches a future fractional desync.
+  const inv401 = await prisma.invoice.findUniqueOrThrow({ where: { id: cid(401) }, select: { subtotal: true, tax: true, total: true } });
+  const toCents = (s: string): number => Math.round(parseFloat(s) * 100);
+  const sumOf = (k: 'subtotal' | 'tax' | 'total'): number => breakdown.reduce((a, b) => a + toCents(b[k]), 0);
+  if (sumOf('subtotal') !== toCents(inv401.subtotal.toString()) || sumOf('tax') !== toCents(inv401.tax.toString()) || sumOf('total') !== toCents(inv401.total.toString())) {
+    throw new Error('[seed] cost-centre breakdown does not reconcile to the invoice totals (subtotal/tax/total)');
+  }
   await prisma.invoice.update({ where: { id: cid(401) }, data: { costCenterBreakdown: breakdown } });
 
   console.log(`[seed] Integration cost-centres ready: 3 on condo account (Tower A/B + Amenity), 3 orders + invoice lines attributed, 2 standing orders propagated, batch invoice split ${breakdown.map((b) => b.code + '=' + b.total).join(' ')}.`);

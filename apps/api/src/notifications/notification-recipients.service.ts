@@ -42,6 +42,28 @@ export class NotificationRecipientsService {
   }
 
   /**
+   * Account-scoped customer recipients (Track A — the B2B self-serve invoice-portal receipt). The
+   * owning account users of an invoice that has no order: ACCOUNT_ADMIN / ACCOUNT_STAFF /
+   * RESIDENTIAL_CUSTOMER grants scoped to the account (or one of its sites), ACTIVE users only. Mirrors
+   * `buildReadScope` — server-internal, so the query carries an EXPLICIT org_id and the account/site
+   * predicate guarantees we never resolve a user outside the account or another org.
+   */
+  async resolveAccountRecipients(orgId: string, accountId: string): Promise<RecipientUser[]> {
+    return this.prisma.$queryRaw<RecipientUser[]>(Prisma.sql`
+      SELECT DISTINCT u.id::text AS "userId", u.name AS "name", u.email AS "email", u.phone AS "phone"
+      FROM "UserRole" ur
+      JOIN "User" u ON u.id = ur.user_id AND u.status = 'ACTIVE'
+      LEFT JOIN "Site" s ON s.id = ur.scope_id AND s.org_id = ur.org_id
+      WHERE ur.org_id = ${orgId}::uuid
+        AND ur.role IN ('RESIDENTIAL_CUSTOMER', 'ACCOUNT_ADMIN', 'ACCOUNT_STAFF')
+        AND (
+          (ur.scope = 'ACCOUNT' AND ur.scope_id = ${accountId}::uuid)
+          OR (ur.scope = 'SITE' AND s.account_id = ${accountId}::uuid)
+        )
+    `);
+  }
+
+  /**
    * Org-staff recipients for an internal alert (Increment 12 — dispute alerts go to owner/finance,
    * §17.3). ORG-scoped OWNER/FINANCE grants, ACTIVE users only. Server-internal, so the query
    * carries an EXPLICIT org_id and never resolves a user outside the org.

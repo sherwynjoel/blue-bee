@@ -1,5 +1,15 @@
 import type { CostCenterBreakdownEntry } from '@blue-bee/shared';
-import { centsToMoney } from '../orders/money';
+import { centsToMoney, decimalMoney } from '../orders/money';
+
+/** Normalize a stored money string to fixed-2 ("100.8" → "100.80"); leaves legacy garbage untouched. */
+function fixed2(v: unknown): string {
+  const s = String(v ?? '0.00');
+  try {
+    return decimalMoney(s);
+  } catch {
+    return s;
+  }
+}
 
 /**
  * The cost-centre split math (PRD §A5.2) — pure + unit-locked (`cost-center-split.spec.ts`).
@@ -87,8 +97,9 @@ export function parseStoredBreakdown(json: unknown): CostCenterBreakdownEntry[] 
       costCenterId: typeof e.costCenterId === 'string' ? e.costCenterId : null,
       code: String(e.code ?? ''),
       name: String(e.name ?? ''),
-      subtotal: String(e.subtotal ?? '0.00'),
-      tax: String(e.tax ?? '0.00'),
-      total: String(e.total ?? '0.00'),
+      // Normalize to fixed-2 so the on-screen split (web money()) can never drop cents vs the PDF.
+      subtotal: fixed2(e.subtotal),
+      tax: fixed2(e.tax),
+      total: fixed2(e.total),
     }));
 }

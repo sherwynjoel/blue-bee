@@ -154,6 +154,9 @@ export class StripeWebhookService {
     if (!effect) return;
     try {
       if (effect.kind === 'succeeded') {
+        // Order-level pay: create/mark the order's PAID receipt invoice (no-op for an invoice-level
+        // pay — the targeted invoice was already flipped PAID in the webhook tx). Either way, send the
+        // customer receipt, resolving recipients by order OR (invoice-level pay) by account.
         await this.billing.ensureInvoiceForPayment(effect.payment);
         await this.notifications.dispatchPayment({
           orgId: effect.payment.orgId,
@@ -161,6 +164,7 @@ export class StripeWebhookService {
           sourceType: 'Payment',
           sourceId: effect.payment.paymentId,
           orderId: effect.payment.orderId,
+          accountId: effect.payment.accountId,
           recipientScope: 'customer',
           amount: effect.payment.amount,
           currency: effect.payment.currency,

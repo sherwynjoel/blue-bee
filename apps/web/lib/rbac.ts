@@ -32,6 +32,9 @@ export const STANDING_ORDER_WRITE_ROLES: RoleType[] = [RoleType.OWNER, RoleType.
 // Resident PII reads: ops + the account's own staff (their site only). Garment lifecycle ops: plant.
 export const RESIDENT_READ_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP, RoleType.ACCOUNT_ADMIN, RoleType.ACCOUNT_STAFF];
 export const GARMENT_OPS_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP];
+// B2B self-serve invoice portal — the account-customer persona (NOT ops). Mirrors the server @Roles on
+// /v1/invoices (ACCOUNT_ADMIN/ACCOUNT_STAFF self-serve; OWNER/FINANCE also read for support).
+export const PORTAL_ROLES: RoleType[] = [RoleType.ACCOUNT_ADMIN, RoleType.ACCOUNT_STAFF];
 
 export function roleNames(me: MeResponse | null): RoleType[] {
   return me ? me.user.roles.map((r) => r.role) : [];
@@ -45,6 +48,11 @@ export function hasAnyRole(me: MeResponse | null, allowed: RoleType[]): boolean 
 /** Whether this principal may reach the ops console at all (a customer-only token gets nothing). */
 export function isOps(me: MeResponse | null): boolean {
   return hasAnyRole(me, OPS_ROLES);
+}
+
+/** Whether this principal is a B2B account customer — the self-serve invoice portal audience. */
+export function isPortal(me: MeResponse | null): boolean {
+  return hasAnyRole(me, PORTAL_ROLES);
 }
 
 export const can = {
@@ -64,4 +72,6 @@ export const can = {
   // Track-B care homes — resident personal clothing.
   residents: (me: MeResponse | null) => hasAnyRole(me, RESIDENT_READ_ROLES),
   garmentOps: (me: MeResponse | null) => hasAnyRole(me, GARMENT_OPS_ROLES),
+  // B2B self-serve invoice portal.
+  portal: (me: MeResponse | null) => hasAnyRole(me, PORTAL_ROLES),
 };

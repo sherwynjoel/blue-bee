@@ -1,12 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   RoleType,
   createPaymentIntentSchema,
   generateInvoiceSchema,
+  payInvoiceSchema,
   refundPaymentSchema,
   type CreatePaymentIntentDto,
   type GenerateInvoiceDto,
+  type PayInvoiceDto,
   type RefundPaymentDto,
 } from '@blue-bee/shared';
 import { ZodBody } from '../common/zod-validation.pipe';
@@ -57,6 +59,23 @@ export class PaymentsController {
   @ApiOperation({ summary: "The order's invoice/receipt (scoped), or null." })
   getInvoice(@CurrentUser() p: RequestPrincipal, @Param('id') id: string) {
     return this.billing.getInvoiceForOrder(p, id);
+  }
+
+  // ─────────────────────────── B2B portal: pay an invoice (invoice-level) ───────────────────────────
+
+  @Post('invoices/:id/payment-intent')
+  @Roles(RoleType.OWNER, RoleType.ACCOUNT_ADMIN, RoleType.ACCOUNT_STAFF)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create/re-attempt the PaymentIntent for an invoice (B2B portal). Amount = the invoice total incl. HST, computed server-side. Returns the client secret only; the invoice flips PAID only on the signed webhook.' })
+  createInvoiceIntent(@CurrentUser() p: RequestPrincipal, @Param('id', new ParseUUIDPipe()) id: string, @Body(new ZodBody(payInvoiceSchema)) dto: PayInvoiceDto) {
+    return this.payments.createInvoiceIntent(p, id, dto);
+  }
+
+  @Get('invoices/:id/payment')
+  @Roles(RoleType.OWNER, RoleType.FINANCE, RoleType.ACCOUNT_ADMIN, RoleType.ACCOUNT_STAFF)
+  @ApiOperation({ summary: "The invoice's latest payment (scoped). The portal polls this / the invoice until the webhook confirms success." })
+  getInvoicePayment(@CurrentUser() p: RequestPrincipal, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.payments.getPaymentForInvoice(p, id);
   }
 
   // ─────────────────────────── owner / finance ───────────────────────────

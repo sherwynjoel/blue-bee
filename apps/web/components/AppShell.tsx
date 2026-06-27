@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   BarChart3,
   Building2,
@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
-import { can, isOps, roleNames } from '@/lib/rbac';
+import { can, isOps, isPortal, roleNames } from '@/lib/rbac';
 import { useTheme } from '@/lib/theme';
 import { Button, IconButton, Loading, cn } from './ui';
 import { Login } from './Login';
@@ -56,10 +56,19 @@ function ThemeToggle(): React.ReactElement {
 export function AppShell({ children }: { children: React.ReactNode }): React.ReactElement {
   const { status, me, logout } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
+
+  // A B2B account customer (ACCOUNT_ADMIN/ACCOUNT_STAFF, not an ops role) belongs in the self-serve
+  // invoice portal, not the operator console — route them there (the server stays authoritative).
+  const toPortal = status === 'signedIn' && isPortal(me) && !isOps(me);
+  useEffect(() => {
+    if (toPortal) router.replace('/portal');
+  }, [toPortal, router]);
 
   if (status === 'loading') return <Loading label="Loading console…" />;
   if (status === 'signedOut') return <Login />;
+  if (toPortal) return <Loading label="Opening your portal…" />;
 
   if (!isOps(me)) {
     return (

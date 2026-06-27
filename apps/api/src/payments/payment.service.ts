@@ -1,15 +1,19 @@
-import { ConflictException, Inject, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
+  InvoiceStatus,
   OrderStatus,
   PaymentStatus,
   PAYMENT_ERRORS,
+  INVOICE_PORTAL_ERRORS,
   QuoteStatus,
   type CreatePaymentIntentDto,
+  type PayInvoiceDto,
   type PaymentIntentResponse,
   type PaymentView,
 } from '@blue-bee/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { scopedPrisma } from '../prisma/scoped-prisma';
 import { AuditService } from '../orders/audit.service';
 import { OrderAccessService } from '../orders/order-access.service';
 import { OrderStateMachine } from '../orders/state-machine.service';
@@ -36,6 +40,8 @@ export interface PaymentSucceededEffect {
   paymentId: string;
   orgId: string;
   orderId: string | null;
+  /** Set for an invoice-level (B2B portal) charge — the invoice this payment targets (already flipped PAID in-tx). */
+  invoiceId: string | null;
   accountId: string | null;
   amount: string;
   currency: string;
@@ -171,6 +177,139 @@ export class PaymentService {
     return this.intentResponse(payment.id, intent.clientSecret, amountStr, currency, PaymentStatus.PENDING);
   }
 
+  // ─────────────────────────── B2B portal: pay an invoice (invoice-level) ───────────────────────────
+
+  /**
+   * Create (or re-attempt) the PaymentIntent for an INVOICE (the B2B self-serve portal). The amount is
+   * ALWAYS the invoice total incl. HST, computed server-side (the body carries no money), behind the
+   * same PaymentProvider seam + a deterministic idempotency key (`pi-invoice-<id>-<attempt>`) so a
+   * re-attempt reuses the pending intent — never a double-charge. Returns ONLY the client secret. The
+   * invoice flips to PAID exclusively on the signature-verified `payment_intent.succeeded` webhook
+   * (`applyPaymentSucceeded`), never here.
+   */
+  async createInvoiceIntent(principal: RequestPrincipal, invoiceId: string, _dto: PayInvoiceDto): Promise<PaymentIntentResponse> {
+    // Ownership + scope: 403 cross-account (same org) / 404 cross-org or nonexistent.
+    const invoice = await this.requireInvoiceForPay(principal, invoiceId);
+
+    const status = invoice.status as unknown as InvoiceStatus;
+    if (status === InvoiceStatus.PAID) {
+      throw new ConflictException({ error: INVOICE_PORTAL_ERRORS.ALREADY_PAID, message: `Invoice ${invoiceId} is already paid` });
+    }
+    if (status !== InvoiceStatus.ISSUED && status !== InvoiceStatus.OVERDUE) {
+      throw new ConflictException({ error: INVOICE_PORTAL_ERRORS.NOT_PAYABLE, message: `Invoice ${invoiceId} is not payable in status ${status}` });
+    }
+
+    // Server-computed charge = the invoice total (incl. HST). Never a client amount.
+    const amountStr = decimalMoney(invoice.total);
+    const amountMinor = moneyToCents(amountStr);
+    const currency = invoice.currency || this.config.currency;
+
+    // Decide the single Payment row to drive — SERIALIZED per invoice via a row lock so two concurrent
+    // pay attempts can never create two PENDING payments / two Stripe intents (a double-charge window).
+    // The lock + the deterministic per-invoice idempotency key together guarantee at-most-one intent.
+    const decision = await this.prisma.$transaction(async (tx) => {
+      // Lock THIS invoice row (tx does not inherit the scoped extension → pin orgId explicitly).
+      await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${invoiceId}::uuid AND org_id = ${invoice.orgId}::uuid FOR UPDATE`;
+
+      // Already settled by a SUCCEEDED payment? (defensive — the status guard above also covers PAID.)
+      const succeeded = await tx.payment.findFirst({ where: { invoiceId, orgId: invoice.orgId, status: PaymentStatus.SUCCEEDED } });
+      if (succeeded) {
+        throw new ConflictException({ error: INVOICE_PORTAL_ERRORS.ALREADY_PAID, message: `Invoice ${invoiceId} is already paid` });
+      }
+
+      // Re-attempt: a pending intent already exists → reuse it (no second intent).
+      const pending = await tx.payment.findFirst({ where: { invoiceId, orgId: invoice.orgId, status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
+      if (pending && pending.idempotencyKey) {
+        return { reuse: true as const, payment: pending };
+      }
+
+      // New attempt — bounded by the dunning retry cap. The count runs under the row lock, so the
+      // attempt number (→ the idempotency key) is consistent even under concurrency.
+      const attempts = await tx.payment.count({ where: { invoiceId, orgId: invoice.orgId } });
+      if (attempts >= this.config.maxPaymentAttempts) {
+        throw new ConflictException({ error: PAYMENT_ERRORS.RETRY_LIMIT_REACHED, message: 'Payment retry limit reached; please contact support' });
+      }
+      const created = await tx.payment.create({
+        data: {
+          orgId: invoice.orgId,
+          invoiceId,
+          accountId: invoice.accountId,
+          amount: amountStr,
+          currency,
+          status: PaymentStatus.PENDING,
+          captureMethod: this.captureMethod(),
+          idempotencyKey: `pi-invoice-${invoiceId}-${attempts + 1}`,
+          attempts: attempts + 1,
+          createdBy: principal.userId,
+        },
+      });
+      return { reuse: false as const, payment: created };
+    });
+
+    const payment = decision.payment;
+    const idempotencyKey = payment.idempotencyKey as string;
+
+    // Create the intent OUTSIDE the lock — the deterministic key means a reuse re-calls the provider
+    // with the SAME key, so Stripe returns the identical intent + client secret (no double-charge).
+    let intent;
+    try {
+      intent = await this.provider.createPaymentIntent({
+        amountMinor,
+        currency: currency.toLowerCase(),
+        invoiceId,
+        orgId: invoice.orgId,
+        accountId: invoice.accountId,
+        idempotencyKey,
+        captureMethod: this.captureMethod(),
+      });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      if (!decision.reuse) {
+        await this.prisma.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED, lastError: reason } });
+      }
+      throw new UnprocessableEntityException({ error: INVOICE_PORTAL_ERRORS.NOT_PAYABLE, message: `Could not start payment: ${reason}` });
+    }
+
+    if (payment.stripePaymentIntentId !== intent.id) {
+      await this.prisma.payment.update({ where: { id: payment.id }, data: { stripePaymentIntentId: intent.id } });
+    }
+    if (!decision.reuse) {
+      await this.audit.record({
+        orgId: invoice.orgId,
+        actorId: principal.userId,
+        entity: 'Payment',
+        entityId: payment.id,
+        action: 'PAYMENT_INTENT_CREATED',
+        after: { invoiceId, amount: amountStr, currency, intentId: intent.id, attempt: payment.attempts, provider: this.provider.name },
+      });
+    }
+
+    return this.intentResponse(payment.id, intent.clientSecret, amountStr, currency, PaymentStatus.PENDING);
+  }
+
+  /** The invoice's current payment (latest), scoped to the caller — the portal polls this. Null when none. */
+  async getPaymentForInvoice(principal: RequestPrincipal, invoiceId: string): Promise<PaymentView | null> {
+    const invoice = await this.requireInvoiceForRead(principal, invoiceId); // scope → 404 if not visible
+    const p = await this.prisma.payment.findFirst({ where: { invoiceId, orgId: invoice.orgId }, orderBy: { createdAt: 'desc' } });
+    return p ? toPaymentView(p) : null;
+  }
+
+  /** Pay-gate: scoped read → 403 cross-account (same org), 404 cross-org/nonexistent (no existence leak). */
+  private async requireInvoiceForPay(principal: RequestPrincipal, invoiceId: string) {
+    const scoped = await scopedPrisma(this.prisma, principal).invoice.findFirst({ where: { id: invoiceId } });
+    if (scoped) return scoped;
+    const inOrg = await this.prisma.invoice.findFirst({ where: { id: invoiceId, orgId: principal.orgId } });
+    if (inOrg) throw new ForbiddenException({ error: INVOICE_PORTAL_ERRORS.CROSS_ACCOUNT_FORBIDDEN, message: 'Invoice belongs to a different account in your organization' });
+    throw new NotFoundException({ error: INVOICE_PORTAL_ERRORS.INVOICE_NOT_FOUND, message: `Invoice ${invoiceId} not found` });
+  }
+
+  /** Read-gate: scoped read → 404 (no 403/existence leak on pure reads, per the codebase convention). */
+  private async requireInvoiceForRead(principal: RequestPrincipal, invoiceId: string) {
+    const inv = await scopedPrisma(this.prisma, principal).invoice.findFirst({ where: { id: invoiceId } });
+    if (!inv) throw new NotFoundException({ error: INVOICE_PORTAL_ERRORS.INVOICE_NOT_FOUND, message: `Invoice ${invoiceId} not found` });
+    return inv;
+  }
+
   // ─────────────────────────── reads ───────────────────────────
 
   /** The order's current payment (latest), scoped — for the app's Pay surface. Null when none. */
@@ -214,6 +353,29 @@ export class PaymentService {
     if (payment.orderId) {
       await this.mirrorOrderPaymentStatus(tx, payment.orgId, payment.orderId, 'PAID');
       await this.maybeAdvanceToInvoiced(tx, payment.orgId, payment.orderId);
+    }
+    if (payment.invoiceId) {
+      // Invoice-level pay (B2B portal): the targeted invoice IS the receipt. Flip it to PAID in-tx
+      // (the source of truth), scoped explicitly by orgId (the tx client does not inherit row-scoping).
+      // Money guard: only flip PAID when the webhook-captured amount covers the SERVER-computed charge
+      // (the invoice total) — an underpayment/partial capture must NOT silently mark the invoice paid.
+      const expectedMinor = moneyToCents(String(payment.amount));
+      if (capturedMinor < expectedMinor) {
+        await this.audit.record(
+          { orgId: payment.orgId, actorId: null, entity: 'Invoice', entityId: payment.invoiceId, action: 'INVOICE_PAYMENT_UNDERPAID', after: { paymentId: payment.id, captured: centsToMoney(capturedMinor), expected: centsToMoney(expectedMinor) } },
+          tx,
+        );
+        this.logger.warn(`invoice ${payment.invoiceId}: captured ${centsToMoney(capturedMinor)} < expected ${centsToMoney(expectedMinor)} — payment SUCCEEDED but invoice NOT marked PAID`);
+      } else {
+        const inv = await tx.invoice.findFirst({ where: { id: payment.invoiceId, orgId: payment.orgId } });
+        if (inv && inv.status !== InvoiceStatus.PAID && inv.status !== InvoiceStatus.VOID) {
+          await tx.invoice.update({ where: { id: inv.id }, data: { status: InvoiceStatus.PAID, paidAt: new Date() } });
+          await this.audit.record(
+            { orgId: payment.orgId, actorId: null, entity: 'Invoice', entityId: inv.id, action: 'INVOICE_PAID', after: { via: 'payment_intent', paymentId: payment.id } },
+            tx,
+          );
+        }
+      }
     }
     await this.audit.record(
       { orgId: payment.orgId, actorId: null, entity: 'Payment', entityId: payment.id, action: 'PAYMENT_SUCCEEDED', after: { intentId, chargeId, amount: centsToMoney(capturedMinor) } },
@@ -264,8 +426,8 @@ export class PaymentService {
     }
   }
 
-  private toSucceededEffect(p: { id: string; orgId: string; orderId: string | null; accountId: string | null; capturedAmount: Prisma.Decimal | string; amount: Prisma.Decimal | string; currency: string }): PaymentSucceededEffect {
-    return { paymentId: p.id, orgId: p.orgId, orderId: p.orderId, accountId: p.accountId, amount: decimalMoney(p.amount), currency: p.currency };
+  private toSucceededEffect(p: { id: string; orgId: string; orderId: string | null; invoiceId: string | null; accountId: string | null; capturedAmount: Prisma.Decimal | string; amount: Prisma.Decimal | string; currency: string }): PaymentSucceededEffect {
+    return { paymentId: p.id, orgId: p.orgId, orderId: p.orderId, invoiceId: p.invoiceId, accountId: p.accountId, amount: decimalMoney(p.amount), currency: p.currency };
   }
   private toFailedEffect(p: { id: string; orgId: string; orderId: string | null; amount: Prisma.Decimal | string; currency: string }, _err: string | null): PaymentFailedEffect {
     return { paymentId: p.id, orgId: p.orgId, orderId: p.orderId, amount: decimalMoney(p.amount), currency: p.currency };

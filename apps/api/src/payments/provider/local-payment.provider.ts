@@ -33,7 +33,7 @@ export class LocalPaymentProvider implements PaymentProvider {
 
   async createPaymentIntent(input: CreateIntentInput): Promise<ProviderPaymentIntent> {
     const id = localId('pi', input.idempotencyKey);
-    this.logger.log(`[local] createPaymentIntent ${id} ${input.amountMinor} ${input.currency} (order ${input.orderId})`);
+    this.logger.log(`[local] createPaymentIntent ${id} ${input.amountMinor} ${input.currency} (order ${input.orderId ?? '-'} invoice ${input.invoiceId ?? '-'})`);
     return {
       id,
       // Same shape as a real client secret so the app + the proof parse the intent id identically.

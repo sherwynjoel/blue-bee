@@ -22,7 +22,10 @@ export interface CreateIntentInput {
   amountMinor: number;
   /** ISO 4217 lower-cased for Stripe (e.g. 'cad'). */
   currency: string;
-  orderId: string;
+  /** The order being paid (order-level pay). Omitted for an invoice-level (B2B portal) charge. */
+  orderId?: string;
+  /** The invoice being paid (invoice-level pay — the B2B self-serve portal). Omitted for order-level. */
+  invoiceId?: string;
   orgId: string;
   accountId: string;
   /** For Stripe `receipt_email` (a Stripe-issued receipt in addition to ours). */

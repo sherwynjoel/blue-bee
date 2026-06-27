@@ -42,9 +42,14 @@ export class StripePaymentProvider implements PaymentProvider {
       currency: input.currency,
       capture_method: input.captureMethod,
       description: input.description,
-      // metadata is how the webhook maps the Stripe object back to OUR org/order (tenancy) — never
-      // trust the client; this is the trusted server-set linkage.
-      metadata: { orgId: input.orgId, orderId: input.orderId, accountId: input.accountId },
+      // metadata is the trusted server-set linkage for logs/ledger — the webhook still maps the Stripe
+      // object back to OUR Payment row by stripePaymentIntentId (never trusts metadata for tenancy).
+      metadata: {
+        orgId: input.orgId,
+        accountId: input.accountId,
+        ...(input.orderId ? { orderId: input.orderId } : {}),
+        ...(input.invoiceId ? { invoiceId: input.invoiceId } : {}),
+      },
       automatic_payment_methods: { enabled: true },
     };
     if (input.customerEmail) params.receipt_email = input.customerEmail;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -460,6 +460,54 @@ function Scrim({ onClose }: { onClose: () => void }): React.ReactElement {
   return <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-fade-in dark:bg-black/60" onClick={onClose} aria-hidden="true" />;
 }
 
+const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),iframe,[tabindex]:not([tabindex="-1"])';
+
+/**
+ * Dialog focus management for an aria-modal overlay: autofocus into the panel on open, Escape to close,
+ * a Tab focus-trap within the panel, and focus restoration to the trigger on close. Runs once on mount
+ * (Escape uses a ref to the latest onClose) so it never steals focus on re-render (e.g. typing in a field).
+ */
+function useDialogFocus(onClose: () => void): React.RefObject<HTMLDivElement> {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    panel?.focus();
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key === 'Tab' && panel) {
+        const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null || el === document.activeElement);
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (!first || !last) return;
+        const active = document.activeElement;
+        if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      previouslyFocused?.focus?.();
+    };
+    // Mount/unmount only — onClose is read via onCloseRef so re-renders never re-trigger focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return panelRef;
+}
+
 /** Centered modal dialog (scrim + blur, e3, scale-in). */
 export function Modal({
   title,
@@ -473,10 +521,11 @@ export function Modal({
   size?: 'sm' | 'md' | 'lg';
 }): React.ReactElement {
   const w = size === 'sm' ? 'max-w-md' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg';
+  const panelRef = useDialogFocus(onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
       <Scrim onClose={onClose} />
-      <div className={cn('relative w-full rounded-sheet border border-hairline bg-surface p-6 shadow-e3 animate-scale-in', w)}>
+      <div ref={panelRef} tabIndex={-1} className={cn('relative w-full rounded-sheet border border-hairline bg-surface p-6 shadow-e3 animate-scale-in focus-visible:outline-none', w)}>
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-title3 text-ink">{title}</h2>
           <IconButton label="Close" size="sm" onClick={onClose}>
@@ -501,10 +550,11 @@ export function Sheet({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }): React.ReactElement {
+  const panelRef = useDialogFocus(onClose);
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={title}>
       <Scrim onClose={onClose} />
-      <div className="relative flex h-full w-full max-w-md origin-right flex-col border-l border-hairline bg-surface shadow-e3 animate-scale-in">
+      <div ref={panelRef} tabIndex={-1} className="relative flex h-full w-full max-w-md origin-right flex-col border-l border-hairline bg-surface shadow-e3 animate-scale-in focus-visible:outline-none">
         <div className="flex items-center justify-between gap-3 border-b border-hairline px-5 py-4">
           <h2 className="text-title3 text-ink">{title}</h2>
           <IconButton label="Close" size="sm" onClick={onClose}>

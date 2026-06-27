@@ -1,12 +1,16 @@
 /* eslint-disable no-console */
 /**
- * Headless integration proof (Increment 9). Drives the driver app's REAL ApiClient against the
- * RUNNING backend over HTTP — proving the whole duty loop end-to-end without a simulator:
+ * Headless integration proof (Increment 9 + the Increment-17 POD-capture flow). Drives the driver
+ * app's REAL ApiClient against the RUNNING backend over HTTP — proving the whole duty loop end-to-end
+ * without a simulator:
  *   login (console OTP) → /me → /driver/assignment → start shift → POST /locations:batch →
- *   walk a stop through §5.4 (depart→arrive→start→complete) → register + unregister a device token.
+ *   walk a stop through §5.4 (depart→arrive→start→complete) → register + unregister a device token →
+ *   [6] proof of delivery: presign → PUT REAL photo+signature bytes (MinIO) → POST the POD (gated
+ *   delivery complete, signed reads, idempotent) → complete the delivery stop.
  *
  * What this CANNOT prove headlessly (documented in the handoff): the UI rendered on a device, the OS
- * background-location task firing, and a push physically arriving — those need the on-device run.
+ * background-location task firing, a push physically arriving, and the REAL camera + signature pad +
+ * device GPS — those need the on-device run.
  *
  * Prereq: the API running at API_BASE_URL (default http://localhost:3000) with the seed applied.
  * Run:    npm --workspace @blue-bee/driver run integration
@@ -157,7 +161,53 @@ async function main(): Promise<void> {
   check('device token unregister → 204 (no throw)', true);
   console.log('  · (real-device push RECEIPT is proven in the on-device run — see the handoff)');
 
-  console.log(`\n✓ ALL ${passed} CHECKS PASSED — the driver duty loop runs end-to-end against the live API.\n`);
+  console.log('\n[6] proof of delivery at a DELIVERY stop (photo + signature + geo, REAL bytes → MinIO)');
+  // A fresh DELIVERY stop on driver1's active shift (the seeded walk above was a PICKUP).
+  const dOrderId = (
+    await raw('POST', '/orders', owner, {
+      accountId: ACCOUNT_A,
+      siteId: SITE_NORTH,
+      pickupWindow: { start: new Date(Date.now() + 3_600_000).toISOString(), end: new Date(Date.now() + 7_200_000).toISOString() },
+      items: [{ kind: 'RUG', serviceId: SERVICE, estimatedMeasure: 40 }],
+    })
+  ).json.id;
+  const dRouteId = (await raw('POST', '/routes', dispatcher, { date: '2026-07-21' })).json.id;
+  const dStopId = (await raw('POST', `/routes/${dRouteId}/stops`, dispatcher, { orderId: dOrderId, kind: 'DELIVERY' })).json.id;
+  await raw('POST', `/routes/${dRouteId}/assign`, dispatcher, { driverId, vehicleId });
+  await raw('POST', `/routes/${dRouteId}/publish`, dispatcher);
+  for (const action of ['depart', 'arrive', 'start'] as const) await driver.stopAction(dStopId, action);
+
+  // The delivery complete is GATED on a POD (server-authoritative; clean 400, machine untouched).
+  const gated = await driver.stopAction(dStopId, 'complete').then(() => false).catch((e) => (e as { status?: number })?.status === 400);
+  check('delivery complete is gated on POD (→ 400)', gated === true);
+
+  // presign → PUT REAL bytes (photo jpeg + signature png) through the REAL driver client.
+  async function uploadPod(contentType: string, bytes: Buffer): Promise<string> {
+    const pre = await driver.presignPodMedia(dStopId, { contentType, byteSize: bytes.length });
+    const put = await fetch(pre.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: new Uint8Array(bytes) });
+    check(`PUT real ${contentType} bytes to the presigned URL → 200`, put.status === 200, `key=${pre.storageKey}`);
+    return pre.storageKey;
+  }
+  const photoKey = await uploadPod('image/jpeg', Buffer.from('pod-photo-' + 'x'.repeat(400)));
+  const sigKey = await uploadPod('image/png', Buffer.from('pod-signature-' + 'y'.repeat(200)));
+
+  // POST the POD (the endpoint HEAD-verifies each object + links them) — then read back signed.
+  const pod = await driver.captureProofOfDelivery(dStopId, { signatureStorageKey: sigKey, photoStorageKeys: [photoKey], geo: { lng: -79.4111, lat: 43.7615 } });
+  check('POD signature is a signed read (no raw key)', !!pod.signature?.downloadUrl?.includes('X-Amz-Signature'));
+  check('POD has 1 delivery photo (signed read)', pod.photos.length === 1 && !!pod.photos[0]?.downloadUrl?.includes('X-Amz-Signature'));
+  check('POD geo round-trips', Math.abs((pod.geo?.lat ?? 0) - 43.7615) < 0.001, `${pod.geo?.lat?.toFixed(4)},${pod.geo?.lng?.toFixed(4)}`);
+
+  // Idempotent on the stop — re-POST returns the same row.
+  const pod2 = await driver.captureProofOfDelivery(dStopId, { signatureStorageKey: sigKey, photoStorageKeys: [photoKey] });
+  check('POD is idempotent on the stop (same row)', pod2.id === pod.id);
+
+  // With the POD captured, the delivery stop now COMPLETES.
+  await driver.stopAction(dStopId, 'complete');
+  const dWalked = await raw('GET', `/route-stops/${dStopId}`, dispatcher);
+  check('delivery stop reached COMPLETED after POD', dWalked.json.status === 'COMPLETED');
+  console.log('  · (the real camera + signature pad + device GPS are proven in the on-device run — see the handoff)');
+
+  console.log(`\n✓ ALL ${passed} CHECKS PASSED — the driver duty loop + proof-of-delivery run end-to-end against the live API.\n`);
 }
 
 main().catch((err) => {

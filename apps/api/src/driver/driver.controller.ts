@@ -1,6 +1,16 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { RoleType, stopActionSchema, stopExceptionSchema, type StopActionDto, type StopExceptionDto } from '@blue-bee/shared';
+import {
+  captureProofOfDeliverySchema,
+  presignPodMediaSchema,
+  RoleType,
+  stopActionSchema,
+  stopExceptionSchema,
+  type CaptureProofOfDeliveryDto,
+  type PresignPodMediaDto,
+  type StopActionDto,
+  type StopExceptionDto,
+} from '@blue-bee/shared';
 import { ZodBody } from '../common/zod-validation.pipe';
 import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { CurrentUser, Roles } from '../auth/rbac/decorators';
@@ -83,5 +93,27 @@ export class DriverController {
   @ApiOperation({ summary: 'Skip a stop (→ SKIPPED) — requires a reason code.' })
   skip(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(stopExceptionSchema)) dto: StopExceptionDto) {
     return this.driver.stopAction(p, id, 'skip', dto);
+  }
+
+  // ── proof of delivery (Increment 17): photo + signature + geo at a DELIVERY stop ──
+
+  @Post('stops/:id/pod/presign')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Presign a POD photo/signature upload for MY delivery stop (owner-scoped to the stop).' })
+  presignPod(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(presignPodMediaSchema)) dto: PresignPodMediaDto) {
+    return this.driver.presignPodMedia(p, id, dto);
+  }
+
+  @Post('stops/:id/proof-of-delivery')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Capture POD (confirmed photo(s) + signature + geo) for MY delivery stop. Idempotent on the stop.' })
+  capturePod(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(captureProofOfDeliverySchema)) dto: CaptureProofOfDeliveryDto) {
+    return this.driver.captureProofOfDelivery(p, id, dto);
+  }
+
+  @Get('stops/:id/proof-of-delivery')
+  @ApiOperation({ summary: 'Read MY stop’s captured proof of delivery (signed reads).' })
+  getPod(@CurrentUser() p: RequestPrincipal, @Param('id') id: string) {
+    return this.driver.getProofOfDelivery(p, id);
   }
 }

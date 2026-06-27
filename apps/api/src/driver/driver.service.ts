@@ -1,22 +1,41 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Photo } from '@prisma/client';
 import {
+  type CaptureProofOfDeliveryDto,
   DRIVER_ERRORS,
   type DriverAssignment,
   type DriverRouteView,
   type DriverShiftView,
   type DriverStopAction,
   type DriverStopView,
+  POD_ERRORS,
+  type PodMediaView,
+  type PresignMediaResult,
+  type PresignPodMediaDto,
+  type ProofOfDeliveryView,
   RoleScope,
   RoleType,
   RouteStatus,
+  RouteStopKind,
   ShiftStatus,
   type StopActionDto,
   type StopExceptionDto,
 } from '@blue-bee/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
+import { AuditService } from '../orders/audit.service';
+import { MediaService } from '../media/media.service';
 import { ShiftService } from '../logistics/fleet.service';
 import { RouteStopService } from '../logistics/route-stop.service';
+
+/** The own-stop fields the duty loop + POD flow need (kind/orderId gate the POD precondition). */
+interface OwnedStop {
+  id: string;
+  orgId: string;
+  orderId: string | null;
+  kind: RouteStopKind;
+}
+const DELIVERY_KINDS = new Set<RouteStopKind>([RouteStopKind.DELIVERY, RouteStopKind.BOTH]);
 
 /**
  * The driver-self-scoped duty-loop service (Increment 9). It owns ONE responsibility the proven
@@ -33,6 +52,8 @@ export class DriverService {
     private readonly prisma: PrismaService,
     private readonly shifts: ShiftService,
     private readonly stops: RouteStopService,
+    private readonly media: MediaService,
+    private readonly audit: AuditService,
   ) {}
 
   /** The caller's Driver profile (the duty loop is meaningless without one). */
@@ -192,7 +213,17 @@ export class DriverService {
   // ── §5.4 stop actions (own route's stops only) ──
 
   async stopAction(p: RequestPrincipal, stopId: string, action: DriverStopAction, dto: StopActionDto | StopExceptionDto): Promise<unknown> {
-    await this.assertOwnStop(p, stopId);
+    const stop = await this.requireOwnStop(p, stopId);
+    // Delivery POD gate (Increment 17, additive — driver layer only, the §5.4 graph + ops path +
+    // pickup stops are untouched): a DELIVERY/BOTH stop cannot be COMPLETED until its POD is captured.
+    // Checked BEFORE delegating, so a missing POD never enters the state machine — a clean 4xx, no
+    // half-applied transition. (Ops `/v1/route-stops` keeps its admin-override complete, ungated.)
+    if (action === 'complete' && DELIVERY_KINDS.has(stop.kind)) {
+      const pod = await this.prisma.proofOfDelivery.findFirst({ where: { routeStopId: stop.id, orgId: p.orgId }, select: { id: true } });
+      if (!pod) {
+        throw new BadRequestException({ error: POD_ERRORS.POD_REQUIRED, message: 'capture proof of delivery before completing this delivery stop' });
+      }
+    }
     const sp = this.asOrgScoped(p); // ownership already verified above; org-scope the delegated read
     switch (action) {
       case 'depart':
@@ -210,13 +241,118 @@ export class DriverService {
     }
   }
 
-  private async assertOwnStop(p: RequestPrincipal, stopId: string): Promise<void> {
+  /** Verify the caller's Driver profile owns the stop (route.driverId + org), returning the fields the
+   *  duty loop + POD flow need. 404 (no such stop in org) / 403 (not on your route). */
+  private async requireOwnStop(p: RequestPrincipal, stopId: string): Promise<OwnedStop> {
     const driver = await this.requireDriver(p);
     const stop = await this.prisma.routeStop.findFirst({
       where: { id: stopId, orgId: p.orgId },
-      select: { route: { select: { driverId: true } } },
+      select: { id: true, orgId: true, orderId: true, kind: true, route: { select: { driverId: true } } },
     });
     if (!stop) throw new NotFoundException({ error: DRIVER_ERRORS.NOT_OWN_STOP, message: 'stop not found' });
     if (stop.route?.driverId !== driver.id) throw new ForbiddenException({ error: DRIVER_ERRORS.NOT_OWN_STOP, message: 'not a stop on your route' });
+    return { id: stop.id, orgId: stop.orgId, orderId: stop.orderId, kind: stop.kind as unknown as RouteStopKind };
+  }
+
+  // ── proof of delivery (Increment 17): photo + signature + geo at a DELIVERY stop ──
+
+  /** POD applies only to a DELIVERY/BOTH stop that has an order to attribute the evidence to. */
+  private assertDeliveryStopWithOrder(stop: OwnedStop): string {
+    if (!DELIVERY_KINDS.has(stop.kind)) {
+      throw new BadRequestException({ error: POD_ERRORS.STOP_NOT_DELIVERY, message: 'proof of delivery applies only to delivery stops' });
+    }
+    if (!stop.orderId) {
+      throw new BadRequestException({ error: POD_ERRORS.STOP_HAS_NO_ORDER, message: 'this stop has no order to attach proof of delivery to' });
+    }
+    return stop.orderId;
+  }
+
+  /** Presign a POD photo/signature upload for MY delivery stop (the order comes from the stop). */
+  async presignPodMedia(p: RequestPrincipal, stopId: string, dto: PresignPodMediaDto): Promise<PresignMediaResult> {
+    const stop = await this.requireOwnStop(p, stopId);
+    const orderId = this.assertDeliveryStopWithOrder(stop);
+    return this.media.presignForStop(p, orderId, dto);
+  }
+
+  /**
+   * Capture proof of delivery for MY delivery stop: HEAD-verify each referenced media object (presigned
+   * for THIS stop's order), link the delivery photo(s) + the signature to the POD, store the signature
+   * key + the optional device geo, and stamp capturedBy/At. Idempotent on the stop's unique POD row —
+   * re-submitting is safe. Audited. Never trusts a client URL (only confirmed object keys).
+   */
+  async captureProofOfDelivery(p: RequestPrincipal, stopId: string, dto: CaptureProofOfDeliveryDto): Promise<ProofOfDeliveryView> {
+    const stop = await this.requireOwnStop(p, stopId);
+    const orderId = this.assertDeliveryStopWithOrder(stop);
+
+    // 1) Confirm (head-verify) every key against THIS stop's order — idempotent, returns the Photos.
+    const signaturePhoto = await this.media.confirmForStop(p, dto.signatureStorageKey, orderId);
+    const linked: Photo[] = [signaturePhoto];
+    const seen = new Set<string>([signaturePhoto.id]);
+    for (const key of dto.photoStorageKeys) {
+      const photo = await this.media.confirmForStop(p, key, orderId);
+      if (!seen.has(photo.id)) {
+        seen.add(photo.id);
+        linked.push(photo);
+      }
+    }
+
+    // 2) Upsert the POD (unique routeStopId → idempotent) + link photos + geo + audit, atomically.
+    await this.prisma.$transaction(async (tx) => {
+      const pod = await tx.proofOfDelivery.upsert({
+        where: { routeStopId: stop.id },
+        create: { orgId: stop.orgId, routeStopId: stop.id, signatureKey: signaturePhoto.storageKey, capturedBy: p.userId, createdBy: p.userId },
+        update: { signatureKey: signaturePhoto.storageKey, capturedBy: p.userId, capturedAt: new Date() },
+      });
+      for (const photo of linked) {
+        await tx.photo.updateMany({ where: { id: photo.id, orgId: stop.orgId }, data: { podId: pod.id } });
+      }
+      if (dto.geo) {
+        await tx.$executeRaw`
+          UPDATE "ProofOfDelivery" SET geo = ST_SetSRID(ST_MakePoint(${dto.geo.lng}, ${dto.geo.lat}), 4326)::geography
+          WHERE id = ${pod.id}::uuid`;
+      }
+      await this.audit.record(
+        { orgId: stop.orgId, actorId: p.userId, entity: 'ProofOfDelivery', entityId: pod.id, action: 'POD_CAPTURED', after: { routeStopId: stop.id, photoCount: linked.length - 1, hasSignature: true, hasGeo: !!dto.geo } },
+        tx,
+      );
+    });
+
+    return (await this.podView(stop.orgId, stop.id))!;
+  }
+
+  /** Read MY stop's captured POD (signed reads) — for showing it on the completed stop. */
+  async getProofOfDelivery(p: RequestPrincipal, stopId: string): Promise<ProofOfDeliveryView> {
+    const stop = await this.requireOwnStop(p, stopId);
+    const view = await this.podView(stop.orgId, stop.id);
+    if (!view) throw new NotFoundException({ error: POD_ERRORS.POD_REQUIRED, message: 'no proof of delivery captured for this stop' });
+    return view;
+  }
+
+  /** Build the POD view — geo via PostGIS ST_X/ST_Y; each object as a freshly-minted signed GET (§14). */
+  private async podView(orgId: string, routeStopId: string): Promise<ProofOfDeliveryView | null> {
+    const pod = await this.prisma.proofOfDelivery.findFirst({ where: { routeStopId, orgId }, include: { photos: true } });
+    if (!pod) return null;
+    const geoRows = await this.prisma.$queryRaw<Array<{ lng: number | null; lat: number | null }>>`
+      SELECT ST_X(geo::geometry) AS lng, ST_Y(geo::geometry) AS lat FROM "ProofOfDelivery" WHERE id = ${pod.id}::uuid`;
+    const g = geoRows[0];
+    const geo = g && g.lng != null && g.lat != null ? { lng: g.lng, lat: g.lat } : null;
+    const toView = async (ph: Photo): Promise<PodMediaView> => ({
+      id: ph.id,
+      storageKey: ph.storageKey,
+      contentType: ph.contentType,
+      sizeBytes: ph.sizeBytes,
+      downloadUrl: await this.media.signedGetFor(ph),
+    });
+    const signature = pod.signatureKey ? (pod.photos.find((ph) => ph.storageKey === pod.signatureKey) ?? null) : null;
+    const photos = pod.photos.filter((ph) => ph.storageKey !== pod.signatureKey);
+    return {
+      id: pod.id,
+      routeStopId: pod.routeStopId,
+      capturedAt: pod.capturedAt.toISOString(),
+      capturedBy: pod.capturedBy,
+      geo,
+      signature: signature ? await toView(signature) : null,
+      photos: await Promise.all(photos.map(toView)),
+    };
   }
 }

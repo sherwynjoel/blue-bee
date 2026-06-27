@@ -10,15 +10,20 @@
  *
  * No fabricated capacity, counts, or certifications (honesty firewall, CLAUDE.md).
  */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import {
   AccountType,
   BillingMode,
+  ClaimStatus,
+  ClaimType,
   CustodyStage,
   GarmentStatus,
+  InvoiceStatus,
   ItemKind,
   ItemStatus,
   LostFoundStatus,
+  PaymentMethod,
+  PaymentStatus,
   ResidentStatus,
   OrderStatus,
   OrderType,
@@ -33,10 +38,12 @@ import {
   RouteStopStatus,
   ServiceUnit,
   ServiceVertical,
+  ShiftStatus,
   StandingOrderCadence,
   TagBinding,
   TagType,
   UserStatus,
+  VehicleStatus,
   canTransitionOrder,
 } from '@blue-bee/shared';
 
@@ -845,6 +852,413 @@ async function seedTrackBDemo(): Promise<void> {
   console.log('       2 residents, 5 enrolled garments across the §5.2-B lifecycle (enrolled/wash/delivered), 1 in lost & found.');
 }
 
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// Branch 4 — rich, idempotent demo enrichment (additive; NO schema change — Branch 5 owns the
+// cost-center migration). Goal: every reskinned premium screen renders FULL and realistic. Honesty
+// firewall: every row is plainly labelled "Demo", and CAD amounts derive HST from the org tax rate
+// (never hand-typed). Each block is guarded by an existence check (the standing idempotency pattern)
+// so it is safe to run repeatedly AND on a fresh DB. Sectioned + commented so a Branch-5 merge of
+// this file is trivial.
+//
+// Two hard constraints learned from the e2e suite (do not violate):
+//   • Account B (Harbourview) is pinned by accounts-read.e2e to EXACTLY 1 site + 1 standing order —
+//     so the multi-site condo is a NEW business account, not Account B.
+//   • The seeded driver fixtures (+14165550006 / +14165550007) are claimed by tracking.e2e via
+//     `ensureDriver` (Driver.userId is @unique) — so the live fleet uses NEW dedicated driver users.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+const HST_RATE = 0.13; // Ontario HST — the ONE place the rate lives; every demo amount derives from it.
+function cad(subtotal: number): { subtotal: string; tax: string; total: string; currency: string } {
+  const tax = Math.round(subtotal * HST_RATE * 100) / 100;
+  const total = Math.round((subtotal + tax) * 100) / 100;
+  return { subtotal: subtotal.toFixed(2), tax: tax.toFixed(2), total: total.toFixed(2), currency: 'CAD' };
+}
+
+// Deterministic uuid builder per section prefix → readable, collision-free, idempotent ids.
+const uuidIn = (prefix: string) => (n: number): string => `${prefix}-0000-4000-8000-${n.toString().padStart(12, '0')}`;
+
+async function setSiteGeo(siteId: string, lng: number, lat: number): Promise<void> {
+  await prisma.$executeRaw`UPDATE "Site" SET geo = ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography WHERE id = ${siteId}::uuid`;
+}
+
+// Raw, idempotent GpsPing insert — the geo column is PostGIS Unsupported (set via ST_MakePoint), so
+// this mirrors GpsHistoryService.appendBatch EXACTLY incl. ON CONFLICT (vehicle_id, recorded_at).
+interface SeedPing { id: string; shiftId: string; vehicleId: string; lng: number; lat: number; speed: number; heading: number; recordedAt: Date }
+async function insertPings(rows: SeedPing[]): Promise<void> {
+  if (rows.length === 0) return;
+  const values = rows.map(
+    (r) => Prisma.sql`(${r.id}::uuid, ${ID.org}::uuid, ${r.shiftId}::uuid, ${r.vehicleId}::uuid,
+      ST_SetSRID(ST_MakePoint(${r.lng}, ${r.lat}), 4326)::geography, ${r.speed}, ${r.heading}, ${r.recordedAt}, now(), now(), ${ID.owner}::uuid)`,
+  );
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "GpsPing" ("id","org_id","shift_id","vehicle_id","geo","speed","heading","recorded_at","created_at","updated_at","created_by")
+    VALUES ${Prisma.join(values)}
+    ON CONFLICT ("vehicle_id","recorded_at") DO NOTHING`);
+}
+
+// ─────────────────────── Branch 4 §A — condo multi-site B2B (NEW business account) ───────────────────────
+// David's world (PRD persona §3.1: designer/property manager — multiple addresses, itemized → one invoice).
+// A downtown waterfront condo portfolio: 3 towers (real GTA geo + service windows), BATCH_PERIODIC net-30,
+// two standing orders (WEEKLY + BIWEEKLY, concierge handoff), a spread of amenity-linen orders across the
+// §5.1 lifecycle, a COMPLETED run with a load-sheet manifest, and ONE periodic batch invoice (HST derived).
+// Fills the B2B account console + portal Orders / Manifests tabs.
+const cid = uuidIn('d1000000');
+const CONDO_TOWERS = [
+  { id: cid(11), name: 'Demo — Lakeshore Tower A (Harbourfront)', address: '8 York St, Toronto, ON', lng: -79.3787, lat: 43.642 },
+  { id: cid(12), name: 'Demo — Lakeshore Tower B (Harbourfront)', address: '10 Yonge St, Toronto, ON', lng: -79.3772, lat: 43.6404 },
+  { id: cid(13), name: 'Demo — Lakeshore Tower C (Harbourfront)', address: '65 Harbour Sq, Toronto, ON', lng: -79.3795, lat: 43.6395 },
+];
+const CONDO_ACCOUNT = cid(1);
+const CONDO_ACCOUNT_NAME = 'Demo — Lakeshore Residences Property Mgmt (condo B2B)';
+
+async function seedCondoMultiSite(): Promise<void> {
+  await prisma.account.upsert({
+    where: { id: CONDO_ACCOUNT },
+    update: {},
+    create: { id: CONDO_ACCOUNT, orgId: ID.org, type: AccountType.BUSINESS, name: CONDO_ACCOUNT_NAME, billingMode: BillingMode.BATCH_PERIODIC, billingNetDays: 30, createdBy: ID.owner },
+  });
+  for (const t of CONDO_TOWERS) {
+    await prisma.site.upsert({
+      where: { id: t.id },
+      update: {},
+      create: { id: t.id, orgId: ID.org, accountId: CONDO_ACCOUNT, name: t.name, address: t.address, serviceWindows: [{ day: 'MON', start: '06:00', end: '08:00' }, { day: 'THU', start: '06:00', end: '08:00' }], createdBy: ID.owner },
+    });
+    await setSiteGeo(t.id, t.lng, t.lat);
+  }
+  await prisma.service.upsert({
+    where: { id: cid(2) },
+    update: {},
+    create: { id: cid(2), orgId: ID.org, vertical: ServiceVertical.LINEN, name: 'Amenity linen (pool/gym towels + robes) — per piece', unit: ServiceUnit.PIECE, baseRate: '1.5000', createdBy: ID.owner },
+  });
+  await prisma.standingOrder.upsert({
+    where: { id: cid(21) },
+    update: {},
+    create: { id: cid(21), orgId: ID.org, accountId: CONDO_ACCOUNT, siteId: cid(11), serviceId: cid(2), vertical: OrderVertical.LINEN, cadence: StandingOrderCadence.WEEKLY, weekday: 1, pickupWindow: { start: '06:00', end: '08:00' }, concierge: true, active: true, startsOn: new Date('2026-06-01T00:00:00.000Z'), nextRunAt: new Date('2026-06-29T00:00:00.000Z'), createdBy: ID.owner },
+  });
+  await prisma.standingOrder.upsert({
+    where: { id: cid(22) },
+    update: {},
+    create: { id: cid(22), orgId: ID.org, accountId: CONDO_ACCOUNT, siteId: cid(12), serviceId: cid(2), vertical: OrderVertical.LINEN, cadence: StandingOrderCadence.BIWEEKLY, weekday: 3, pickupWindow: { start: '06:00', end: '08:00' }, concierge: true, active: true, startsOn: new Date('2026-06-03T00:00:00.000Z'), nextRunAt: new Date('2026-07-01T00:00:00.000Z'), createdBy: ID.owner },
+  });
+
+  // Idempotency guard for the heavier orders/route/manifest/invoice block.
+  if (await prisma.order.findUnique({ where: { id: cid(101) } })) {
+    console.log('[seed] Branch4 condo already present — skipping condo orders/route/invoice (idempotent).');
+    return;
+  }
+
+  const CONDO_ORDERS = [
+    { id: cid(101), site: cid(11), status: OrderStatus.DELIVERED, subtotal: 184 },
+    { id: cid(102), site: cid(12), status: OrderStatus.DELIVERED, subtotal: 152 },
+    { id: cid(103), site: cid(13), status: OrderStatus.DELIVERED, subtotal: 209 },
+    { id: cid(104), site: cid(11), status: OrderStatus.PICKED_UP, subtotal: 176 },
+    { id: cid(105), site: cid(12), status: OrderStatus.SCHEDULED_PICKUP, subtotal: 168 },
+    { id: cid(106), site: cid(13), status: OrderStatus.REQUESTED, subtotal: 195 },
+  ];
+  await prisma.order.createMany({
+    data: CONDO_ORDERS.map((o) => ({ id: o.id, orgId: ID.org, accountId: CONDO_ACCOUNT, siteId: o.site, vertical: OrderVertical.LINEN, type: OrderType.ROUTE_STOP_ORDER, status: o.status, totals: cad(o.subtotal), createdAt: new Date('2026-06-22T06:30:00.000Z'), createdBy: ID.owner })),
+    skipDuplicates: true,
+  });
+
+  // Real amenity-linen pieces on the 3 delivered orders (so the Manifest snapshot is real, not fabricated).
+  const CONDO_PIECES = [42, 30, 51];
+  await prisma.tag.createMany({
+    data: [0, 1, 2].map((i) => ({ id: cid(111 + i), orgId: ID.org, code: `BB-CONDO-AMEN-${i + 1}`, type: TagType.QR, boundTo: TagBinding.ITEM, active: true, createdBy: ID.owner })),
+    skipDuplicates: true,
+  });
+  await prisma.item.createMany({
+    data: [0, 1, 2].map((i) => ({ id: cid(121 + i), orgId: ID.org, orderId: CONDO_ORDERS[i]!.id, tagId: cid(111 + i), kind: ItemKind.LINEN, status: ItemStatus.DELIVERED, measurements: { pieces: CONDO_PIECES[i] }, createdBy: ID.owner })),
+    skipDuplicates: true,
+  });
+
+  // A COMPLETED amenity-linen run (3 CONCIERGE pickups) with DISTINCT, realistic on-site spans — keeps
+  // analytics stops/hour + dwell sane (same rationale as the Track-A seed-fix). No driver/vehicle (the
+  // live, vehicle-assigned routes live in §D below).
+  await prisma.route.create({
+    data: { id: cid(31), orgId: ID.org, date: new Date('2026-06-22T00:00:00.000Z'), status: RouteStatus.COMPLETED, optimized: true, createdAt: new Date('2026-06-22T05:45:00.000Z'), createdBy: ID.owner },
+  });
+  const CONDO_STOPS = [
+    { site: cid(11), order: cid(101), win: ['06:00', '07:00'], arr: '06:12', done: '06:31' },
+    { site: cid(12), order: cid(102), win: ['06:30', '07:30'], arr: '06:48', done: '07:05' },
+    { site: cid(13), order: cid(103), win: ['07:00', '08:00'], arr: '07:20', done: '07:41' },
+  ];
+  await prisma.routeStop.createMany({
+    data: CONDO_STOPS.map((s, i) => ({ id: cid(201 + i), orgId: ID.org, routeId: cid(31), seq: i + 1, accountId: CONDO_ACCOUNT, siteId: s.site, orderId: s.order, kind: RouteStopKind.PICKUP, stopKind: RouteStopHandoff.CONCIERGE, timeWindow: { start: new Date(`2026-06-22T${s.win[0]}:00Z`).toISOString(), end: new Date(`2026-06-22T${s.win[1]}:00Z`).toISOString() }, status: RouteStopStatus.COMPLETED, arrivedAt: new Date(`2026-06-22T${s.arr}:00Z`), completedAt: new Date(`2026-06-22T${s.done}:00Z`), createdBy: ID.owner })),
+    skipDuplicates: true,
+  });
+  await prisma.manifest.create({
+    data: {
+      id: cid(301), orgId: ID.org, routeId: cid(31),
+      lines: CONDO_STOPS.map((s, i) => ({ stopId: cid(201 + i), seq: i + 1, kind: RouteStopKind.PICKUP, orderId: s.order, account: { id: CONDO_ACCOUNT, name: CONDO_ACCOUNT_NAME }, site: { id: s.site, name: CONDO_TOWERS[i]!.name, address: CONDO_TOWERS[i]!.address }, expectedItems: [{ itemId: cid(121 + i), kind: ItemKind.LINEN, tagCode: `BB-CONDO-AMEN-${i + 1}`, status: ItemStatus.DELIVERED }], expectedItemCount: 1 })),
+      createdBy: ID.owner,
+    },
+  });
+
+  // ONE BATCH_PERIODIC invoice batching the 3 DELIVERED orders (net-30). HST DERIVED from the subtotals.
+  const billed = CONDO_ORDERS.filter((o) => o.status === OrderStatus.DELIVERED);
+  const m = cad(billed.reduce((a, o) => a + o.subtotal, 0));
+  const now = new Date();
+  await prisma.invoice.create({
+    data: {
+      id: cid(401), orgId: ID.org, accountId: CONDO_ACCOUNT, period: '2026-06', number: 'DEMO-CONDO-2026-06',
+      lines: billed.map((o) => ({ description: `Amenity linen — ${CONDO_TOWERS.find((t) => t.id === o.site)?.name ?? 'tower'} (period 2026-06)`, quantity: 1, amount: o.subtotal.toFixed(2) })),
+      subtotal: m.subtotal, tax: m.tax, total: m.total, currency: 'CAD', status: InvoiceStatus.ISSUED, issuedAt: now, dueAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000), createdBy: ID.owner,
+    },
+  });
+  await prisma.invoiceLine.createMany({
+    data: billed.map((o, i) => ({ id: cid(411 + i), orgId: ID.org, invoiceId: cid(401), description: `Amenity linen — ${CONDO_TOWERS.find((t) => t.id === o.site)?.name ?? 'tower'}`, quantity: 1, unitAmount: o.subtotal.toFixed(2), amount: o.subtotal.toFixed(2) })),
+    skipDuplicates: true,
+  });
+
+  console.log(`[seed] Branch4 §A ready: condo "${CONDO_ACCOUNT_NAME}" — 3 towers, 2 standing orders, 6 orders (3 DELIVERED), a COMPLETED run + manifest, 1 BATCH_PERIODIC invoice (net-30, HST ${m.tax}).`);
+}
+
+// ─────────────────────── Branch 4 §B — residential specialty (Rita-like homeowners) ───────────────────────
+// Two new residential customers (PRD persona §3.1 Rita: homeowner, $55–$640 specialty jobs, wants a firm
+// quote + live ETA + before/after photos + simple pay). Orders span the FULL §5.1 lifecycle (booked →
+// quoted → approved → in-cleaning → en-route → delivered → paid), with real items/tags, an append-only
+// custody trail, intake/before/after photos (url-based, like the existing seed — NOT MinIO), inspections
+// incl. an acknowledged pre-existing-damage example + a claim, quotes, and invoices/payments (one PAID with
+// HST, one OVERDUE). Fills the customer order history + the console specialty kanban.
+const rid = uuidIn('d2000000');
+interface ResSpec {
+  i: number; account: string; site: string; serviceId: string; status: OrderStatus; itemStatus: ItemStatus; kind: ItemKind;
+  tagCode: string; itemDesc: string; measure: number; rate: number; subtotal: number; createdAt: string;
+  custody: CustodyStage[]; photos: PhotoKind[];
+  inspection?: { codes: string[]; preexisting: boolean; notes: string };
+  quote?: QuoteStatus;
+  scheduledPickup?: boolean; scheduledDelivery?: boolean;
+}
+
+async function seedResidentialSpecialty(): Promise<void> {
+  // Accounts + sites (real GTA neighbourhoods) + a RESIDENTIAL_CUSTOMER login each.
+  const CUSTOMERS = [
+    { acct: rid(1), site: rid(11), name: 'Demo — Priya Nair (residential specialty)', siteName: 'Demo residence — North York', address: '55 Brookbanks Dr, North York, ON', lng: -79.334, lat: 43.756, uid: rid(31), rid: rid(41), phone: '+14165550110', email: 'priya@example.com' },
+    { acct: rid(2), site: rid(12), name: 'Demo — Grace Okafor (residential specialty)', siteName: 'Demo residence — Etobicoke', address: '20 Thirty Eighth St, Etobicoke, ON', lng: -79.54, lat: 43.599, uid: rid(32), rid: rid(42), phone: '+14165550111', email: 'grace@example.com' },
+  ];
+  for (const c of CUSTOMERS) {
+    await prisma.account.upsert({ where: { id: c.acct }, update: {}, create: { id: c.acct, orgId: ID.org, type: AccountType.RESIDENTIAL, name: c.name, createdBy: ID.owner } });
+    await prisma.site.upsert({ where: { id: c.site }, update: {}, create: { id: c.site, orgId: ID.org, accountId: c.acct, name: c.siteName, address: c.address, serviceWindows: [{ day: 'TUE', start: '09:00', end: '17:00' }], createdBy: ID.owner } });
+    await setSiteGeo(c.site, c.lng, c.lat);
+    await prisma.user.upsert({ where: { id: c.uid }, update: { phone: c.phone }, create: { id: c.uid, orgId: ID.org, name: c.name, phone: c.phone, email: c.email, authProviders: ['phone'], status: UserStatus.ACTIVE, createdBy: ID.owner } });
+    await prisma.userRole.upsert({ where: { id: c.rid }, update: {}, create: { id: c.rid, orgId: ID.org, userId: c.uid, role: RoleType.RESIDENTIAL_CUSTOMER, scope: RoleScope.ACCOUNT, scopeId: c.acct, createdBy: ID.owner } });
+  }
+  // An upholstery service alongside the existing wool-rug service (ID.service) for variety.
+  await prisma.service.upsert({ where: { id: rid(51) }, update: {}, create: { id: rid(51), orgId: ID.org, vertical: ServiceVertical.SPECIALTY, name: 'Upholstery deep-clean (sofa) — per item', unit: ServiceUnit.ITEM, baseRate: '120.0000', createdBy: ID.owner } });
+
+  // Idempotency guard for the heavy per-order block.
+  if (await prisma.order.findUnique({ where: { id: rid(101) } })) {
+    console.log('[seed] Branch4 residential already present — skipping residential orders (idempotent).');
+    return;
+  }
+
+  const A = rid(1), AS = rid(11), B = rid(2), BS = rid(12), RUG = ID.service, UPH = rid(51);
+  const CUST: ResSpec[] = [
+    // Priya (A): booked, quoted, in-cleaning, pre-existing-damage flagged.
+    { i: 1, account: A, site: AS, serviceId: RUG, status: OrderStatus.REQUESTED, itemStatus: ItemStatus.RECEIVED, kind: ItemKind.RUG, tagCode: 'BB-RES-A-RUG-1', itemDesc: 'Wool runner 2.5x8', measure: 20, rate: 6.5, subtotal: 130, createdAt: '2026-06-26T15:00:00.000Z', custody: [], photos: [], scheduledPickup: true },
+    { i: 2, account: A, site: AS, serviceId: RUG, status: OrderStatus.QUOTED, itemStatus: ItemStatus.INSPECTED, kind: ItemKind.RUG, tagCode: 'BB-RES-A-RUG-2', itemDesc: 'Hand-knotted wool 5x8', measure: 40, rate: 6.5, subtotal: 260, createdAt: '2026-06-24T14:00:00.000Z', custody: [CustodyStage.PICKED_UP, CustodyStage.INTAKE, CustodyStage.INSPECTED], photos: [PhotoKind.INTAKE], inspection: { codes: ['MINOR_FRINGE_WEAR'], preexisting: false, notes: 'Demo — light fringe wear noted at intake.' }, quote: QuoteStatus.SENT },
+    { i: 3, account: A, site: AS, serviceId: UPH, status: OrderStatus.IN_CLEANING, itemStatus: ItemStatus.IN_CLEANING, kind: ItemKind.UPHOLSTERY, tagCode: 'BB-RES-A-UPH-3', itemDesc: '3-seat fabric sofa', measure: 1, rate: 120, subtotal: 120, createdAt: '2026-06-23T13:00:00.000Z', custody: [CustodyStage.PICKED_UP, CustodyStage.INTAKE, CustodyStage.INSPECTED, CustodyStage.DUSTING, CustodyStage.WASH], photos: [PhotoKind.INTAKE, PhotoKind.BEFORE], inspection: { codes: ['LIGHT_SOILING'], preexisting: false, notes: 'Demo — light soiling, no pre-existing damage.' }, quote: QuoteStatus.APPROVED },
+    { i: 4, account: A, site: AS, serviceId: RUG, status: OrderStatus.DAMAGE_PREEXISTING_FLAGGED, itemStatus: ItemStatus.INSPECTED, kind: ItemKind.RUG, tagCode: 'BB-RES-A-RUG-4', itemDesc: 'Antique silk-blend 4x6', measure: 24, rate: 9, subtotal: 216, createdAt: '2026-06-24T11:00:00.000Z', custody: [CustodyStage.PICKED_UP, CustodyStage.INTAKE, CustodyStage.INSPECTED], photos: [PhotoKind.INTAKE, PhotoKind.CLAIM], inspection: { codes: ['WATER_STAIN', 'PILE_CRUSH'], preexisting: true, notes: 'Demo — pre-existing water staining + pile crush photographed and acknowledged by customer at intake.' }, quote: QuoteStatus.SENT },
+    // Grace (B): approved+scheduled, en-route (live), delivered+paid, delivered+overdue.
+    { i: 5, account: B, site: BS, serviceId: RUG, status: OrderStatus.QUOTE_APPROVED, itemStatus: ItemStatus.INSPECTED, kind: ItemKind.RUG, tagCode: 'BB-RES-B-RUG-5', itemDesc: 'Persian wool 6x9', measure: 54, rate: 6.5, subtotal: 351, createdAt: '2026-06-25T16:00:00.000Z', custody: [CustodyStage.PICKED_UP, CustodyStage.INTAKE, CustodyStage.INSPECTED], photos: [PhotoKind.INTAKE], inspection: { codes: ['PET_ODOUR'], preexisting: false, notes: 'Demo — pet odour treatment approved.' }, quote: QuoteStatus.APPROVED, scheduledDelivery: true },
+    { i: 6, account: B, site: BS, serviceId: RUG, status: OrderStatus.DELIVERY_EN_ROUTE, itemStatus: ItemStatus.READY, kind: ItemKind.RUG, tagCode: 'BB-RES-B-RUG-6', itemDesc: 'Area rug 5x7', measure: 35, rate: 6.5, subtotal: 227.5, createdAt: '2026-06-26T12:00:00.000Z', custody: [CustodyStage.PICKED_UP, CustodyStage.INTAKE, CustodyStage.INSPECTED, CustodyStage.DUSTING, CustodyStage.WASH, CustodyStage.DRY, CustodyStage.FINISH, CustodyStage.QC, CustodyStage.READY, CustodyStage.OUT_FOR_DELIVERY], photos: [PhotoKind.INTAKE, PhotoKind.BEFORE, PhotoKind.AFTER], inspection: { codes: ['LIGHT_SOILING'], preexisting: false, notes: 'Demo — cleaned, QC passed, out for delivery.' }, quote: QuoteStatus.APPROVED, scheduledDelivery: true },
+    { i: 7, account: B, site: BS, serviceId: UPH, status: OrderStatus.INVOICED, itemStatus: ItemStatus.DELIVERED, kind: ItemKind.UPHOLSTERY, tagCode: 'BB-RES-B-UPH-7', itemDesc: 'Heirloom wingback chair', measure: 1, rate: 140, subtotal: 140, createdAt: '2026-06-18T10:00:00.000Z', custody: [CustodyStage.PICKED_UP, CustodyStage.INTAKE, CustodyStage.INSPECTED, CustodyStage.DUSTING, CustodyStage.WASH, CustodyStage.DRY, CustodyStage.FINISH, CustodyStage.QC, CustodyStage.READY, CustodyStage.OUT_FOR_DELIVERY, CustodyStage.DELIVERED], photos: [PhotoKind.INTAKE, PhotoKind.BEFORE, PhotoKind.AFTER], inspection: { codes: [], preexisting: false, notes: 'Demo — delivered, paid in full (POD on the delivery stop).' }, quote: QuoteStatus.APPROVED },
+    { i: 8, account: B, site: BS, serviceId: RUG, status: OrderStatus.INVOICED, itemStatus: ItemStatus.DELIVERED, kind: ItemKind.RUG, tagCode: 'BB-RES-B-RUG-8', itemDesc: 'Wool kilim 4x6', measure: 24, rate: 6.5, subtotal: 156, createdAt: '2026-05-20T10:00:00.000Z', custody: [CustodyStage.PICKED_UP, CustodyStage.INTAKE, CustodyStage.INSPECTED, CustodyStage.DUSTING, CustodyStage.WASH, CustodyStage.DRY, CustodyStage.FINISH, CustodyStage.QC, CustodyStage.READY, CustodyStage.OUT_FOR_DELIVERY, CustodyStage.DELIVERED], photos: [PhotoKind.INTAKE, PhotoKind.BEFORE, PhotoKind.AFTER, PhotoKind.POD], inspection: { codes: [], preexisting: false, notes: 'Demo — delivered; invoice past due (overdue example).' }, quote: QuoteStatus.APPROVED },
+  ];
+
+  for (const o of CUST) {
+    const oid = rid(100 + o.i);
+    const base = new Date(o.createdAt);
+    const m = cad(o.subtotal);
+    const at = (h: number) => new Date(base.getTime() + h * 3_600_000);
+    await prisma.order.create({
+      data: {
+        id: oid, orgId: ID.org, accountId: o.account, siteId: o.site, vertical: OrderVertical.SPECIALTY, type: OrderType.JOB, status: o.status, totals: m, createdAt: base, createdBy: ID.owner,
+        ...(o.scheduledPickup ? { scheduledPickupWindow: { start: at(24).toISOString(), end: at(27).toISOString() } } : {}),
+        ...(o.scheduledDelivery ? { scheduledDeliveryWindow: { start: at(2).toISOString(), end: at(5).toISOString() } } : {}),
+      },
+    });
+    await prisma.tag.create({ data: { id: rid(200 + o.i), orgId: ID.org, code: o.tagCode, type: TagType.QR, boundTo: TagBinding.ITEM, active: true, createdBy: ID.owner } });
+    await prisma.item.create({ data: { id: rid(300 + o.i), orgId: ID.org, orderId: oid, tagId: rid(200 + o.i), kind: o.kind, status: o.itemStatus, measurements: { description: o.itemDesc }, createdBy: ID.owner } });
+    await prisma.orderLine.create({ data: { id: rid(400 + o.i), orgId: ID.org, orderId: oid, serviceId: o.serviceId, itemId: rid(300 + o.i), qty: 1, measure: o.measure, rate: o.rate.toFixed(4), amount: o.subtotal.toFixed(2), createdBy: ID.owner } });
+    if (o.custody.length) {
+      await prisma.custodyEvent.createMany({ data: o.custody.map((stage, k) => ({ orgId: ID.org, itemId: rid(300 + o.i), stage, actorId: ID.owner, deviceId: 'demo-seed', occurredAt: at(k + 1), createdBy: ID.owner })) });
+    }
+    await prisma.photo.createMany({ data: o.photos.map((kind, k) => ({ id: rid(700 + o.i * 10 + k), orgId: ID.org, itemId: rid(300 + o.i), orderId: oid, kind, url: `https://demo.local/${kind.toLowerCase()}/${o.tagCode.toLowerCase()}-${k}.jpg`, takenAt: at(k + 1), createdBy: ID.owner })), skipDuplicates: true });
+    if (o.inspection) {
+      await prisma.inspection.create({ data: { id: rid(500 + o.i), orgId: ID.org, itemId: rid(300 + o.i), conditionCodes: o.inspection.codes, notes: o.inspection.notes, preexistingDamage: o.inspection.preexisting, ackBy: ID.owner, ackAt: at(2), createdBy: ID.owner } });
+    }
+    if (o.quote) {
+      const approved = o.quote === QuoteStatus.APPROVED;
+      await prisma.quote.create({ data: { id: rid(600 + o.i), orgId: ID.org, orderId: oid, lines: [{ description: o.itemDesc, measure: o.measure, unit: o.serviceId === UPH ? 'ITEM' : 'SQFT', rate: o.rate, amount: o.subtotal }], subtotal: m.subtotal, tax: m.tax, total: m.total, status: o.quote, expiresAt: at(24 * 14), ...(approved ? { approvedBy: ID.owner, approvedAt: at(3) } : {}), createdBy: ID.owner } });
+    }
+  }
+
+  // The pre-existing-damage order (i=4) gets a real OPEN damage Claim (PRD §5.1 high-value liability path).
+  await prisma.claim.create({ data: { id: rid(1101), orgId: ID.org, orderId: rid(104), itemId: rid(304), type: ClaimType.DAMAGE, amount: '150.00', status: ClaimStatus.OPEN, createdBy: ID.owner } });
+
+  // Invoices/payments: i=7 DELIVERED → PAID (with HST + a SUCCEEDED card payment); i=8 → ISSUED but OVERDUE.
+  const paid = cad(140);
+  await prisma.invoice.create({ data: { id: rid(807), orgId: ID.org, accountId: rid(2), orderId: rid(107), number: 'DEMO-RES-0007', lines: [{ description: 'Heirloom wingback chair — upholstery deep-clean', quantity: 1, amount: '140.00' }], subtotal: paid.subtotal, tax: paid.tax, total: paid.total, currency: 'CAD', status: InvoiceStatus.PAID, issuedAt: new Date('2026-06-19T10:00:00.000Z'), paidAt: new Date('2026-06-19T18:30:00.000Z'), dueAt: new Date('2026-07-19T10:00:00.000Z'), createdBy: ID.owner } });
+  await prisma.invoiceLine.create({ data: { id: rid(1007), orgId: ID.org, invoiceId: rid(807), description: 'Heirloom wingback chair — upholstery deep-clean', quantity: 1, unitAmount: '140.00', amount: '140.00' } });
+  await prisma.payment.create({ data: { id: rid(907), orgId: ID.org, invoiceId: rid(807), orderId: rid(107), accountId: rid(2), method: PaymentMethod.CARD, amount: paid.total, currency: 'CAD', status: PaymentStatus.SUCCEEDED, capturedAmount: paid.total, capturedAt: new Date('2026-06-19T18:30:00.000Z'), createdBy: ID.owner } });
+
+  const overdue = cad(156);
+  await prisma.invoice.create({ data: { id: rid(808), orgId: ID.org, accountId: rid(2), orderId: rid(108), number: 'DEMO-RES-0008', lines: [{ description: 'Wool kilim 4x6 — hand-wash', quantity: 1, amount: '156.00' }], subtotal: overdue.subtotal, tax: overdue.tax, total: overdue.total, currency: 'CAD', status: InvoiceStatus.OVERDUE, issuedAt: new Date('2026-05-21T10:00:00.000Z'), dueAt: new Date('2026-06-04T10:00:00.000Z'), createdBy: ID.owner } });
+  await prisma.invoiceLine.create({ data: { id: rid(1008), orgId: ID.org, invoiceId: rid(808), description: 'Wool kilim 4x6 — hand-wash', quantity: 1, unitAmount: '156.00', amount: '156.00' } });
+
+  console.log('[seed] Branch4 §B ready: 2 residential customers (Priya, Grace) + 8 specialty orders spanning the §5.1 lifecycle, with custody/photos/inspections, 1 PAID invoice (HST), 1 OVERDUE, 1 damage claim.');
+}
+
+// ─────────────────────── Branch 4 §C — care-home East Wing (enrich Maple Grove) ───────────────────────
+// Sandra's world (PRD persona §3.1: care-home laundry manager — 120 residents; her nightmare is lost
+// personal clothing). A NEW wing under the existing Maple Grove account (B1.careHome) so the existing West
+// Wing counts the residents e2e pins stay untouched. New residents across rooms, garments at EVERY §5.2-B
+// garmentStatus stage with a faithful append-only CustodyEvent trail, and 3 lost & found items (one
+// RECONCILED). Fills the resident-clothing view (four buckets + lost & found).
+const eid = uuidIn('d4000000');
+const EAST_LINEAR = [GarmentStatus.GARMENT_ENROLLED, GarmentStatus.SOIL_PICKUP, GarmentStatus.INTAKE_SORT, GarmentStatus.WASH, GarmentStatus.RETURN_SORT, GarmentStatus.DELIVERED_TO_RESIDENT];
+function eastGarmentPath(status: GarmentStatus): GarmentStatus[] {
+  if (status === GarmentStatus.LOST_FOUND_POOL) return [...EAST_LINEAR.slice(0, 5), GarmentStatus.LOST_FOUND_POOL];
+  if (status === GarmentStatus.RECONCILE) return [...EAST_LINEAR.slice(0, 5), GarmentStatus.LOST_FOUND_POOL, GarmentStatus.RECONCILE];
+  const idx = EAST_LINEAR.indexOf(status);
+  return idx >= 0 ? EAST_LINEAR.slice(0, idx + 1) : [GarmentStatus.GARMENT_ENROLLED];
+}
+
+async function seedCareHomeEastWing(): Promise<void> {
+  await prisma.site.upsert({ where: { id: eid(1) }, update: {}, create: { id: eid(1), orgId: ID.org, accountId: B1.careHome, name: 'Maple Grove — East Wing', address: '88 Elm St, Toronto, ON', createdBy: ID.owner } });
+
+  const RES = [
+    { id: eid(11), name: 'Demo — Vera Lindqvist', room: 'E-101' },
+    { id: eid(12), name: 'Demo — Frank Osei', room: 'E-102' },
+    { id: eid(13), name: 'Demo — Doris Albright', room: 'E-103' },
+    { id: eid(14), name: 'Demo — Otto Reyes', room: 'E-104' },
+  ];
+  for (const r of RES) {
+    await prisma.resident.upsert({ where: { id: r.id }, update: {}, create: { id: r.id, orgId: ID.org, siteId: eid(1), name: r.name, room: r.room, status: ResidentStatus.ACTIVE, createdBy: ID.owner } });
+  }
+
+  // Idempotency guard for the heavy garment/custody/lost-found block.
+  if (await prisma.item.findUnique({ where: { id: eid(101) } })) {
+    console.log('[seed] Branch4 care-home East Wing already present — skipping garments (idempotent).');
+    return;
+  }
+
+  // 9 garments: one at EVERY §5.2-B stage (8 stages) + a 2nd LOST_FOUND_POOL for a 3rd lost&found row.
+  const GARM = [
+    { n: 1, resident: eid(11), status: GarmentStatus.GARMENT_ENROLLED, desc: 'Lavender cardigan', code: 'RES-E101-01' },
+    { n: 2, resident: eid(11), status: GarmentStatus.SOIL_PICKUP, desc: 'Cotton nightgown', code: 'RES-E101-02' },
+    { n: 3, resident: eid(12), status: GarmentStatus.INTAKE_SORT, desc: 'Plaid flannel shirt', code: 'RES-E102-01' },
+    { n: 4, resident: eid(12), status: GarmentStatus.WASH, desc: 'Khaki trousers', code: 'RES-E102-02' },
+    { n: 5, resident: eid(13), status: GarmentStatus.RETURN_SORT, desc: 'Teal house dress', code: 'RES-E103-01' },
+    { n: 6, resident: eid(13), status: GarmentStatus.DELIVERED_TO_RESIDENT, desc: 'Beige knit vest', code: 'RES-E103-02' },
+    { n: 7, resident: eid(14), status: GarmentStatus.LOST_FOUND_POOL, desc: 'Maroon wool socks (unmatched on return sort)', code: 'RES-E104-LF1' },
+    { n: 8, resident: eid(14), status: GarmentStatus.RECONCILE, desc: 'Striped polo (reconciled to resident)', code: 'RES-E104-RC1' },
+    { n: 9, resident: eid(14), status: GarmentStatus.LOST_FOUND_POOL, desc: 'Grey cardigan (no name tag — pooled)', code: 'RES-E104-LF2' },
+  ];
+  await prisma.tag.createMany({ data: GARM.map((g) => ({ id: eid(200 + g.n), orgId: ID.org, code: g.code, type: TagType.QR, boundTo: TagBinding.RESIDENT, active: true, createdBy: ID.owner })), skipDuplicates: true });
+  await prisma.item.createMany({ data: GARM.map((g) => ({ id: eid(100 + g.n), orgId: ID.org, residentId: g.resident, tagId: eid(200 + g.n), kind: ItemKind.GARMENT, garmentStatus: g.status, measurements: { description: g.desc }, createdBy: ID.owner })), skipDuplicates: true });
+  await prisma.custodyEvent.createMany({ data: GARM.flatMap((g) => eastGarmentPath(g.status).map((stage) => ({ orgId: ID.org, itemId: eid(100 + g.n), garmentStage: stage, actorId: ID.owner, createdBy: ID.owner }))) });
+
+  // 3 lost & found rows: g7 OPEN (candidate Otto by room tag), g8 RECONCILED (already assigned to Otto), g9 OPEN (no candidate).
+  await prisma.lostFoundItem.upsert({ where: { id: eid(301) }, update: {}, create: { id: eid(301), orgId: ID.org, siteId: eid(1), itemId: eid(107), tagId: eid(207), candidateResidentId: eid(14), status: LostFoundStatus.OPEN, notes: 'Unmatched on return sort — candidate by room tag', createdBy: ID.owner } });
+  await prisma.lostFoundItem.upsert({ where: { id: eid(302) }, update: {}, create: { id: eid(302), orgId: ID.org, siteId: eid(1), itemId: eid(108), tagId: eid(208), candidateResidentId: eid(14), status: LostFoundStatus.RECONCILED, reconciledAt: new Date('2026-06-24T15:00:00.000Z'), notes: 'Reconciled to resident on review of laundry photo', createdBy: ID.owner } });
+  await prisma.lostFoundItem.upsert({ where: { id: eid(303) }, update: {}, create: { id: eid(303), orgId: ID.org, siteId: eid(1), itemId: eid(109), tagId: eid(209), status: LostFoundStatus.OPEN, notes: 'No name tag — awaiting identification', createdBy: ID.owner } });
+
+  console.log('[seed] Branch4 §C ready: Maple Grove East Wing — 4 residents, 9 garments across EVERY §5.2-B stage (append-only custody), 3 lost & found (1 reconciled).');
+}
+
+// ─────────────────────── Branch 4 §D — live fleet (vehicles/drivers/shifts/routes/GpsPings) ───────────────────────
+// Makes GET /v1/fleet/live + the live map real: 3 vehicles + NEW dedicated drivers (the seeded driver
+// fixtures are owned by tracking.e2e) on ACTIVE shifts, an IN_PROGRESS delivery route (one stop EN_ROUTE
+// with a live ETA, one COMPLETED with a POD, one PENDING), a second PUBLISHED route, and a modest run of
+// GpsPings (latest-ping → fleet/live's Timescale fallback, so vehicles position WITHOUT priming Redis —
+// which sidesteps the host-redis-shadows-docker gotcha entirely). Stamped "now"-relative so a fresh seed
+// shows current movement; the whole block is guarded so re-runs don't duplicate pings.
+const fid = uuidIn('d3000000');
+
+async function seedLiveFleet(): Promise<void> {
+  const DRIVERS = [
+    { uid: fid(1), rid: fid(11), drv: fid(21), veh: fid(31), shift: fid(41), name: 'Demo — Andre Cole (driver)', phone: '+14165550101', email: 'andre@bluebee.example', label: 'Cube Van 14', plate: 'BB-14CUBE' },
+    { uid: fid(2), rid: fid(12), drv: fid(22), veh: fid(32), shift: fid(42), name: 'Demo — Bianca Ruiz (driver)', phone: '+14165550102', email: 'bianca@bluebee.example', label: 'Sprinter 22', plate: 'BB-22SPRT' },
+    { uid: fid(3), rid: fid(13), drv: fid(23), veh: fid(33), shift: fid(43), name: 'Demo — Caleb Singh (driver)', phone: '+14165550103', email: 'caleb@bluebee.example', label: 'Cargo 31', plate: 'BB-31CRGO' },
+  ];
+  const startedAt = new Date(Date.now() - 90 * 60 * 1000); // shifts began ~90 min ago.
+  for (const d of DRIVERS) {
+    await prisma.user.upsert({ where: { id: d.uid }, update: { phone: d.phone }, create: { id: d.uid, orgId: ID.org, name: d.name, phone: d.phone, email: d.email, authProviders: ['phone'], status: UserStatus.ACTIVE, createdBy: ID.owner } });
+    await prisma.userRole.upsert({ where: { id: d.rid }, update: {}, create: { id: d.rid, orgId: ID.org, userId: d.uid, role: RoleType.DRIVER, scope: RoleScope.ORG, createdBy: ID.owner } });
+    await prisma.vehicle.upsert({ where: { id: d.veh }, update: {}, create: { id: d.veh, orgId: ID.org, label: d.label, plate: d.plate, capacity: 24, status: VehicleStatus.ACTIVE, createdBy: ID.owner } });
+    await prisma.driver.upsert({ where: { id: d.drv }, update: {}, create: { id: d.drv, orgId: ID.org, userId: d.uid, defaultVehicleId: d.veh, createdBy: ID.owner } });
+    await prisma.shift.upsert({ where: { id: d.shift }, update: {}, create: { id: d.shift, orgId: ID.org, driverId: d.drv, vehicleId: d.veh, status: ShiftStatus.ACTIVE, startedAt, createdBy: ID.owner } });
+  }
+
+  // Idempotency guard for the route/stop/POD/ping block (route createMany has no upsert).
+  if (await prisma.route.findUnique({ where: { id: fid(51) } })) {
+    console.log('[seed] Branch4 live fleet already present — skipping routes/pings (idempotent, no duplicate pings).');
+    return;
+  }
+
+  const now = new Date();
+  const ago = (mins: number): Date => new Date(now.getTime() - mins * 60000);
+  const ahead = (mins: number): Date => new Date(now.getTime() + mins * 60000);
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+  // Route 1 — IN_PROGRESS delivery run for vehicle 1: stop1 DELIVERED (+POD), stop2 EN_ROUTE (live ETA),
+  // stop3 PENDING. Stops reference real residential delivery orders + a condo tower so the map is wired up.
+  await prisma.route.create({ data: { id: fid(51), orgId: ID.org, date: today, driverId: fid(21), vehicleId: fid(31), status: RouteStatus.IN_PROGRESS, optimized: true, createdAt: startedAt, createdBy: ID.owner } });
+  await prisma.routeStop.create({ data: { id: fid(61), orgId: ID.org, routeId: fid(51), seq: 1, accountId: rid(2), siteId: rid(12), orderId: rid(107), kind: RouteStopKind.DELIVERY, stopKind: RouteStopHandoff.DIRECT, status: RouteStopStatus.COMPLETED, arrivedAt: ago(40), completedAt: ago(28), createdBy: ID.owner } });
+  await prisma.routeStop.create({ data: { id: fid(62), orgId: ID.org, routeId: fid(51), seq: 2, accountId: rid(2), siteId: rid(12), orderId: rid(106), kind: RouteStopKind.DELIVERY, stopKind: RouteStopHandoff.DIRECT, status: RouteStopStatus.EN_ROUTE, timeWindow: { start: ago(5).toISOString(), end: ahead(25).toISOString() }, eta: ahead(10), etaLow: ahead(7), etaHigh: ahead(14), etaComputedAt: now, createdBy: ID.owner } });
+  await prisma.routeStop.create({ data: { id: fid(63), orgId: ID.org, routeId: fid(51), seq: 3, accountId: CONDO_ACCOUNT, siteId: cid(11), orderId: cid(104), kind: RouteStopKind.DELIVERY, stopKind: RouteStopHandoff.CONCIERGE, status: RouteStopStatus.PENDING, createdBy: ID.owner } });
+
+  // A real POD on the completed delivery stop (driver POD-capture flow) + a POD photo.
+  await prisma.proofOfDelivery.create({ data: { id: fid(81), orgId: ID.org, routeStopId: fid(61), signatureUrl: 'https://demo.local/pod/res-0007-signature.png', capturedBy: fid(1), capturedAt: ago(28), createdBy: ID.owner } });
+  await prisma.photo.create({ data: { id: fid(82), orgId: ID.org, orderId: rid(107), podId: fid(81), kind: PhotoKind.POD, url: 'https://demo.local/pod/res-0007-doorstep.jpg', takenAt: ago(28), createdBy: ID.owner } });
+
+  // Route 2 — PUBLISHED concierge pickup run for vehicle 2 (a second moving vehicle on the map).
+  await prisma.route.create({ data: { id: fid(52), orgId: ID.org, date: today, driverId: fid(22), vehicleId: fid(32), status: RouteStatus.PUBLISHED, optimized: true, createdAt: startedAt, createdBy: ID.owner } });
+  await prisma.routeStop.create({ data: { id: fid(71), orgId: ID.org, routeId: fid(52), seq: 1, accountId: CONDO_ACCOUNT, siteId: cid(12), orderId: cid(105), kind: RouteStopKind.PICKUP, stopKind: RouteStopHandoff.CONCIERGE, status: RouteStopStatus.EN_ROUTE, timeWindow: { start: ago(10).toISOString(), end: ahead(50).toISOString() }, eta: ahead(18), etaLow: ahead(14), etaHigh: ahead(24), etaComputedAt: now, createdBy: ID.owner } });
+  await prisma.routeStop.create({ data: { id: fid(72), orgId: ID.org, routeId: fid(52), seq: 2, accountId: CONDO_ACCOUNT, siteId: cid(13), orderId: cid(106), kind: RouteStopKind.PICKUP, stopKind: RouteStopHandoff.CONCIERGE, status: RouteStopStatus.PENDING, createdBy: ID.owner } });
+
+  // GpsPings — a modest moving run for vehicles 1 & 2 (heading toward their EN_ROUTE stops) + a parked
+  // last-known for vehicle 3. Inserted via raw ON-CONFLICT SQL (idempotent on vehicle_id, recorded_at).
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const pings: SeedPing[] = [];
+  // Vehicle 1: from downtown toward Etobicoke (rid(12) site at -79.54, 43.599) — 10 breadcrumbs.
+  const v1from = { lng: -79.42, lat: 43.64 }, v1to = { lng: -79.54, lat: 43.599 };
+  for (let k = 0; k < 10; k++) {
+    const t = k / 9;
+    pings.push({ id: fid(1001 + k), shiftId: fid(41), vehicleId: fid(31), lng: lerp(v1from.lng, v1to.lng, t), lat: lerp(v1from.lat, v1to.lat, t), speed: 11 + (k % 4), heading: 250, recordedAt: new Date(now.getTime() - (9 - k) * 150_000) });
+  }
+  // Vehicle 2: toward the condo towers (-79.3787, 43.642) — 7 breadcrumbs.
+  const v2from = { lng: -79.36, lat: 43.66 }, v2to = { lng: -79.3787, lat: 43.642 };
+  for (let k = 0; k < 7; k++) {
+    const t = k / 6;
+    pings.push({ id: fid(1101 + k), shiftId: fid(42), vehicleId: fid(32), lng: lerp(v2from.lng, v2to.lng, t), lat: lerp(v2from.lat, v2to.lat, t), speed: 9 + (k % 3), heading: 200, recordedAt: new Date(now.getTime() - (6 - k) * 150_000) });
+  }
+  // Vehicle 3: parked at the depot (one recent fix so it still appears on the map).
+  pings.push({ id: fid(1201), shiftId: fid(43), vehicleId: fid(33), lng: -79.3832, lat: 43.6629, speed: 0, heading: 0, recordedAt: new Date(now.getTime() - 4 * 60000) });
+  await insertPings(pings);
+
+  console.log(`[seed] Branch4 §D ready: 3 vehicles + 3 drivers on ACTIVE shifts; route1 IN_PROGRESS (EN_ROUTE stop w/ live ETA + a COMPLETED POD), route2 PUBLISHED; ${pings.length} GpsPings → fleet/live shows moving vehicles.`);
+}
+
+// ─────────────────────── seeded-counts summary (DoD evidence the screens will be full) ───────────────────────
+async function printSummary(): Promise<void> {
+  const [accounts, sites, residents, garments, vehicles, drivers, shifts, routes, stops, pings, invoices, payments, standingOrders, lostFound, photos] = await Promise.all([
+    prisma.account.count(), prisma.site.count(), prisma.resident.count(), prisma.item.count({ where: { kind: ItemKind.GARMENT } }),
+    prisma.vehicle.count(), prisma.driver.count(), prisma.shift.count(), prisma.route.count(), prisma.routeStop.count(), prisma.gpsPing.count(),
+    prisma.invoice.count(), prisma.payment.count(), prisma.standingOrder.count(), prisma.lostFoundItem.count(), prisma.photo.count(),
+  ]);
+  const byStatus = await prisma.order.groupBy({ by: ['status'], _count: { _all: true } });
+  console.log('\n[seed] ───────────────── seeded demo counts (Branch 4 evidence) ─────────────────');
+  console.log(`[seed]  accounts=${accounts} sites=${sites} residents=${residents} garments=${garments}`);
+  console.log(`[seed]  vehicles=${vehicles} drivers=${drivers} shifts=${shifts} routes=${routes} routeStops=${stops} gpsPings=${pings}`);
+  console.log(`[seed]  invoices=${invoices} payments=${payments} standingOrders=${standingOrders} lostFound=${lostFound} photos=${photos}`);
+  console.log('[seed]  orders by status:');
+  for (const r of byStatus.sort((a, b) => a.status.localeCompare(b.status))) console.log(`[seed]    ${r.status.padEnd(28)} ${r._count._all}`);
+  console.log('[seed] ──────────────────────────────────────────────────────────────────────────\n');
+}
+
 async function main(): Promise<void> {
   await seedDemoOrder();
   await seedAuthFixtures();
@@ -852,6 +1266,12 @@ async function main(): Promise<void> {
   await seedLogistics();
   await seedTrackADemo();
   await seedTrackBDemo();
+  // ── Branch 4 — rich demo enrichment (order matters: fleet references condo + residential sites/orders) ──
+  await seedCondoMultiSite();
+  await seedResidentialSpecialty();
+  await seedCareHomeEastWing();
+  await seedLiveFleet();
+  await printSummary();
 }
 
 main()

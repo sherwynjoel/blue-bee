@@ -1,8 +1,12 @@
 import type {
+  CaptureProofOfDeliveryDto,
   DriverAssignment,
   DriverStopAction,
   LocationBatchDto,
   LocationBatchResult,
+  PresignMediaResult,
+  PresignPodMediaDto,
+  ProofOfDeliveryView,
   StopActionDto,
   StopExceptionDto,
 } from '@blue-bee/shared';
@@ -32,6 +36,23 @@ export class ApiClient extends BaseApiClient {
   /** Drive a §5.4 stop transition. fail/skip carry a reason; the rest an optional note. */
   stopAction(stopId: string, action: DriverStopAction, body: StopActionDto | StopExceptionDto = {}): Promise<unknown> {
     return this.request('POST', `/driver/stops/${stopId}/${action}`, { body });
+  }
+
+  // ───────────── proof of delivery (Increment 17) ─────────────
+
+  /** Presign a POD photo/signature upload for MY delivery stop (the order is resolved from the stop). */
+  presignPodMedia(stopId: string, dto: PresignPodMediaDto): Promise<PresignMediaResult> {
+    return this.request('POST', `/driver/stops/${stopId}/pod/presign`, { body: dto });
+  }
+
+  /** Capture POD (confirmed photo(s) + signature + geo) for MY delivery stop. Idempotent on the stop. */
+  captureProofOfDelivery(stopId: string, dto: CaptureProofOfDeliveryDto): Promise<ProofOfDeliveryView> {
+    return this.request('POST', `/driver/stops/${stopId}/proof-of-delivery`, { body: dto });
+  }
+
+  /** Read MY stop's captured proof of delivery (signed reads). */
+  getProofOfDelivery(stopId: string): Promise<ProofOfDeliveryView> {
+    return this.request('GET', `/driver/stops/${stopId}/proof-of-delivery`);
   }
 
   // ───────────── location ingestion (Increment 5) ─────────────

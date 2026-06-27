@@ -74,6 +74,13 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
       setReasonFor(action); // open the reason sheet
       return;
     }
+    // A delivery stop captures proof of delivery (photo + signature + geo) BEFORE it can complete —
+    // the POD screen drives the §5.4 complete itself after a successful capture (the server also gates
+    // a DELIVERY complete on a POD, so this can never skip the evidence). Pickup stops complete directly.
+    if (action === 'complete' && stop && (stop.kind === 'DELIVERY' || stop.kind === 'BOTH')) {
+      navigation.navigate('Pod', { stopId });
+      return;
+    }
     void run(action);
   }
 

@@ -5,10 +5,12 @@ import {
   MEDIA_ERRORS,
   MediaUploadStatus,
   PhotoKind,
+  POD_ERRORS,
   type ConfirmMediaDto,
   type MediaResult,
   type PresignMediaDto,
   type PresignMediaResult,
+  type PresignPodMediaDto,
 } from '@blue-bee/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
@@ -128,6 +130,71 @@ export class MediaService {
 
   private async markConfirmed(intentId: string, photoId: string, tx: Prisma.TransactionClient): Promise<void> {
     await tx.mediaUpload.updateMany({ where: { id: intentId, status: MediaUploadStatus.PENDING }, data: { status: MediaUploadStatus.CONFIRMED, photoId } });
+  }
+
+  // ───────────────────────────── driver POD (stop-scoped, Increment 17) ─────────────────────────────
+
+  /**
+   * Presign a POD upload for a stop the DRIVER owns. DriverService.assertOwnStop has ALREADY proven
+   * ownership (route.driverId + org), so this deliberately SKIPS the OrderAccessService order-write
+   * check — a driver is not the order's account-writer — and authorizes via the stop's order instead.
+   * The customer order-ownership presign path is untouched (no widened hole). Same allow-list + size +
+   * unguessable org-namespaced key + PENDING-intent discipline as the customer presign; kind is POD.
+   */
+  async presignForStop(principal: RequestPrincipal, orderId: string, dto: PresignPodMediaDto): Promise<PresignMediaResult> {
+    this.assertContentType(dto.contentType);
+    if (dto.byteSize > this.config.maxBytes) {
+      throw new BadRequestException({ error: MEDIA_ERRORS.TOO_LARGE, message: `declared size ${dto.byteSize} exceeds max ${this.config.maxBytes}` });
+    }
+    const storageKey = this.newKey(principal.orgId, PhotoKind.POD, dto.contentType);
+    await this.prisma.mediaUpload.create({
+      data: { orgId: principal.orgId, storageKey, kind: PhotoKind.POD, contentType: dto.contentType, byteSize: dto.byteSize, orderId, createdBy: principal.userId },
+    });
+    const uploadUrl = await this.storage.presignPut(storageKey, dto.contentType, dto.byteSize, this.config.presignPutTtlSec);
+    return { uploadUrl, storageKey, contentType: dto.contentType, expiresInSec: this.config.presignPutTtlSec, maxBytes: this.config.maxBytes };
+  }
+
+  /**
+   * Confirm a POD upload the driver presigned for THIS stop's order → HEAD-verify the real object +
+   * create the POD Photo (kind POD). Authorized by stop-ownership (proven upstream) AND the intent's
+   * order must match the stop's order + the intent must be POD-kind (so a key from another stop/order/
+   * kind can't be smuggled in). Idempotent on the key (a re-confirm returns the same Photo). Returns
+   * the Photo row so the POD writer can link it (set podId). NEVER trusts a client-supplied URL.
+   */
+  async confirmForStop(principal: RequestPrincipal, storageKey: string, expectedOrderId: string): Promise<Photo> {
+    const intent = await this.requireIntent(principal, storageKey);
+    if (intent.orderId !== expectedOrderId || intent.kind !== PhotoKind.POD) {
+      throw new BadRequestException({ error: POD_ERRORS.MEDIA_NOT_CONFIRMED, message: 'that upload was not presigned as POD media for this stop' });
+    }
+    if (intent.status === MediaUploadStatus.CONFIRMED && intent.photoId) {
+      const existing = await this.prisma.photo.findFirst({ where: { id: intent.photoId, orgId: principal.orgId } });
+      if (existing) return existing;
+    }
+    const verified = await this.headVerify(intent);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const created = await tx.photo.create({
+          data: { orgId: intent.orgId, orderId: intent.orderId, kind: PhotoKind.POD, storageKey: intent.storageKey, contentType: verified.contentType, sizeBytes: verified.sizeBytes, createdBy: principal.userId },
+        });
+        await this.markConfirmed(intent.id, created.id, tx);
+        await this.audit.record(
+          { orgId: intent.orgId, actorId: principal.userId, entity: 'Photo', entityId: created.id, action: 'PHOTO_ADDED', after: { kind: PhotoKind.POD, storageKey: intent.storageKey, sizeBytes: verified.sizeBytes } },
+          tx,
+        );
+        return created;
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const existing = await this.prisma.photo.findFirst({ where: { storageKey: intent.storageKey, orgId: principal.orgId } });
+        if (existing) return existing;
+      }
+      throw err;
+    }
+  }
+
+  /** Mint a fresh short-lived signed GET for a confirmed POD Photo (§14) — used to build the POD view. */
+  signedGetFor(photo: Photo): Promise<string | null> {
+    return this.signer.signedGet(photo);
   }
 
   // ───────────────────────────── signed reads (§14) ─────────────────────────────

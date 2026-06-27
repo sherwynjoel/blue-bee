@@ -18,10 +18,45 @@ jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   requestBackgroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   getForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  getCurrentPositionAsync: jest.fn(async () => ({ coords: { latitude: 43.7615, longitude: -79.4111 } })),
   startLocationUpdatesAsync: jest.fn(async () => undefined),
   stopLocationUpdatesAsync: jest.fn(async () => undefined),
   hasStartedLocationUpdatesAsync: jest.fn(async () => false),
 }));
+
+// ── Increment-17 POD-capture native modules (the device camera / file IO / signature pad run real
+// on-device; these mocks stand in for the native bridge ONLY in tests). ──
+jest.mock('expo-image-picker', () => ({
+  MediaTypeOptions: { Images: 'Images' },
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  launchCameraAsync: jest.fn(async () => ({ canceled: false, assets: [{ uri: 'file:///pod-photo.jpg', mimeType: 'image/jpeg', fileSize: 2048 }] })),
+  launchImageLibraryAsync: jest.fn(async () => ({ canceled: false, assets: [{ uri: 'file:///lib.jpg', mimeType: 'image/jpeg', fileSize: 2048 }] })),
+}));
+
+jest.mock('expo-file-system', () => ({
+  cacheDirectory: 'file:///cache/',
+  FileSystemUploadType: { BINARY_CONTENT: 'BINARY_CONTENT' },
+  EncodingType: { Base64: 'base64' },
+  uploadAsync: jest.fn(async () => ({ status: 200, body: '' })),
+  writeAsStringAsync: jest.fn(async () => undefined),
+  getInfoAsync: jest.fn(async () => ({ exists: true, size: 1500 })),
+}));
+
+// react-native-signature-canvas wraps a webview canvas; mock it as a ref-bearing no-op whose
+// readSignature() yields a fake base64 PNG (the real pad produces a real PNG on device).
+jest.mock('react-native-signature-canvas', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const Sig = React.forwardRef((props, ref) => {
+    React.useImperativeHandle(ref, () => ({
+      readSignature: () => props.onOK && props.onOK('data:image/png;base64,iVBORw0KGgoAAAANSU'),
+      clearSignature: () => undefined,
+    }));
+    return React.createElement(View, { testID: 'mock-signature-canvas' });
+  });
+  return { __esModule: true, default: Sig };
+});
 
 jest.mock('expo-task-manager', () => ({
   defineTask: jest.fn(),

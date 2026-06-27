@@ -1,10 +1,26 @@
-# Blue Bee — Railway deploy runbook (Increment 14b)
+# Blue Bee — Railway deploy runbook (Increment 14b · refreshed to `main` `792f701` on 2026‑06‑27)
 
-**Working folder:** `/Volumes/Gowtham/Blue Bee` · **Branch:** `inc14-productionize` · **Stack target:** PRD §10.2 infra.
+**Working folder:** `/Volumes/Gowtham/Blue Bee` · **Stack target:** PRD §10.2 infra.
 
-This is the **operational runbook** for the live Phase‑1 (specialty) pilot environment on Railway. It describes
+This is the **operational runbook** for the live Phase‑1 pilot environment on Railway. It describes
 every service, every environment variable (names only — **values live only on Railway, never in git**), the
 migration + real‑org bootstrap plan, the founder's manual steps, and rollback.
+
+> **2026‑06‑27 verification refresh (commit `792f701`).** The live pilot was redeployed from the stale
+> Inc‑14b state (**9 migrations**) to current `main` — **now 13 migrations**. New since 14b and **now live**:
+> Track‑A recurring/condo‑B2B (portal Orders/Manifests/Exceptions), Track‑B resident clothing + lost&found,
+> cost‑centre split‑billing (**backend + web console UI**), the **Daylight reskin** (web + apps), and driver
+> **proof‑of‑delivery**. Process: a headless Phase‑A gate (built the 3 prod images from current `main`; proved
+> the full 13‑migration chain on a fresh prod Postgres AND a **9→13 upgrade on a persistent volume with data
+> preserved**; smoke + the reskinned web bundle) → `railway up --service api` then `--service web` (single
+> `api` replica; **postgres image unchanged so the volume + bootstrapped owner persisted**) → live smoke (13
+> migrations, the pilot owner `+14165550100` still logs in, the cost‑centre + POD routes respond/authorize,
+> the console serves the reskin). **No Dockerfile/`.dockerignore`/`.railwayignore` change was needed** — the
+> existing images build current `main` as‑is (the new `@blue-bee/design-tokens` workspace package is wired but
+> **not imported by `apps/web`**, which still mirrors tokens locally, so the web image is unaffected; `lucide-react`
+> is an ordinary npm dep `npm ci` already resolves). **Still parked** for the pilot (unchanged): media/S3 (**c**)
+> — so `/v1/media/presign` **and the new POD photo/signature uploads** error until the founder sets S3; real
+> SMS/email/push (**a**); live Stripe test‑mode (**d**). The refreshed smoke transcript is in §3.
 
 > **Pilot posture.** This is a reachable pilot, not a hardened production. The deliberate, documented choices are
 > called out under **Decisions** below (NODE_ENV=staging SMS allowance, no demo seed, private DB networking,
@@ -77,8 +93,13 @@ the notification provider creds (→ SendGrid‑sandbox + console push, parked *
 
 ### Migrations (automatic, on every API boot)
 The API container's start command runs **`prisma migrate deploy`** (bounded retry for the ~1–3 s private‑network
-warm‑up) before booting. The **9 migrations** are applied to the Railway Postgres (verified:
-`SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL` → **9**; `postgis 3.4.3`, `timescaledb 2.26.4`).
+warm‑up) before booting. As of the 2026‑06‑27 refresh, **13 migrations** are applied to the Railway Postgres
+(verified `railway ssh --service api "npx prisma migrate status"` → *"13 migrations found … Database schema is
+up to date!"*; `postgis 3.4.3`, `timescaledb 2.26.4`). `migrate deploy` is forward‑only and **never destructive**;
+the 4 migrations added since 14b (`…_track_a_recurring_condo_b2b`, `…_track_a_qc_followup_index`,
+`…_track_b_resident_clothing`, `…_cost_centers`) are **purely additive** (CREATE TABLE/TYPE + nullable ADD COLUMN
++ SET‑NULL FKs + indexes; no DROP, no NOT‑NULL‑without‑default), so the **9→13 upgrade applied on the existing
+persistent volume with zero data loss** (pre‑flight‑proven, then confirmed live: the bootstrapped owner survived).
 **Keep the API at a single replica** so two boots never race the migrator.
 
 ### Bootstrap — the minimal real org (NOT the demo seed)
@@ -103,14 +124,19 @@ org labelled *"Blue Bee Pilot — anchor org (rename to the real client)"*). To 
 to the DB, or a small one‑off `prisma` script) — and **suspend/remove the pilot owner** so `+14165550100` can no longer log
 in. Re‑running `bootstrap.ts` with a *different* phone will **refuse** (it won't create a second org).
 
-### Live smoke test (proven)
+### Live smoke test (proven — refreshed 2026‑06‑27 against `792f701`)
 ```bash
 API=https://api-production-d45a.up.railway.app
-curl -s $API/v1/health            # → 200 {database up postgis+timescaledb, redis PONG}
+curl -s $API/v1/health            # → 200 {database up postgis=3.4.3 timescaledb=2.26.4, redis PONG}
 # OTP login (devCode returned because NODE_ENV=staging):
 curl -s -X POST $API/v1/auth/otp    -H 'content-type: application/json' -d '{"phone":"+14165550100"}'
 curl -s -X POST $API/v1/auth/verify -H 'content-type: application/json' -d '{"phone":"+14165550100","code":"<devCode>"}'
-curl -s $API/v1/me -H "authorization: Bearer <accessToken>"   # → the owner + OWNER role
+curl -s $API/v1/me -H "authorization: Bearer <accessToken>"   # → "Pilot Owner" + OWNER role (survived 9→13)
+# the now-live surfaces respond + authorize (owner token):
+curl -s $API/v1/accounts -H "authorization: Bearer <tok>"                                  # → 200 (Track-A B2B)
+curl -s $API/v1/accounts/<uuid>/cost-centers -H "authorization: Bearer <tok>"              # → 404 cost_centers.account_not_found (route+authz live)
+curl -s $API/v1/driver/stops/<uuid>/proof-of-delivery -H "authorization: Bearer <tok>"     # → 403 forbidden_role (POD route live, role-gated)
+# console: https://web-production-ba508.up.railway.app serves the Daylight reskin (CSS exposes --canvas/--primary tokens + .dark)
 ```
 
 ---
@@ -161,6 +187,20 @@ railway variable set CORS_ALLOWED_ORIGINS=https://<web>.up.railway.app --service
 - A fresh volume has `lost+found` → set `PGDATA` to a **subdirectory** of the mount.
 - The build context for the api/web images is the **repo root** (workspaces live above the app); `RAILWAY_DOCKERFILE_PATH` selects the Dockerfile. `.dockerignore` + `.railwayignore` keep the context/upload lean.
 - `railway redeploy` replays the previous deployment's variable snapshot; to apply changed vars, set a variable **without** `--skip-deploys` (triggers a fresh deploy with current vars, no rebuild).
+- **Refreshing the live env to a new commit (e.g. the 2026‑06‑27 9→13 refresh).** `railway up` uploads the
+  **current working directory's** tree (honouring `.gitignore`/`.railwayignore`), so deploy from a checkout that
+  IS the target commit. To redeploy without re‑linking, pass the project/service/env explicitly from that checkout:
+  ```bash
+  # from a clean `main` checkout (the tree you want live):
+  railway up --project 911958f6-42d0-4a28-9ed5-7081c53f4b8e --environment production --service api --ci \
+    --message "refresh api to <commit>"
+  railway up --project 911958f6-42d0-4a28-9ed5-7081c53f4b8e --environment production --service web --ci \
+    --message "refresh web to <commit>"
+  ```
+  **Do NOT redeploy `postgres`** unless `infra/Dockerfile.postgres` actually changed — the volume + data persist
+  across `api`/`web` redeploys; the `api` boot's `migrate deploy` applies any new (additive) migrations. The
+  `railway up --ci` log stream may drop with a `reqwest … operation timed out` on a long build (a CLI/IPv6 quirk) —
+  the build continues; poll `railway deployment list --service api` for `SUCCESS` and re‑check `/v1/health`.
 
 ---
 
@@ -206,8 +246,12 @@ railway variable set CORS_ALLOWED_ORIGINS=https://<web>.up.railway.app --service
    never committed. `.gitignore` covers every `.env*`; the images carry no secrets (`.dockerignore`).
 5. **Money safety:** Stripe **test mode only**; with no key set, `LocalPaymentProvider` runs (no real money path).
 
-## 8. Parked‑item status after 14b
+## 8. Parked‑item status (after 14b · re‑checked at the 2026‑06‑27 `792f701` refresh)
 - **(a) Notification providers** — **OPEN** (sandbox/console; documented above).
-- **(c) AWS S3** — **OPEN** (real‑S3‑no‑creds; documented above).
-- **(d) Stripe live test‑mode run** — **OPEN** (LocalPaymentProvider; public webhook URL now exists + documented).
-- New: the live API + console URLs above; the deployed Stripe webhook URL is now public for the founder to register.
+- **(c) AWS S3** — **OPEN** (real‑S3‑no‑creds). ⚠ Now also gates the **driver POD photo/signature uploads** (they ride
+  the same Inc‑10 `/v1/media/presign` path): the POD endpoints are live + authorize, but the actual media upload
+  errors until S3 is set (§5 item **c**). Boot is unaffected.
+- **(d) Stripe live test‑mode run** — **OPEN** (LocalPaymentProvider; public webhook URL exists + documented).
+- **2026‑06‑27 refresh:** live env upgraded **9→13 migrations** to `main` `792f701` — Track‑A recurring/B2B portal,
+  Track‑B resident clothing, cost‑centre split‑billing + web UI, the Daylight reskin, and driver POD are now live
+  (no new required env; the parked credentialed items above are unchanged).

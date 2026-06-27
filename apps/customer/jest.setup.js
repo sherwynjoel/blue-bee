@@ -72,7 +72,64 @@ jest.mock('react-native-maps', () => {
     __esModule: true,
     default: MapView,
     Marker: Mock('Marker'),
+    Polyline: Mock('Polyline'),
     PROVIDER_GOOGLE: 'google',
     PROVIDER_DEFAULT: undefined,
   };
+});
+
+// react-native-safe-area-context (Daylight reskin): the login screen + Sheet use useSafeAreaInsets;
+// component tests render screens without a SafeAreaProvider, so stand the context in with real insets.
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const insets = { top: 47, right: 0, bottom: 34, left: 0 };
+  const frame = { x: 0, y: 0, width: 390, height: 844 };
+  return {
+    __esModule: true,
+    SafeAreaProvider: ({ children }) => children,
+    SafeAreaConsumer: ({ children }) => children(insets),
+    SafeAreaView: ({ children, ...p }) => React.createElement(View, p, children),
+    useSafeAreaInsets: () => insets,
+    useSafeAreaFrame: () => frame,
+    SafeAreaInsetsContext: React.createContext(insets),
+    initialWindowMetrics: { insets, frame },
+  };
+});
+
+// expo-haptics (Daylight reskin): native taptic engine isn't available under Node — a no-op stand-in
+// so primitives/screens that fire haptics on press/state-change still mount + run in tests.
+jest.mock('expo-haptics', () => ({
+  impactAsync: jest.fn(async () => undefined),
+  notificationAsync: jest.fn(async () => undefined),
+  selectionAsync: jest.fn(async () => undefined),
+  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy', Soft: 'soft', Rigid: 'rigid' },
+  NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
+}));
+
+// expo-blur (Daylight reskin): the native blur view isn't available under Node — render its children
+// inside a plain View so the glass surfaces (track ETA card, sticky bars) still mount in tests.
+jest.mock('expo-blur', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const BlurView = (props) => React.createElement(View, { ...props }, props.children);
+  BlurView.displayName = 'BlurView';
+  return { __esModule: true, BlurView };
+});
+
+// @expo/vector-icons (Daylight reskin): icon fonts don't load under Node — stub every family to a
+// View carrying the icon name as testID so screens render deterministically + fast in tests.
+jest.mock('@expo/vector-icons', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return new Proxy(
+    {},
+    {
+      get: () => {
+        const Icon = (props) =>
+          React.createElement(View, { ...props, testID: props.testID ?? `icon-${props.name ?? 'x'}` });
+        return Icon;
+      },
+    },
+  );
 });

@@ -1,14 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { ItemKind, type CustomerSite, type ServiceCatalogItem } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -16,12 +8,23 @@ import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { buildBookDto, newIdempotencyKey, tomorrowMorningWindow, type DraftItem } from '../orders/booking';
 import { rangeText } from '../format';
+import { useTheme } from '../../theme';
+import { Button, Card, Text, fireHaptic } from '../../components/ui';
 
 const ITEM_KINDS: ItemKind[] = [ItemKind.RUG, ItemKind.CARPET, ItemKind.BLIND, ItemKind.UPHOLSTERY, ItemKind.GARMENT];
+
+const KIND_ICON: Record<string, React.ComponentProps<typeof Feather>['name']> = {
+  [ItemKind.RUG]: 'square',
+  [ItemKind.CARPET]: 'grid',
+  [ItemKind.BLIND]: 'sliders',
+  [ItemKind.UPHOLSTERY]: 'inbox',
+  [ItemKind.GARMENT]: 'shopping-bag',
+};
 
 /** Book a specialty job (PRD §7A A2.1): pick service + items + site + pickup window → POST /v1/orders. */
 export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Book'>): React.ReactElement {
   const { client, me } = useSession();
+  const { colors, space } = useTheme();
   const accountId = me?.user.accountIds[0];
 
   const [services, setServices] = useState<ServiceCatalogItem[]>([]);
@@ -63,6 +66,7 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
     const m = Number(measure);
     setItems((prev) => [...prev, { kind, serviceId, estimatedMeasure: Number.isFinite(m) && m > 0 ? m : undefined }]);
     setMeasure('');
+    fireHaptic('success');
   }, [kind, serviceId, measure]);
 
   const submit = useCallback(async () => {
@@ -95,117 +99,244 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
   const selectedService = services.find((s) => s.id === serviceId);
   const estimate = estimateRange(items, services);
 
-  if (loading) return <ActivityIndicator testID="book-loading" style={styles.center} size="large" color="#1f6feb" />;
+  if (loading)
+    return (
+      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
+        <ActivityIndicator testID="book-loading" size="large" color={colors.azure} />
+        <Text variant="subhead" color="secondary" style={{ marginTop: 12 }}>
+          Loading booking options…
+        </Text>
+      </View>
+    );
   if (loadError)
     return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{loadError}</Text>
+      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
+        <Feather name="alert-circle" size={28} color={colors.danger} />
+        <Text variant="headline" weight="600" center style={{ marginTop: 12 }}>
+          {loadError}
+        </Text>
       </View>
     );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.section}>Item type</Text>
-      <View style={styles.chips}>
-        {ITEM_KINDS.map((k) => (
-          <TouchableOpacity
-            key={k}
-            testID={`kind-${k}`}
-            style={[styles.chip, kind === k && styles.chipOn]}
-            onPress={() => setKind(k)}
+    <ScrollView
+      style={{ backgroundColor: colors.canvas }}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      <Card title="What needs cleaning?">
+        <Text variant="footnote" color="secondary" style={styles.help}>
+          Pick an item type and the service for it.
+        </Text>
+        <View style={styles.chips}>
+          {ITEM_KINDS.map((k) => (
+            <Chip key={k} testID={`kind-${k}`} label={titleCase(k)} icon={KIND_ICON[k]} selected={kind === k} onPress={() => setKind(k)} />
+          ))}
+        </View>
+
+        <Text variant="subhead" weight="600" style={styles.sectionLabel}>
+          Service
+        </Text>
+        <View style={styles.chips}>
+          {services.map((s) => (
+            <Chip key={s.id} testID={`service-${s.id}`} label={s.name} selected={serviceId === s.id} onPress={() => setServiceId(s.id)} />
+          ))}
+        </View>
+
+        <Text variant="subhead" weight="600" style={styles.sectionLabel}>
+          Approx. size {selectedService ? `(${selectedService.unit.toLowerCase()})` : ''}
+        </Text>
+        <View style={styles.measureRow}>
+          <View
+            style={[
+              styles.measureField,
+              { backgroundColor: colors.surface, borderColor: colors.hairline, borderRadius: 12 },
+            ]}
           >
-            <Text style={[styles.chipText, kind === k && styles.chipTextOn]}>{titleCase(k)}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.section}>Service</Text>
-      <View style={styles.chips}>
-        {services.map((s) => (
-          <TouchableOpacity
-            key={s.id}
-            testID={`service-${s.id}`}
-            style={[styles.chip, serviceId === s.id && styles.chipOn]}
-            onPress={() => setServiceId(s.id)}
-          >
-            <Text style={[styles.chipText, serviceId === s.id && styles.chipTextOn]}>{s.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.section}>Approx. size {selectedService ? `(${selectedService.unit.toLowerCase()})` : ''}</Text>
-      <TextInput
-        testID="measure-input"
-        style={styles.input}
-        value={measure}
-        onChangeText={setMeasure}
-        placeholder="e.g. 40"
-        keyboardType="decimal-pad"
-      />
-
-      <TouchableOpacity testID="add-item" style={styles.secondaryBtn} onPress={addItem} disabled={!serviceId}>
-        <Text style={styles.secondaryBtnText}>+ Add item</Text>
-      </TouchableOpacity>
+            <MeasureInput value={measure} onChangeText={setMeasure} />
+          </View>
+          <Button testID="add-item" label="Add" icon="plus" variant="outline" size="md" onPress={addItem} disabled={!serviceId} fullWidth={false} haptic="none" />
+        </View>
+      </Card>
 
       {items.length > 0 ? (
-        <View style={styles.itemsBox}>
-          <Text style={styles.section}>Items to book</Text>
+        <Card title={`Items to book (${items.length})`}>
           {items.map((it, i) => (
-            <View key={i} style={styles.itemRow} testID={`draft-item-${i}`}>
-              <Text style={styles.itemText}>
-                {titleCase(it.kind)} · {serviceName(it.serviceId)}
-                {it.estimatedMeasure ? ` · ~${it.estimatedMeasure}` : ''}
-              </Text>
-              <TouchableOpacity onPress={() => setItems((p) => p.filter((_, idx) => idx !== i))}>
-                <Text style={styles.removeText}>Remove</Text>
-              </TouchableOpacity>
+            <View key={i} testID={`draft-item-${i}`} style={[styles.itemRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline }]}>
+              <View style={[styles.itemIcon, { backgroundColor: colors.azureTint }]}>
+                <Feather name={KIND_ICON[it.kind] ?? 'box'} size={16} color={colors.azure} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="subhead" weight="500">
+                  {titleCase(it.kind)} · {serviceName(it.serviceId)}
+                </Text>
+                {it.estimatedMeasure ? (
+                  <Text variant="footnote" color="secondary">
+                    ~{it.estimatedMeasure} {selectedService?.unit.toLowerCase() ?? ''}
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable onPress={() => setItems((p) => p.filter((_, idx) => idx !== i))} hitSlop={14} accessibilityLabel="Remove item">
+                <Feather name="x" size={18} color={colors.textTertiary} />
+              </Pressable>
             </View>
           ))}
           {estimate ? (
-            <Text testID="estimate" style={styles.estimate}>
-              Rough estimate: {rangeText(estimate.low, estimate.high)} — final quote after measurement
-            </Text>
+            <View style={[styles.estimateBox, { backgroundColor: colors.azureTint }]}>
+              <View style={styles.estimateTop}>
+                <Feather name="tag" size={15} color={colors.azure} />
+                <Text variant="footnote" weight="600" color="azure" style={{ marginLeft: 6 }}>
+                  Rough estimate
+                </Text>
+              </View>
+              <Text testID="estimate" variant="title3" weight="700" color="azure" tabular style={{ marginTop: 4 }}>
+                {rangeText(estimate.low, estimate.high)}
+              </Text>
+              <Text variant="footnote" color="secondary" style={{ marginTop: 2 }}>
+                Final quote confirmed after measurement at the plant.
+              </Text>
+            </View>
           ) : null}
-        </View>
+        </Card>
       ) : null}
 
       {sites.length > 0 ? (
-        <>
-          <Text style={styles.section}>Pickup / delivery address</Text>
-          {sites.map((s) => (
-            <TouchableOpacity
-              key={s.id}
-              testID={`site-${s.id}`}
-              style={[styles.siteRow, siteId === s.id && styles.siteRowOn]}
-              onPress={() => setSiteId(s.id)}
-            >
-              <Text style={styles.siteName}>{s.name}</Text>
-              {s.address ? <Text style={styles.siteAddr}>{s.address}</Text> : null}
-            </TouchableOpacity>
-          ))}
-        </>
+        <Card title="Pickup & delivery address">
+          {sites.map((s) => {
+            const on = siteId === s.id;
+            return (
+              <Pressable
+                key={s.id}
+                testID={`site-${s.id}`}
+                onPress={() => {
+                  fireHaptic('selection');
+                  setSiteId(s.id);
+                }}
+                style={[
+                  styles.siteRow,
+                  { borderColor: on ? colors.azure : colors.hairline, backgroundColor: on ? colors.azureTint : colors.surface },
+                ]}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+              >
+                <Feather name="map-pin" size={18} color={on ? colors.azure : colors.textTertiary} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text variant="subhead" weight="600">
+                    {s.name}
+                  </Text>
+                  {s.address ? (
+                    <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
+                      {s.address}
+                    </Text>
+                  ) : null}
+                </View>
+                {on ? <Feather name="check-circle" size={18} color={colors.azure} /> : null}
+              </Pressable>
+            );
+          })}
+        </Card>
       ) : null}
 
-      <View style={styles.switchRow}>
-        <Text style={styles.section}>Schedule a pickup window (tomorrow AM)</Text>
-        <Switch testID="schedule-toggle" value={schedulePickup} onValueChange={setSchedulePickup} />
-      </View>
+      <Card>
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text variant="subhead" weight="600">
+              Schedule a pickup
+            </Text>
+            <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
+              Tomorrow morning window.
+            </Text>
+          </View>
+          <Switch
+            testID="schedule-toggle"
+            value={schedulePickup}
+            onValueChange={(v) => {
+              fireHaptic('selection');
+              setSchedulePickup(v);
+            }}
+            trackColor={{ true: colors.azure, false: colors.hairline }}
+            thumbColor="#FFFFFF"
+            ios_backgroundColor={colors.hairline}
+          />
+        </View>
+      </Card>
 
-      <TouchableOpacity
+      <Button
         testID="submit-booking"
-        style={[styles.primaryBtn, (submitting || items.length === 0) && styles.btnDisabled]}
+        label={items.length > 0 ? `Book ${items.length} item${items.length > 1 ? 's' : ''}` : 'Add an item to book'}
+        icon="check"
         onPress={() => void submit()}
+        busy={submitting}
         disabled={submitting || items.length === 0}
-      >
-        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Book {items.length} item(s)</Text>}
-      </TouchableOpacity>
+        style={{ marginTop: space.md }}
+      />
 
       {submitError ? (
-        <Text testID="book-error" style={styles.error}>
-          {submitError}
-        </Text>
+        <View style={[styles.errorBox, { backgroundColor: colors.dangerTint }]}>
+          <Text testID="book-error" variant="footnote" color="danger" center>
+            {submitError}
+          </Text>
+        </View>
       ) : null}
     </ScrollView>
+  );
+}
+
+/** A selectable Daylight chip. */
+function Chip({
+  label,
+  icon,
+  selected,
+  onPress,
+  testID,
+}: {
+  label: string;
+  icon?: React.ComponentProps<typeof Feather>['name'];
+  selected: boolean;
+  onPress: () => void;
+  testID?: string;
+}): React.ReactElement {
+  const { colors, radius } = useTheme();
+  return (
+    <Pressable
+      testID={testID}
+      onPress={() => {
+        fireHaptic('selection');
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      style={[
+        styles.chip,
+        {
+          borderRadius: radius.pill,
+          backgroundColor: selected ? colors.azure : colors.surface,
+          borderColor: selected ? colors.azure : colors.hairline,
+        },
+      ]}
+    >
+      {icon ? <Feather name={icon} size={15} color={selected ? colors.onAzure : colors.textSecondary} style={{ marginRight: 6 }} /> : null}
+      <Text variant="subhead" weight={selected ? '600' : '500'} style={{ color: selected ? colors.onAzure : colors.text }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** The size input — kept as a host TextInput carrying testID="measure-input" (test contract). */
+function MeasureInput({ value, onChangeText }: { value: string; onChangeText: (t: string) => void }): React.ReactElement {
+  const { colors, type } = useTheme();
+  return (
+    <TextInput
+      testID="measure-input"
+      value={value}
+      onChangeText={onChangeText}
+      placeholder="e.g. 40"
+      placeholderTextColor={colors.textTertiary}
+      keyboardType="decimal-pad"
+      style={{ flex: 1, color: colors.text, fontSize: type.body.fontSize, paddingVertical: 13 }}
+    />
   );
 }
 
@@ -228,30 +359,19 @@ function titleCase(s: string): string {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 16, gap: 6 },
+  content: { padding: 20, gap: 14, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  section: { fontSize: 15, fontWeight: '600', color: '#1f2328', marginTop: 12 },
+  help: { marginBottom: 12 },
+  sectionLabel: { marginTop: 18, marginBottom: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderColor: '#d0d7de', borderRadius: 16, paddingVertical: 8, paddingHorizontal: 14 },
-  chipOn: { backgroundColor: '#1f6feb', borderColor: '#1f6feb' },
-  chipText: { color: '#1f2328' },
-  chipTextOn: { color: '#fff', fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 12, fontSize: 16 },
-  secondaryBtn: { borderWidth: 1, borderColor: '#1f6feb', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 8 },
-  secondaryBtnText: { color: '#1f6feb', fontWeight: '600' },
-  itemsBox: { backgroundColor: '#f6f8fa', borderRadius: 10, padding: 12, marginTop: 8 },
-  itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
-  itemText: { color: '#1f2328', flex: 1 },
-  removeText: { color: '#b91c1c' },
-  estimate: { marginTop: 8, color: '#1a7f37', fontWeight: '600' },
-  siteRow: { borderWidth: 1, borderColor: '#d0d7de', borderRadius: 8, padding: 12, marginTop: 6 },
-  siteRowOn: { borderColor: '#1f6feb', backgroundColor: '#ddf4ff' },
-  siteName: { fontWeight: '600', color: '#1f2328' },
-  siteAddr: { color: '#57606a', marginTop: 2 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  primaryBtn: { backgroundColor: '#1f6feb', borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 20 },
-  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  btnDisabled: { opacity: 0.5 },
-  error: { color: '#b91c1c', marginTop: 12, textAlign: 'center' },
+  chip: { flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingHorizontal: 16, borderWidth: 1.5 },
+  measureRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  measureField: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, borderWidth: StyleSheet.hairlineWidth, minHeight: 50 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+  itemIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  estimateBox: { borderRadius: 12, padding: 14, marginTop: 14 },
+  estimateTop: { flexDirection: 'row', alignItems: 'center' },
+  siteRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 12, padding: 14, marginBottom: 8 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  errorBox: { borderRadius: 12, padding: 12, marginTop: 12 },
 });

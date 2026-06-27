@@ -23,6 +23,7 @@ import { AccountModule } from './account/account.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { ResidentsModule } from './residents/residents.module';
 import { CostCentersModule } from './cost-centers/cost-centers.module';
+import { FacilityLinenModule } from './facility-linen/facility-linen.module';
 import { InvoicesModule } from './invoices/invoices.module';
 
 /**
@@ -66,6 +67,7 @@ import { InvoicesModule } from './invoices/invoices.module';
     AccountsModule,
     ResidentsModule,
     CostCentersModule,
+    FacilityLinenModule,
     InvoicesModule,
     HealthModule,
   ],

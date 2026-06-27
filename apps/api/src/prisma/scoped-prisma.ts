@@ -29,6 +29,13 @@ const ACCOUNT_DIRECT: Record<string, string> = {
   // are pinned to their accounts (a cost centre is also nullable-site-scoped, but the account boundary
   // is the tenancy guard; account-level centres carry a NULL site so are NOT filtered by SITE_DIRECT).
   CostCenter: 'accountId',
+  // Track-B Phase 2 (facility linen): par/on-hand/ledger/pickups all carry a direct account_id + site_id.
+  // A confined account principal sees ONLY its own sites' par/stock/pickups (the inverse-scope read);
+  // a cross-account id resolves to null → 404. Soiled-cart pickups are ops/driver writes, never account.
+  ParLevel: 'accountId',
+  LinenStock: 'accountId',
+  LinenMovement: 'accountId',
+  SoilPickup: 'accountId',
 };
 
 /** Models whose account linkage is reachable via a relation path. */
@@ -52,7 +59,18 @@ const ACCOUNT_VIA: Record<string, (filter: unknown) => Record<string, unknown>> 
 };
 
 /** Models that also carry a direct siteId (for SITE-scoped principals). */
-const SITE_DIRECT: Record<string, string> = { Order: 'siteId', RouteStop: 'siteId', Site: 'id', Resident: 'siteId', LostFoundItem: 'siteId' };
+const SITE_DIRECT: Record<string, string> = {
+  Order: 'siteId',
+  RouteStop: 'siteId',
+  Site: 'id',
+  Resident: 'siteId',
+  LostFoundItem: 'siteId',
+  // Track-B Phase 2 (facility linen) — site-scoped principals see only their site's rows.
+  ParLevel: 'siteId',
+  LinenStock: 'siteId',
+  LinenMovement: 'siteId',
+  SoilPickup: 'siteId',
+};
 
 // Unique-where ops keep the unique field at the TOP level (Prisma requires it), so scope is
 // flat-merged as sibling filters (extendedWhereUnique). Filter ops AND-merge so a caller can't widen.

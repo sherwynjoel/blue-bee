@@ -35,6 +35,13 @@ export const GARMENT_OPS_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, Role
 // B2B self-serve invoice portal — the account-customer persona (NOT ops). Mirrors the server @Roles on
 // /v1/invoices (ACCOUNT_ADMIN/ACCOUNT_STAFF self-serve; OWNER/FINANCE also read for support).
 export const PORTAL_ROLES: RoleType[] = [RoleType.ACCOUNT_ADMIN, RoleType.ACCOUNT_STAFF];
+// Track-B facility linen (care-home par loop) — MIRRORS the server @Roles on /v1/sites/:id/par-levels,
+// /linen-stock, /soil-pickups, /pack-to-par. Reads: ops + the account's own staff (their sites only). Par
+// is account-management (OWNER/CSR); on-hand corrections are plant/ops; pickups + generation are ops.
+export const FACILITY_LINEN_READ_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.DISPATCHER, RoleType.PLANT_OP, RoleType.ACCOUNT_ADMIN, RoleType.ACCOUNT_STAFF];
+export const PAR_WRITE_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR];
+export const STOCK_ADJUST_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP];
+export const LINEN_OPS_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.DISPATCHER];
 
 export function roleNames(me: MeResponse | null): RoleType[] {
   return me ? me.user.roles.map((r) => r.role) : [];
@@ -74,4 +81,10 @@ export const can = {
   garmentOps: (me: MeResponse | null) => hasAnyRole(me, GARMENT_OPS_ROLES),
   // B2B self-serve invoice portal.
   portal: (me: MeResponse | null) => hasAnyRole(me, PORTAL_ROLES),
+  // Track-B facility linen (care-home par loop). `facilityLinen` gates the nav (read); the finer checks
+  // gate each write (par set/update, on-hand adjust, pickup + load-sheet generation).
+  facilityLinen: (me: MeResponse | null) => hasAnyRole(me, FACILITY_LINEN_READ_ROLES),
+  parWrite: (me: MeResponse | null) => hasAnyRole(me, PAR_WRITE_ROLES),
+  stockAdjust: (me: MeResponse | null) => hasAnyRole(me, STOCK_ADJUST_ROLES),
+  linenOps: (me: MeResponse | null) => hasAnyRole(me, LINEN_OPS_ROLES),
 };

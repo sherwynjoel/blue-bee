@@ -48,6 +48,21 @@ import type {
   ShiftActionDto,
   StopActionDto,
   StopExceptionDto,
+  // Facility-linen par loop (Track B Phase 2).
+  AdjustLinenStockDto,
+  GeneratePackToParDto,
+  LinenStockAdjustResult,
+  LinenStockListResult,
+  PackToParManifestListResult,
+  PackToParManifestView,
+  PackToParView,
+  ParLevelListResult,
+  ParLevelView,
+  RecordSoilPickupDto,
+  SetParLevelDto,
+  SoilPickupListResult,
+  SoilPickupView,
+  UpdateParLevelDto,
 } from '@blue-bee/shared';
 import type {
   AccountDetailView,
@@ -509,6 +524,43 @@ export class ConsoleApiClient extends ApiClient {
     if (!res.ok) throw await ApiError.from(res);
     const blob = await res.blob();
     return { blob, filename: attachmentFilename(res.headers.get('content-disposition')) ?? `invoice-${id}.pdf` };
+  }
+
+  // ───────────── facility linen (care-home par loop, Track B Phase 2) ─────────────
+
+  listParLevels(siteId: string, q: { costCenterId?: string } = {}): Promise<ParLevelListResult> {
+    return this.request('GET', `/sites/${encodeURIComponent(siteId)}/par-levels${q.costCenterId ? `?costCenterId=${q.costCenterId}` : ''}`);
+  }
+  setParLevel(siteId: string, dto: SetParLevelDto): Promise<ParLevelView> {
+    return this.request('POST', `/sites/${encodeURIComponent(siteId)}/par-levels`, { body: dto });
+  }
+  updateParLevel(id: string, dto: UpdateParLevelDto): Promise<ParLevelView> {
+    return this.request('PATCH', `/par-levels/${encodeURIComponent(id)}`, { body: dto });
+  }
+  listLinenStock(siteId: string, q: { costCenterId?: string } = {}): Promise<LinenStockListResult> {
+    return this.request('GET', `/sites/${encodeURIComponent(siteId)}/linen-stock${q.costCenterId ? `?costCenterId=${q.costCenterId}` : ''}`);
+  }
+  adjustLinenStock(siteId: string, dto: AdjustLinenStockDto): Promise<LinenStockAdjustResult> {
+    return this.request('POST', `/sites/${encodeURIComponent(siteId)}/linen-stock/adjust`, { body: dto });
+  }
+  recordSoilPickup(siteId: string, dto: RecordSoilPickupDto): Promise<SoilPickupView> {
+    return this.request('POST', `/sites/${encodeURIComponent(siteId)}/soil-pickups`, { body: dto });
+  }
+  listSoilPickups(siteId: string, q: { costCenterId?: string; limit?: number } = {}): Promise<SoilPickupListResult> {
+    const p = new URLSearchParams();
+    if (q.costCenterId) p.set('costCenterId', q.costCenterId);
+    if (q.limit) p.set('limit', String(q.limit));
+    const qs = p.toString();
+    return this.request('GET', `/sites/${encodeURIComponent(siteId)}/soil-pickups${qs ? `?${qs}` : ''}`);
+  }
+  packToPar(siteId: string, q: { costCenterId?: string } = {}): Promise<PackToParView> {
+    return this.request('GET', `/sites/${encodeURIComponent(siteId)}/pack-to-par${q.costCenterId ? `?costCenterId=${q.costCenterId}` : ''}`);
+  }
+  generatePackToPar(siteId: string, dto: GeneratePackToParDto = {}): Promise<PackToParManifestView> {
+    return this.request('POST', `/sites/${encodeURIComponent(siteId)}/pack-to-par`, { body: dto });
+  }
+  listPackToParManifests(siteId: string, q: { limit?: number } = {}): Promise<PackToParManifestListResult> {
+    return this.request('GET', `/sites/${encodeURIComponent(siteId)}/pack-to-par/manifests${q.limit ? `?limit=${q.limit}` : ''}`);
   }
 }
 

@@ -22,7 +22,9 @@ import {
   InvoiceStatus,
   ItemKind,
   ItemStatus,
+  LinenMovementType,
   LostFoundStatus,
+  ManifestKind,
   PaymentMethod,
   PaymentStatus,
   ResidentStatus,
@@ -1183,6 +1185,104 @@ async function seedCareHomeEastWing(): Promise<void> {
   console.log('[seed] Branch4 §C ready: Maple Grove East Wing — 4 residents, 9 garments across EVERY §5.2-B stage (append-only custody), 3 lost & found (1 reconciled).');
 }
 
+// ─────────────────────── Branch 4 §C-linen — Maple Grove facility linen (par loop) ───────────────────────
+// The OTHER care-home stream (PRD §2.2 facility linen = the rental/par model; §5.2 SOIL_PICKUP …
+// PACK_TO_PAR; §B3.1/§B3.2). Real par levels per wing/cost-centre × linen SKU, an append-only on-hand
+// ledger (LinenMovement) with a reconciling cache (LinenStock: on_hand == Σ qty), one recorded soiled-cart
+// pickup at a SOIL_PICKUP stop, and a generated pack-to-par load sheet (a Manifest, kind PACK_TO_PAR). The
+// seeded care-home ACCOUNT_ADMIN (+14165550030) sees ONLY Maple Grove's par/pickups (inverse-scope).
+const fl = uuidIn('b2000000');
+const LINEN_SKUS = [
+  { id: fl(1), name: 'Bed sheets (flat)', rate: '0.8500' },
+  { id: fl(2), name: 'Bath towels', rate: '0.6000' },
+  { id: fl(3), name: 'Patient gowns', rate: '0.9000' },
+  { id: fl(4), name: 'Blankets (thermal)', rate: '1.2000' },
+] as const;
+const CC_WEST = fl(50); // West Wing cost-centre (Sandra's "cost-center reporting")
+const CC_EAST = fl(51); // East Wing cost-centre
+
+async function seedMapleGroveFacilityLinen(): Promise<void> {
+  // Linen SKUs reuse Service (vertical LINEN, unit PIECE) — the rental catalogue.
+  for (const s of LINEN_SKUS) {
+    await prisma.service.upsert({ where: { id: s.id }, update: {}, create: { id: s.id, orgId: ID.org, vertical: ServiceVertical.LINEN, name: s.name, unit: ServiceUnit.PIECE, baseRate: s.rate, createdBy: ID.owner } });
+  }
+  // A cost-centre per wing (under the care-home account, scoped to the wing's site).
+  await prisma.costCenter.upsert({ where: { id: CC_WEST }, update: {}, create: { id: CC_WEST, orgId: ID.org, accountId: B1.careHome, siteId: B1.site, code: 'MG-WEST', name: 'Maple Grove — West Wing', kind: CostCenterKind.WING, active: true, createdBy: ID.owner } });
+  await prisma.costCenter.upsert({ where: { id: CC_EAST }, update: {}, create: { id: CC_EAST, orgId: ID.org, accountId: B1.careHome, siteId: eid(1), code: 'MG-EAST', name: 'Maple Grove — East Wing', kind: CostCenterKind.WING, active: true, createdBy: ID.owner } });
+
+  // Par targets per (site, cost-centre?, sku). West Wing site-level + a wing-scoped sheet par; East Wing.
+  const PARS = [
+    { n: 100, site: B1.site, cc: null, sku: fl(1), target: 120 },
+    { n: 101, site: B1.site, cc: null, sku: fl(2), target: 200 },
+    { n: 102, site: B1.site, cc: null, sku: fl(3), target: 60 },
+    { n: 103, site: B1.site, cc: null, sku: fl(4), target: 40 },
+    { n: 104, site: B1.site, cc: CC_WEST, sku: fl(1), target: 50 }, // a wing-scoped sheet par
+    { n: 105, site: eid(1), cc: null, sku: fl(1), target: 80 },
+    { n: 106, site: eid(1), cc: null, sku: fl(2), target: 120 },
+  ];
+  for (const p of PARS) {
+    await prisma.parLevel.upsert({ where: { id: fl(p.n) }, update: { targetQty: p.target }, create: { id: fl(p.n), orgId: ID.org, accountId: B1.careHome, siteId: p.site, costCenterId: p.cc, serviceId: p.sku, targetQty: p.target, createdBy: ID.owner } });
+  }
+
+  // The append-only ledger + on-hand cache + the recorded pickup + the load sheet are guarded so re-runs
+  // never duplicate the immutable movements (the Track-B append-only rule).
+  if (await prisma.soilPickup.findUnique({ where: { id: fl(300) } })) {
+    console.log('[seed] Maple Grove facility linen already present — skipping ledger/pickup/load-sheet (idempotent).');
+    return;
+  }
+
+  // Initial clean deliveries (+) then the soiled-cart pickup (−). on_hand == Σ qty for each cell.
+  //   cell: [site, cc, sku, delivered, pickedUp] → on_hand = delivered − pickedUp
+  const CELLS = [
+    { n: 200, site: B1.site, cc: null, sku: fl(1), delivered: 100, picked: 18 }, // West sheets → 82
+    { n: 201, site: B1.site, cc: null, sku: fl(2), delivered: 160, picked: 40 }, // West towels → 120
+    { n: 202, site: B1.site, cc: null, sku: fl(3), delivered: 55, picked: 0 }, // West gowns → 55
+    { n: 203, site: B1.site, cc: null, sku: fl(4), delivered: 38, picked: 0 }, // West blankets → 38
+    { n: 204, site: B1.site, cc: CC_WEST, sku: fl(1), delivered: 30, picked: 0 }, // West-wing sheets → 30
+    { n: 205, site: eid(1), cc: null, sku: fl(1), delivered: 70, picked: 0 }, // East sheets → 70
+    { n: 206, site: eid(1), cc: null, sku: fl(2), delivered: 100, picked: 0 }, // East towels → 100
+  ];
+
+  // A SOIL_PICKUP route stop at West Wing (a PICKUP-kind stop) the pickup is recorded against.
+  await prisma.route.upsert({ where: { id: fl(310) }, update: {}, create: { id: fl(310), orgId: ID.org, date: new Date('2026-06-26T00:00:00.000Z'), status: RouteStatus.COMPLETED, createdBy: ID.owner } });
+  await prisma.routeStop.upsert({
+    where: { id: fl(311) },
+    update: {},
+    create: { id: fl(311), orgId: ID.org, routeId: fl(310), seq: 1, accountId: B1.careHome, siteId: B1.site, kind: RouteStopKind.PICKUP, status: RouteStopStatus.COMPLETED, arrivedAt: new Date('2026-06-26T08:15:00.000Z'), completedAt: new Date('2026-06-26T08:40:00.000Z'), createdBy: ID.owner },
+  });
+
+  // The recorded soiled-cart pickup (West Wing): the confirmation the account sees ("4 carts at 08:30").
+  const pickupLines = CELLS.filter((c) => c.site === B1.site && c.cc === null && c.picked > 0).map((c) => ({ serviceId: c.sku, qty: c.picked }));
+  await prisma.soilPickup.create({
+    data: { id: fl(300), orgId: ID.org, accountId: B1.careHome, siteId: B1.site, costCenterId: null, routeStopId: fl(311), cartCount: 4, bagCount: 9, weightKg: new Prisma.Decimal('57.40'), soiled: true, lines: pickupLines as unknown as Prisma.InputJsonValue, actorId: ID.owner, occurredAt: new Date('2026-06-26T08:30:00.000Z'), createdBy: ID.owner },
+  });
+  // The append-only custody checkpoint (cart custody: itemId null, garmentStage SOIL_PICKUP).
+  await prisma.custodyEvent.create({ data: { orgId: ID.org, itemId: null, garmentStage: GarmentStatus.SOIL_PICKUP, actorId: ID.owner, occurredAt: new Date('2026-06-26T08:30:00.000Z'), createdBy: ID.owner } });
+
+  // The ledger (append-only) + the reconciling on-hand cache.
+  let mv = 400;
+  for (const c of CELLS) {
+    await prisma.linenMovement.create({ data: { id: fl(mv++), orgId: ID.org, accountId: B1.careHome, siteId: c.site, costCenterId: c.cc, serviceId: c.sku, type: LinenMovementType.DELIVERY, qty: c.delivered, sourceType: 'DELIVERY', actorId: ID.owner, occurredAt: new Date('2026-06-25T07:00:00.000Z'), createdBy: ID.owner } });
+    if (c.picked > 0) {
+      await prisma.linenMovement.create({ data: { id: fl(mv++), orgId: ID.org, accountId: B1.careHome, siteId: c.site, costCenterId: c.cc, serviceId: c.sku, type: LinenMovementType.SOIL_PICKUP, qty: -c.picked, sourceType: 'SOIL_PICKUP', sourceId: fl(300), actorId: ID.owner, occurredAt: new Date('2026-06-26T08:30:00.000Z'), createdBy: ID.owner } });
+    }
+    await prisma.linenStock.create({ data: { id: fl(150 + (c.n - 200)), orgId: ID.org, accountId: B1.careHome, siteId: c.site, costCenterId: c.cc, serviceId: c.sku, onHand: c.delivered - c.picked, createdBy: ID.owner } });
+  }
+
+  // The generated pack-to-par load sheet (a Manifest, kind PACK_TO_PAR) for West Wing — gap = max(0, par −
+  // on-hand) per SKU (incl. the wing-scoped sheet par), exactly as the §B3.2 load sheet the ops + account view.
+  const skuName = new Map(LINEN_SKUS.map((s) => [s.id, s.name] as const));
+  const westPars = PARS.filter((p) => p.site === B1.site);
+  const westStock = new Map(CELLS.filter((c) => c.site === B1.site).map((c) => [`${c.cc ?? ''}:${c.sku}`, c.delivered - c.picked] as const));
+  const sheetLines = westPars.map((p) => {
+    const onHand = westStock.get(`${p.cc ?? ''}:${p.sku}`) ?? 0;
+    return { serviceId: p.sku, sku: skuName.get(p.sku) ?? p.sku, unit: ServiceUnit.PIECE, costCenterId: p.cc, par: p.target, onHand, gap: Math.max(0, p.target - onHand) };
+  });
+  await prisma.manifest.create({ data: { id: fl(320), orgId: ID.org, kind: ManifestKind.PACK_TO_PAR, siteId: B1.site, costCenterId: null, lines: sheetLines as unknown as Prisma.InputJsonValue, generatedAt: new Date('2026-06-26T09:00:00.000Z'), createdBy: ID.owner } });
+
+  console.log('[seed] Maple Grove facility linen ready: 4 LINEN SKUs, par per wing/cost-centre, on-hand ledger (on_hand == Σ movements), 1 soiled-cart pickup (4 carts / 58 pcs), 1 pack-to-par load sheet.');
+}
+
 // ─────────────────────── Branch 4 §D — live fleet (vehicles/drivers/shifts/routes/GpsPings) ───────────────────────
 // Makes GET /v1/fleet/live + the live map real: 3 vehicles + NEW dedicated drivers (the seeded driver
 // fixtures are owned by tracking.e2e) on ACTIVE shifts, an IN_PROGRESS delivery route (one stop EN_ROUTE
@@ -1335,6 +1435,7 @@ async function main(): Promise<void> {
   await seedCostCenters(); // integration reconcile — split-billing demo data on the condo account
   await seedResidentialSpecialty();
   await seedCareHomeEastWing();
+  await seedMapleGroveFacilityLinen();
   await seedLiveFleet();
   await printSummary();
 }

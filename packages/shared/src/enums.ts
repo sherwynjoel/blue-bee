@@ -330,6 +330,27 @@ export enum CostCenterKind {
   OTHER = 'OTHER',
 }
 
+/**
+ * [Track B Phase 2 — PRD §2.2/§5.2/§B3] Facility-linen on-hand ledger movement reason. Mirrors the Prisma
+ * `LinenMovementType`. The append-only LinenMovement carries a SIGNED qty: SOIL_PICKUP −, DELIVERY +,
+ * ADJUSTMENT ± (the "set on-hand to T" delta). on_hand == Σ(qty) per (site, cost-centre?, sku).
+ */
+export enum LinenMovementType {
+  SOIL_PICKUP = 'SOIL_PICKUP',
+  DELIVERY = 'DELIVERY',
+  ADJUSTMENT = 'ADJUSTMENT',
+}
+
+/**
+ * [Track B Phase 2 — PRD §B3.2] Manifest purpose. Mirrors the Prisma `ManifestKind`. PICKUP_CHECKLIST is
+ * the existing specialty load sheet (default); PACK_TO_PAR is the care-home facility-linen load sheet
+ * (par − on-hand per SKU, per site/cost-centre).
+ */
+export enum ManifestKind {
+  PICKUP_CHECKLIST = 'PICKUP_CHECKLIST',
+  PACK_TO_PAR = 'PACK_TO_PAR',
+}
+
 /** [DERIVED] Payment.method (§8.4 lists card/wallets/ACH/PAD). */
 export enum PaymentMethod {
   CARD = 'CARD',

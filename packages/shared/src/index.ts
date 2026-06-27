@@ -22,4 +22,5 @@ export * from './recurring';
 export * from './accounts';
 export * from './residents';
 export * from './cost-centers';
+export * from './facility-linen';
 export * from './invoices';

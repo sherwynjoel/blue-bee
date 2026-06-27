@@ -281,6 +281,25 @@ enum CostCenterKind {
   OTHER
 }
 
+// [Track B Phase 2 — PRD §2.2/§5.2/§B3] Facility-linen on-hand ledger movement reason. The append-only
+// LinenMovement carries a SIGNED qty delta: SOIL_PICKUP is negative (soiled linen leaves a site → less
+// clean on-hand), DELIVERY is positive (clean par stock returned), ADJUSTMENT is a signed ops correction
+// (the "set on-hand to T" delta). on_hand (LinenStock) is always Σ(qty) for a (site, costCentre?, sku).
+enum LinenMovementType {
+  SOIL_PICKUP
+  DELIVERY
+  ADJUSTMENT
+}
+
+// [Track B Phase 2 — PRD §B3.2] Manifest purpose. PICKUP_CHECKLIST is the existing Phase-1 specialty
+// load sheet (the order's items expected at a pickup stop) — the DEFAULT, so every existing manifest is
+// unchanged. PACK_TO_PAR is the care-home facility-linen load sheet (par − on-hand per SKU, per site/
+// cost-centre). Additive; same `lines` jsonb snapshot mechanism.
+enum ManifestKind {
+  PICKUP_CHECKLIST
+  PACK_TO_PAR
+}
+
 enum PaymentMethod {
   CARD
   APPLE_PAY
@@ -433,6 +452,9 @@ model Account {
   priceLists     PriceList[]
   standingOrders StandingOrder[]
   costCenters    CostCenter[]
+  parLevels      ParLevel[]
+  linenStocks    LinenStock[]
+  soilPickups    SoilPickup[]
 
   @@index([orgId])
 }
@@ -457,6 +479,10 @@ model Site {
   residents      Resident[]
   lostFoundItems LostFoundItem[]
   costCenters    CostCenter[]
+  parLevels      ParLevel[]
+  linenStocks    LinenStock[]
+  soilPickups    SoilPickup[]
+  manifests      Manifest[]
 
   @@index([orgId])
   @@index([accountId])
@@ -478,6 +504,8 @@ model Service {
   orderLines     OrderLine[]
   priceListItems PriceListItem[]
   standingOrders StandingOrder[]
+  parLevels      ParLevel[]
+  linenStocks    LinenStock[]
 
   @@index([orgId])
 }
@@ -943,6 +971,7 @@ model RouteStop {
   geofenceEvents GeofenceEvent[]
   pod            ProofOfDelivery?
   manifests      Manifest[]
+  soilPickups    SoilPickup[]
 
   @@unique([routeId, seq])
   @@index([orgId])
@@ -1030,18 +1059,161 @@ model Manifest {
   orgId       String   @map("org_id") @db.Uuid
   routeId     String?  @map("route_id") @db.Uuid
   routeStopId String?  @map("route_stop_id") @db.Uuid
-  lines       Json     @default("[]")
-  generatedAt DateTime @default(now()) @map("generated_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  createdBy   String?  @map("created_by") @db.Uuid
+  // [Track B Phase 2 — PRD §B3.2] Manifest purpose. Defaults to PICKUP_CHECKLIST so every existing
+  // specialty manifest is unchanged. A PACK_TO_PAR load sheet binds to a site (+ optional cost-centre)
+  // instead of a route/stop; `lines` snapshots {serviceId, sku, unit, par, onHand, gap} per linen SKU.
+  kind         ManifestKind @default(PICKUP_CHECKLIST)
+  siteId       String?      @map("site_id") @db.Uuid
+  costCenterId String?      @map("cost_center_id") @db.Uuid
+  lines        Json         @default("[]")
+  generatedAt  DateTime     @default(now()) @map("generated_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  createdBy    String?      @map("created_by") @db.Uuid
 
-  route     Route?     @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  routeStop RouteStop? @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
+  route      Route?      @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  routeStop  RouteStop?  @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
+  site       Site?       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
 
   @@index([orgId])
   @@index([routeId])
   @@index([routeStopId])
+  @@index([siteId])
+  @@index([costCenterId])
+}
+
+// ─────────────────────────────── Track-B: care-home facility linen (par loop) ───────────────────────────────
+// PRD §2.2 (facility linen = the rental/par model), §5.2 (SOIL_PICKUP … PACK_TO_PAR), §B3.1/§B3.2. The
+// rental/par half of the care-home vertical: par levels per site/cost-centre × linen SKU, an append-only
+// on-hand ledger fed by soiled-cart pickups, and the pack-to-par load sheet (reuses Manifest). The plant
+// production floor (§B3.3/§B3.4 weigh/stage-scan/rewash), RFID, and par/weight/piece billing stay
+// DEFERRED (modeled-for, not faked). Linen SKUs reuse `Service` (vertical LINEN, unit PIECE).
+
+// PRD §B3.2 — the clean-linen par target per (site, optional cost-centre) × linen SKU. Set by OWNER/CSR;
+// read by ops + the owning account (an account sees only its own sites' par, via row-scoping). Uniqueness
+// is per (site, costCentre?, sku) with NULLS NOT DISTINCT (a site-level par carries a NULL cost-centre and
+// is still unique) — enforced by a partial/NND unique index injected in the migration SQL.
+model ParLevel {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  accountId    String   @map("account_id") @db.Uuid
+  siteId       String   @map("site_id") @db.Uuid
+  costCenterId String?  @map("cost_center_id") @db.Uuid
+  serviceId    String   @map("service_id") @db.Uuid // the linen SKU (Service vertical = LINEN)
+  targetQty    Int      @map("target_qty")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by") @db.Uuid
+
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  site       Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: Cascade)
+  service    Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([orgId])
+  @@index([accountId])
+  @@index([siteId])
+  @@index([costCenterId])
+  @@index([serviceId])
+}
+
+// Current clean on-hand per (site, optional cost-centre) × linen SKU — a CACHE maintained atomically
+// alongside each append-only LinenMovement (on_hand += signed qty, in the movement's transaction). It is
+// always reconcilable to the ledger: on_hand == Σ(LinenMovement.qty) for the same key. Same NND-unique
+// key as ParLevel, so the pack-to-par gap is computed at the exact granularity par is set.
+model LinenStock {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  accountId    String   @map("account_id") @db.Uuid
+  siteId       String   @map("site_id") @db.Uuid
+  costCenterId String?  @map("cost_center_id") @db.Uuid
+  serviceId    String   @map("service_id") @db.Uuid
+  onHand       Int      @default(0) @map("on_hand")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by") @db.Uuid
+
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  site       Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: Cascade)
+  service    Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([orgId])
+  @@index([accountId])
+  @@index([siteId])
+  @@index([costCenterId])
+  @@index([serviceId])
+}
+
+// Append-only on-hand ledger (PRD §8.2/§8.6 custody rule, applied to linen stock). A DB trigger
+// (`linen_movement_append_only`, reusing bluebee_block_mutation) blocks UPDATE/DELETE — tamper-evident
+// like CustodyEvent/AuditLog. Parent refs are SCALAR columns (no FK relations) — the StandingOrderOccurrence
+// "idempotency ledger" precedent — so a (rare) parent hard-delete never fires a cascade UPDATE/DELETE the
+// append-only trigger would (correctly) refuse. `qty` is SIGNED (− pickup / + delivery / ± adjustment);
+// `sourceType`/`sourceId` reference what produced it (a SoilPickup, an adjustment, a future delivery).
+model LinenMovement {
+  id           String            @id @default(uuid()) @db.Uuid
+  orgId        String            @map("org_id") @db.Uuid
+  accountId    String            @map("account_id") @db.Uuid
+  siteId       String            @map("site_id") @db.Uuid
+  costCenterId String?           @map("cost_center_id") @db.Uuid
+  serviceId    String            @map("service_id") @db.Uuid
+  type         LinenMovementType
+  qty          Int // signed delta applied to LinenStock.on_hand
+  sourceType   String?           @map("source_type") // 'SOIL_PICKUP' | 'ADJUSTMENT' | 'DELIVERY'
+  sourceId     String?           @map("source_id") @db.Uuid
+  actorId      String?           @map("actor_id") @db.Uuid
+  note         String?
+  occurredAt   DateTime          @default(now()) @map("occurred_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+  createdBy    String?           @map("created_by") @db.Uuid
+
+  @@index([orgId])
+  @@index([accountId])
+  @@index([siteId])
+  @@index([costCenterId])
+  @@index([serviceId])
+  @@index([sourceType, sourceId])
+}
+
+// PRD §B3.1 — the soiled-cart pickup confirmation (the header the account sees: "N carts at HH:MM").
+// Records cart/bag count + weight per site/cost-centre, segregated soiled, optionally linked to the
+// SOIL_PICKUP route stop (a PICKUP-kind RouteStop). Its per-SKU `lines` each write a LinenMovement
+// (SOIL_PICKUP, − qty) that decrements on-hand; an append-only CustodyEvent (cart custody, garmentStage
+// SOIL_PICKUP) is the audit checkpoint. Mutable header (not the ledger) — safe to read/list/clean up.
+model SoilPickup {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  accountId    String   @map("account_id") @db.Uuid
+  siteId       String   @map("site_id") @db.Uuid
+  costCenterId String?  @map("cost_center_id") @db.Uuid
+  routeStopId  String?  @map("route_stop_id") @db.Uuid
+  cartCount    Int      @map("cart_count")
+  bagCount     Int?     @map("bag_count")
+  weightKg     Decimal? @map("weight_kg") @db.Decimal(10, 2)
+  soiled       Boolean  @default(true)
+  // Per-SKU soiled counts snapshot captured at pickup ({ serviceId, qty }) — the source of the decrement
+  // movements (kept on the header too so the confirmation is self-describing).
+  lines        Json     @default("[]")
+  actorId      String?  @map("actor_id") @db.Uuid
+  occurredAt   DateTime @default(now()) @map("occurred_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by") @db.Uuid
+
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  site       Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  routeStop  RouteStop?  @relation(fields: [routeStopId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([accountId])
+  @@index([siteId])
+  @@index([costCenterId])
+  @@index([routeStopId])
+  @@index([occurredAt])
 }
 
 // ─────────────────────────────── Track-A: standing / recurring orders (condo B2B) ───────────────────────────────
@@ -1199,6 +1371,10 @@ model CostCenter {
   orders         Order[]
   standingOrders StandingOrder[]
   invoiceLines   InvoiceLine[]
+  parLevels      ParLevel[]
+  linenStocks    LinenStock[]
+  soilPickups    SoilPickup[]
+  manifests      Manifest[]
 
   @@unique([accountId, code])
   @@index([orgId])

@@ -7,6 +7,7 @@ import {
   BarChart3,
   Building2,
   ClipboardList,
+  Layers,
   type LucideIcon,
   LogOut,
   MapPin,
@@ -94,6 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.Rea
         { href: '/dispatch', label: 'Dispatch', show: can.dispatch(me) || can.fleet(me), icon: RouteIcon },
         { href: '/fleet', label: 'Live fleet', show: can.fleet(me), icon: MapPin },
         { href: '/residents', label: 'Residents', show: can.residents(me), icon: Shirt },
+        { href: '/facility-linen', label: 'Facility linen', show: can.facilityLinen(me), icon: Layers },
       ],
     },
     {

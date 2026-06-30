@@ -396,16 +396,17 @@ model User {
   updatedAt     DateTime   @updatedAt @map("updated_at")
   createdBy     String?    @map("created_by") @db.Uuid
 
-  roles            UserRole[]
-  driver           Driver?
-  devices          Device[]
-  deviceTokens     DeviceToken[]
-  notifications    Notification[]
-  notificationPref NotificationPreference?
-  messagesFrom     Message[]               @relation("MessageFrom")
-  messagesTo       Message[]               @relation("MessageTo")
-  auditLogs        AuditLog[]
-  refreshTokens    RefreshToken[]
+  roles                UserRole[]
+  corporateMemberships CorporateMembership[]
+  driver               Driver?
+  devices              Device[]
+  deviceTokens         DeviceToken[]
+  notifications        Notification[]
+  notificationPref     NotificationPreference?
+  messagesFrom         Message[]               @relation("MessageFrom")
+  messagesTo           Message[]               @relation("MessageTo")
+  auditLogs            AuditLog[]
+  refreshTokens        RefreshToken[]
 
   @@unique([orgId, email])
   @@index([orgId])
@@ -430,23 +431,34 @@ model UserRole {
 }
 
 model Account {
-  id             String      @id @default(uuid()) @db.Uuid
-  orgId          String      @map("org_id") @db.Uuid
-  type           AccountType
-  name           String
-  billingTerms   Json        @default("{}") @map("billing_terms")
+  id                String      @id @default(uuid()) @db.Uuid
+  orgId             String      @map("org_id") @db.Uuid
+  type              AccountType
+  name              String
+  billingTerms      Json        @default("{}") @map("billing_terms")
   // Track-A (condo B2B) — per-account billing terms. `billingMode` selects the invoicing path
   // (PER_ORDER specialty default vs BATCH_PERIODIC building-account batching); `billingNetDays`
   // is the net-terms due window for a periodic invoice. The free-form `billingTerms` JSON stays for
   // any extra config. Cost-center split billing remains deferred (Phase 2).
-  billingMode    BillingMode @default(PER_ORDER) @map("billing_mode")
-  billingNetDays Int         @default(0) @map("billing_net_days")
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
-  createdBy      String?     @map("created_by") @db.Uuid
+  billingMode       BillingMode @default(PER_ORDER) @map("billing_mode")
+  billingNetDays    Int         @default(0) @map("billing_net_days")
+  // [Inc-15 corporate pricing] A "corporate account" is a BUSINESS account whose members order and
+  // pay INDIVIDUALLY (billingMode PER_ORDER) but are priced on this account's rate card. The flag marks
+  // it for the corporate console + isolates it from consolidated (BATCH_PERIODIC) building accounts.
+  // `joinCode` is the per-account redemption code (the TTC path); members redeem it for a
+  // CorporateMembership (pricing-only — never widens order scope). `joinCodeExpiresAt` (NULL = never)
+  // expires a code without deleting it. Building-match (the condo path) is geo, not a stored code.
+  corporate         Boolean     @default(false)
+  joinCode          String?     @unique @map("join_code")
+  joinCodeExpiresAt DateTime?   @map("join_code_expires_at")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  createdBy         String?     @map("created_by") @db.Uuid
 
   sites          Site[]
-  orders         Order[]
+  orders         Order[]               @relation("OrderAccount")
+  pricedOrders   Order[]               @relation("OrderPricingAccount")
+  memberships    CorporateMembership[]
   invoices       Invoice[]
   routeStops     RouteStop[]
   priceLists     PriceList[]
@@ -467,6 +479,11 @@ model Site {
   address        String?
   // PostGIS geography(Point,4326); set/queried via raw SQL (ST_MakePoint/ST_AsText).
   geo            Unsupported("geography(Point, 4326)")?
+  // [Inc-15 corporate pricing] Building-match boundary (the condo path). When a Site has a `geo` point
+  // AND `matchRadiusM` (metres), it is a corporate building: a booking whose service point falls within
+  // ST_DWithin(geo, point, matchRadiusM) is priced on the Site's account rate card. NULL = not a
+  // match boundary (an ordinary site). Simplest reliable v1: address point + radius (documented).
+  matchRadiusM   Int?                                   @map("match_radius_m")
   serviceWindows Json                                   @default("[]") @map("service_windows")
   createdAt      DateTime                               @default(now()) @map("created_at")
   updatedAt      DateTime                               @updatedAt @map("updated_at")
@@ -555,12 +572,61 @@ model PriceListItem {
   @@index([serviceId])
 }
 
+// ─────────────────────────────── corporate membership (Inc-15) ───────────────────────────────
+
+enum CorporateMembershipStatus {
+  ACTIVE
+  REVOKED
+}
+
+// How a member became tied to a corporate account. JOIN_CODE is the redeemed-code path (persisted here).
+// BUILDING (the condo path) is resolved per-order from the booking's geo and is NOT persisted as a
+// membership row — the value is reserved so the customer-app increment can record building enrolments.
+enum CorporateMembershipSource {
+  JOIN_CODE
+  BUILDING
+}
+
+// [Inc-15] A member's PRICING-ONLY tie to a corporate account (the TTC/join-code path). Deliberately NOT
+// a UserRole: it never widens order read/write scope (a member can never see another member's orders, nor
+// book under the corporate account) — it only feeds the effective-pricing-account decision at booking.
+// Member-facing reads are userId-scoped in the service (the Message/Notification pattern); staff reads are
+// org+account-scoped. Idempotent per (userId, accountId).
+model CorporateMembership {
+  id           String                    @id @default(uuid()) @db.Uuid
+  orgId        String                    @map("org_id") @db.Uuid
+  userId       String                    @map("user_id") @db.Uuid
+  accountId    String                    @map("account_id") @db.Uuid
+  source       CorporateMembershipSource @default(JOIN_CODE)
+  status       CorporateMembershipStatus @default(ACTIVE)
+  joinCodeUsed String?                   @map("join_code_used")
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  updatedAt    DateTime                  @updatedAt @map("updated_at")
+  createdBy    String?                   @map("created_by") @db.Uuid
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountId])
+  @@index([orgId])
+  @@index([userId])
+  @@index([accountId])
+}
+
 // ─────────────────────────────── orders, items & custody (§9.3) ───────────────────────────────
 
 model Order {
   id                      String        @id @default(uuid()) @db.Uuid
   orgId                   String        @map("org_id") @db.Uuid
   accountId               String        @map("account_id") @db.Uuid
+  // [Inc-15 corporate pricing] The EFFECTIVE PRICING ACCOUNT. `accountId` stays the PAYER (the member's
+  // own account → PER_ORDER, RBAC scope, order list — all unchanged). When a booking matches a corporate
+  // building (condo path) or the booker holds a corporate membership (TTC path), this is set to that
+  // corporate account, and the rate resolves on ITS rate card (`pricingAccountId ?? accountId`). NULL ⇒
+  // priced on the payer's own account (default/residential). Decouples WHO IS PRICED from WHO PAYS, so
+  // the §5.1 spine + payment + tenancy are untouched. ON DELETE SET NULL ⇒ a deleted corp account simply
+  // falls the order back to default pricing, never lost.
+  pricingAccountId        String?       @map("pricing_account_id") @db.Uuid
   siteId                  String?       @map("site_id") @db.Uuid
   vertical                OrderVertical @default(SPECIALTY)
   type                    OrderType     @default(JOB)
@@ -580,20 +646,22 @@ model Order {
   updatedAt               DateTime      @updatedAt @map("updated_at")
   createdBy               String?       @map("created_by") @db.Uuid
 
-  account    Account     @relation(fields: [accountId], references: [id])
-  site       Site?       @relation(fields: [siteId], references: [id])
-  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
-  lines      OrderLine[]
-  items      Item[]
-  quotes     Quote[]
-  photos     Photo[]
-  routeStops RouteStop[]
-  payments   Payment[]
-  claims     Claim[]
-  messages   Message[]
+  account        Account     @relation("OrderAccount", fields: [accountId], references: [id])
+  pricingAccount Account?    @relation("OrderPricingAccount", fields: [pricingAccountId], references: [id], onDelete: SetNull)
+  site           Site?       @relation(fields: [siteId], references: [id])
+  costCenter     CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  lines          OrderLine[]
+  items          Item[]
+  quotes         Quote[]
+  photos         Photo[]
+  routeStops     RouteStop[]
+  payments       Payment[]
+  claims         Claim[]
+  messages       Message[]
 
   @@index([orgId])
   @@index([accountId])
+  @@index([pricingAccountId])
   @@index([status])
   // Track-A: the batch-invoicing path filters an account's orders by a created-at window
   // (account_id + created_at range), so a composite index keeps that query index-only.
@@ -1055,10 +1123,10 @@ model ProofOfDelivery {
 // specialty manifests list the order's items expected at a pickup stop. `lines` is a jsonb
 // snapshot generated at a point in time. Bound to a route OR a single stop.
 model Manifest {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  routeId     String?  @map("route_id") @db.Uuid
-  routeStopId String?  @map("route_stop_id") @db.Uuid
+  id           String       @id @default(uuid()) @db.Uuid
+  orgId        String       @map("org_id") @db.Uuid
+  routeId      String?      @map("route_id") @db.Uuid
+  routeStopId  String?      @map("route_stop_id") @db.Uuid
   // [Track B Phase 2 — PRD §B3.2] Manifest purpose. Defaults to PICKUP_CHECKLIST so every existing
   // specialty manifest is unchanged. A PACK_TO_PAR load sheet binds to a site (+ optional cost-centre)
   // instead of a route/stop; `lines` snapshots {serviceId, sku, unit, par, onHand, gap} per linen SKU.

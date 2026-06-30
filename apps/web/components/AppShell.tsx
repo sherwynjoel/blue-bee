@@ -7,6 +7,7 @@ import {
   BarChart3,
   Building2,
   ClipboardList,
+  Landmark,
   Layers,
   type LucideIcon,
   LogOut,
@@ -102,6 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.Rea
       heading: 'Commercial',
       items: [
         { href: '/accounts', label: 'Accounts', show: can.accounts(me), icon: Building2 },
+        { href: '/corporate', label: 'Corporate', show: can.corporate(me), icon: Landmark },
         { href: '/finance', label: 'Finance', show: can.finance(me), icon: Wallet },
         { href: '/analytics', label: 'Analytics', show: can.analytics(me), icon: BarChart3 },
       ],

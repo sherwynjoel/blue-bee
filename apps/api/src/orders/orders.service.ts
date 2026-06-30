@@ -27,6 +27,7 @@ import { AuditService } from './audit.service';
 import { MediaSigner } from '../media/storage/media-signer';
 import { OrderAccessService } from './order-access.service';
 import { PricingService } from './pricing.service';
+import { PricingAccountService } from './pricing-account.service';
 import { OrderStateMachine } from './state-machine.service';
 import { roundCents, centsToMoney } from './money';
 
@@ -64,6 +65,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly access: OrderAccessService,
     private readonly pricing: PricingService,
+    private readonly pricingAccount: PricingAccountService,
     private readonly stateMachine: OrderStateMachine,
     private readonly audit: AuditService,
     private readonly signer: MediaSigner,
@@ -106,10 +108,23 @@ export class OrdersService {
       throw new BadRequestException({ error: ORDER_ERRORS.INVALID_BOOKING, message: `Unknown service(s): ${missing.join(', ')}` });
     }
 
-    // Pre-resolve rates and build a rough estimate range (PRD §7A A2.1 — pre-intake).
+    // [Inc-15] Resolve the EFFECTIVE PRICING ACCOUNT (building match → membership → none). The payer
+    // stays dto.accountId; this only selects which rate card prices the order. A corporate building the
+    // service point falls in, or the booker's corporate membership, prices the order on that account —
+    // while the member still pays individually (PER_ORDER). No match ⇒ default/residential pricing.
+    const effective = await this.pricingAccount.resolveForBooking({
+      orgId,
+      userId: principal.userId,
+      payerAccountId: dto.accountId,
+      serviceGeo: dto.serviceGeo,
+    });
+    const pricingAccountId = effective?.pricingAccountId ?? dto.accountId;
+
+    // Pre-resolve rates and build a rough estimate range (PRD §7A A2.1 — pre-intake), on the effective
+    // pricing account so the pre-intake estimate already reflects corporate pricing.
     const rateByService = new Map<string, number>();
     for (const id of serviceIds) {
-      const r = await this.pricing.resolveRate(orgId, dto.accountId, id);
+      const r = await this.pricing.resolveRate(orgId, pricingAccountId, id);
       rateByService.set(id, r.rate);
     }
     let estimateCents = 0;
@@ -138,6 +153,9 @@ export class OrdersService {
             id: orderId,
             orgId,
             accountId: dto.accountId,
+            // [Inc-15] Only set when pricing differs from the payer (a corporate building/membership
+            // match); null ⇒ priced on the payer's own account. Never equals accountId (guarded upstream).
+            pricingAccountId: effective?.pricingAccountId ?? null,
             siteId: dto.siteId ?? null,
             vertical: OrderVertical.SPECIALTY,
             type: OrderType.JOB,
@@ -200,7 +218,14 @@ export class OrdersService {
             entity: 'Order',
             entityId: orderId,
             action: 'ORDER_BOOKED',
-            after: { status: OrderStatus.REQUESTED, accountId: dto.accountId, itemCount: dto.items.length, estimateRange },
+            after: {
+              status: OrderStatus.REQUESTED,
+              accountId: dto.accountId,
+              pricingAccountId: effective?.pricingAccountId ?? null,
+              pricingSource: effective?.source ?? null,
+              itemCount: dto.items.length,
+              estimateRange,
+            },
           },
           tx,
         );

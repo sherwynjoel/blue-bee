@@ -94,10 +94,14 @@ export class QuoteService {
       upchargesByItem.set(u.itemId, arr);
     }
 
+    // [Inc-15] Price on the EFFECTIVE pricing account: the corporate account when the order matched a
+    // building / a member redeemed a code (Order.pricingAccountId), else the payer's own account. The
+    // payer (order.accountId) is unchanged — this only selects the rate card. resolveRate is reused as-is.
+    const pricingAccountId = order.pricingAccountId ?? order.accountId;
     const inputs: QuoteLineInput[] = [];
     for (const line of priceable) {
       const measurements = (line.item!.measurements as Record<string, unknown>) ?? {};
-      const resolved = await this.pricing.resolveRate(order.orgId, order.accountId, line.serviceId!);
+      const resolved = await this.pricing.resolveRate(order.orgId, pricingAccountId, line.serviceId!);
       const measure = deriveMeasure(resolved.unit, measurements);
       if (measure === null) {
         throw new UnprocessableEntityException({

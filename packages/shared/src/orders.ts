@@ -44,6 +44,11 @@ export const bookOrderSchema = z.object({
   siteId: z.string().uuid().optional(),
   pickupWindow: timeWindowSchema.optional(),
   notes: z.string().max(2000).optional(),
+  // [Inc-15 corporate pricing] Optional service-address point for the pickup. When present it drives
+  // BUILDING-MATCH pricing (the condo path): a point inside a corporate building's boundary prices the
+  // order on that corporate account's rate card while the member still pays individually. Optional ⇒
+  // existing callers (and the unchanged customer app) are unaffected; no match ⇒ default pricing.
+  serviceGeo: geoPointSchema.optional(),
   items: z.array(bookItemSchema).min(1).max(50),
 });
 export type BookOrderDto = z.infer<typeof bookOrderSchema>;

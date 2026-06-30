@@ -76,6 +76,8 @@ export const can = {
   // Track-A B2B accounts console.
   accounts: (me: MeResponse | null) => hasAnyRole(me, ACCOUNTS_READ_ROLES),
   standingOrderWrite: (me: MeResponse | null) => hasAnyRole(me, STANDING_ORDER_WRITE_ROLES),
+  // Corporate accounts + rate cards (Inc-15) — OWNER/FINANCE, mirrors @Roles(OWNER, FINANCE) on /v1/corporate.
+  corporate: (me: MeResponse | null) => hasAnyRole(me, FINANCE_ROLES),
   // Track-B care homes — resident personal clothing.
   residents: (me: MeResponse | null) => hasAnyRole(me, RESIDENT_READ_ROLES),
   garmentOps: (me: MeResponse | null) => hasAnyRole(me, GARMENT_OPS_ROLES),

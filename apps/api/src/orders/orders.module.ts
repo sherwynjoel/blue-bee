@@ -6,6 +6,7 @@ import { OrderAccessService } from './order-access.service';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { PricingService } from './pricing.service';
+import { PricingAccountService } from './pricing-account.service';
 import { QuoteService } from './quote.service';
 import { OrderStateMachine } from './state-machine.service';
 
@@ -22,6 +23,7 @@ import { OrderStateMachine } from './state-machine.service';
     IntakeService,
     QuoteService,
     PricingService,
+    PricingAccountService,
     OrderStateMachine,
     OrderAccessService,
     AuditService,
@@ -31,6 +33,6 @@ import { OrderStateMachine } from './state-machine.service';
   // gate drive the pickup leg, and the audit writer is shared. OrdersService is exported so the
   // Track-A B2B portal's account-scoped orders read can DELEGATE to its proven listing logic
   // (GET /v1/accounts/:accountId/orders → OrdersService.listOrders) — no duplicated query.
-  exports: [OrderStateMachine, OrderAccessService, AuditService, OrdersService],
+  exports: [OrderStateMachine, OrderAccessService, AuditService, OrdersService, PricingService],
 })
 export class OrdersModule {}

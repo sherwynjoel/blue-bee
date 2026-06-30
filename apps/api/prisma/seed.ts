@@ -1423,6 +1423,69 @@ async function printSummary(): Promise<void> {
   console.log('[seed] ──────────────────────────────────────────────────────────────────────────\n');
 }
 
+// ─────────────────────── Branch — Inc-15 corporate pricing (members pay individually) ───────────────────────
+// A corporate condo tower: members order + PAY INDIVIDUALLY (RESIDENTIAL account, PER_ORDER) but are PRICED
+// on the tower's rate card. One building with a real GTA geo + 300m match boundary (the condo path), a
+// per-pound (LB) + per-item (ITEM) rate card (cheaper than retail), a stable demo join code (the TTC path),
+// and an IN-BUILDING resident with a booked order priced on the corporate card while paying individually
+// (Order.pricingAccountId = corp, Order.accountId = the resident). Makes the corporate console + building
+// match end-to-end clickable.
+const corp = uuidIn('c0000000');
+const CORP_ACCOUNT = corp(1);
+const CORP_BUILDING = corp(11);
+const CORP_BUILDING_LNG = -79.3801; // ~200 Bay St, Toronto (WGS84 lng/lat)
+const CORP_BUILDING_LAT = 43.6489;
+const SVC_WASHFOLD = corp(2); // per-pound wash & fold
+const SVC_DRYCLEAN = corp(3); // per-item dry clean
+const CORP_JOIN_CODE = 'MAPLELOFT';
+
+async function seedCorporatePricing(): Promise<void> {
+  // Corporate account (BUSINESS, PER_ORDER, corporate=true) + a stable demo join code.
+  await prisma.account.upsert({
+    where: { id: CORP_ACCOUNT },
+    update: { corporate: true, billingMode: BillingMode.PER_ORDER, joinCode: CORP_JOIN_CODE },
+    create: { id: CORP_ACCOUNT, orgId: ID.org, type: AccountType.BUSINESS, name: 'Demo — Maple District Towers (corporate)', billingMode: BillingMode.PER_ORDER, corporate: true, joinCode: CORP_JOIN_CODE, createdBy: ID.owner },
+  });
+  // The building — a Site with a geo point + a 300m match boundary (the condo path).
+  await prisma.site.upsert({
+    where: { id: CORP_BUILDING },
+    update: { matchRadiusM: 300 },
+    create: { id: CORP_BUILDING, orgId: ID.org, accountId: CORP_ACCOUNT, name: 'Demo — Maple District Tower 1', address: '200 Bay St, Toronto, ON', matchRadiusM: 300, serviceWindows: [{ day: 'WED', start: '08:00', end: '20:00' }], createdBy: ID.owner },
+  });
+  await setSiteGeo(CORP_BUILDING, CORP_BUILDING_LNG, CORP_BUILDING_LAT);
+  // Catalog — a per-pound wash&fold + a per-item dry-clean service.
+  await prisma.service.upsert({ where: { id: SVC_WASHFOLD }, update: {}, create: { id: SVC_WASHFOLD, orgId: ID.org, vertical: ServiceVertical.WASHFOLD, name: 'Wash & fold — per pound', unit: ServiceUnit.LB, baseRate: '2.5000', createdBy: ID.owner } });
+  await prisma.service.upsert({ where: { id: SVC_DRYCLEAN }, update: {}, create: { id: SVC_DRYCLEAN, orgId: ID.org, vertical: ServiceVertical.SPECIALTY, name: 'Dry clean — per item', unit: ServiceUnit.ITEM, baseRate: '12.0000', createdBy: ID.owner } });
+  // Org-default (retail) rates, so an OUTSIDE resident gets a clean default price.
+  await prisma.priceListItem.upsert({ where: { priceListId_serviceId: { priceListId: ID.priceListDefault, serviceId: SVC_WASHFOLD } }, update: {}, create: { orgId: ID.org, priceListId: ID.priceListDefault, serviceId: SVC_WASHFOLD, rate: '2.5000', createdBy: ID.owner } });
+  await prisma.priceListItem.upsert({ where: { priceListId_serviceId: { priceListId: ID.priceListDefault, serviceId: SVC_DRYCLEAN } }, update: {}, create: { orgId: ID.org, priceListId: ID.priceListDefault, serviceId: SVC_DRYCLEAN, rate: '12.0000', createdBy: ID.owner } });
+  // The corporate rate card (account-bound PriceList) — cheaper than retail (per-pound + per-item).
+  const corpPriceList = corp(40);
+  await prisma.priceList.upsert({ where: { id: corpPriceList }, update: {}, create: { id: corpPriceList, orgId: ID.org, name: 'Maple District Towers rate card', accountId: CORP_ACCOUNT, active: true, createdBy: ID.owner } });
+  await prisma.priceListItem.upsert({ where: { priceListId_serviceId: { priceListId: corpPriceList, serviceId: SVC_WASHFOLD } }, update: { rate: '1.8000' }, create: { id: corp(41), orgId: ID.org, priceListId: corpPriceList, serviceId: SVC_WASHFOLD, rate: '1.8000', createdBy: ID.owner } });
+  await prisma.priceListItem.upsert({ where: { priceListId_serviceId: { priceListId: corpPriceList, serviceId: SVC_DRYCLEAN } }, update: { rate: '9.0000' }, create: { id: corp(42), orgId: ID.org, priceListId: corpPriceList, serviceId: SVC_DRYCLEAN, rate: '9.0000', createdBy: ID.owner } });
+
+  // An IN-BUILDING resident — pays individually (RESIDENTIAL account, PER_ORDER) but priced corporate.
+  const resAcct = corp(50), resSite = corp(51), resUser = corp(60), resRole = corp(61);
+  await prisma.account.upsert({ where: { id: resAcct }, update: {}, create: { id: resAcct, orgId: ID.org, type: AccountType.RESIDENTIAL, name: 'Demo — Tom Becker (Maple District resident)', createdBy: ID.owner } });
+  await prisma.site.upsert({ where: { id: resSite }, update: {}, create: { id: resSite, orgId: ID.org, accountId: resAcct, name: 'Demo — Maple District unit 1408', address: '200 Bay St, Unit 1408, Toronto, ON', createdBy: ID.owner } });
+  await setSiteGeo(resSite, CORP_BUILDING_LNG + 0.0002, CORP_BUILDING_LAT + 0.0001); // ~25 m from the tower centroid → inside the 300 m boundary
+  await prisma.user.upsert({ where: { id: resUser }, update: { phone: '+14165550120' }, create: { id: resUser, orgId: ID.org, name: 'Demo — Tom Becker', phone: '+14165550120', email: 'tom@example.com', authProviders: ['phone'], status: UserStatus.ACTIVE, createdBy: ID.owner } });
+  await prisma.userRole.upsert({ where: { id: resRole }, update: {}, create: { id: resRole, orgId: ID.org, userId: resUser, role: RoleType.RESIDENTIAL_CUSTOMER, scope: RoleScope.ACCOUNT, scopeId: resAcct, createdBy: ID.owner } });
+
+  // One booked order: priced on the CORPORATE card (pricingAccountId), paid by the RESIDENT (accountId).
+  const order = corp(70);
+  if (!(await prisma.order.findUnique({ where: { id: order } }))) {
+    const m = cad(36); // 20 lb @ $1.80 (corporate) = $36.00 — vs $50.00 at the $2.50 retail rate.
+    await prisma.order.create({ data: { id: order, orgId: ID.org, accountId: resAcct, pricingAccountId: CORP_ACCOUNT, siteId: resSite, vertical: OrderVertical.WASHFOLD, type: OrderType.JOB, status: OrderStatus.DELIVERED, totals: m, createdAt: new Date('2026-06-27T15:00:00.000Z'), createdBy: ID.owner } });
+    await prisma.tag.create({ data: { id: corp(71), orgId: ID.org, code: 'BB-CORP-WF-1', type: TagType.QR, boundTo: TagBinding.ITEM, active: true, createdBy: ID.owner } });
+    await prisma.item.create({ data: { id: corp(72), orgId: ID.org, orderId: order, tagId: corp(71), kind: ItemKind.GARMENT, status: ItemStatus.DELIVERED, measurements: { weightLb: 20 }, createdBy: ID.owner } });
+    await prisma.orderLine.create({ data: { id: corp(73), orgId: ID.org, orderId: order, serviceId: SVC_WASHFOLD, itemId: corp(72), qty: 1, measure: 20, rate: '1.8000', amount: '36.00', createdBy: ID.owner } });
+  }
+
+  console.log('[seed] Inc-15 corporate pricing: 1 corporate account + building (300 m) + LB/ITEM rate card + join code MAPLELOFT + 1 in-building resident (corporate-priced order).');
+}
+
 async function main(): Promise<void> {
   await seedDemoOrder();
   await seedAuthFixtures();
@@ -1434,6 +1497,7 @@ async function main(): Promise<void> {
   await seedCondoMultiSite();
   await seedCostCenters(); // integration reconcile — split-billing demo data on the condo account
   await seedResidentialSpecialty();
+  await seedCorporatePricing();
   await seedCareHomeEastWing();
   await seedMapleGroveFacilityLinen();
   await seedLiveFleet();

@@ -77,6 +77,23 @@ import type {
   CreateCostCenterDto,
   OrderCostCenterView,
   UpdateCostCenterDto,
+  // Corporate accounts + rate cards + building match (Inc-15).
+  CorporateAccountView,
+  CorporateAccountsResult,
+  CorporateBuildingView,
+  CorporateBuildingsResult,
+  CreateBuildingDto,
+  CreateCorporateAccountDto,
+  GenerateJoinCodeDto,
+  JoinCodeView,
+  MembershipsResult,
+  RateCardItemView,
+  RateCardView,
+  RedeemJoinCodeDto,
+  RedeemResultView,
+  SetRateCardItemDto,
+  UpdateBuildingDto,
+  UpdateCorporateAccountDto,
   CreateResidentDto,
   CreateStandingOrderDto,
   DropToLostFoundDto,
@@ -561,6 +578,46 @@ export class ConsoleApiClient extends ApiClient {
   }
   listPackToParManifests(siteId: string, q: { limit?: number } = {}): Promise<PackToParManifestListResult> {
     return this.request('GET', `/sites/${encodeURIComponent(siteId)}/pack-to-par/manifests${q.limit ? `?limit=${q.limit}` : ''}`);
+  }
+
+  // ─────────────── corporate accounts + rate cards + building match (Inc-15, OWNER/FINANCE) ───────────────
+
+  listCorporateAccounts(): Promise<CorporateAccountsResult> {
+    return this.request('GET', '/corporate/accounts');
+  }
+  getCorporateAccount(accountId: string): Promise<CorporateAccountView> {
+    return this.request('GET', `/corporate/accounts/${accountId}`);
+  }
+  createCorporateAccount(dto: CreateCorporateAccountDto): Promise<CorporateAccountView> {
+    return this.request('POST', '/corporate/accounts', { body: dto });
+  }
+  updateCorporateAccount(accountId: string, dto: UpdateCorporateAccountDto): Promise<CorporateAccountView> {
+    return this.request('PATCH', `/corporate/accounts/${accountId}`, { body: dto });
+  }
+  listCorporateBuildings(accountId: string): Promise<CorporateBuildingsResult> {
+    return this.request('GET', `/corporate/accounts/${accountId}/buildings`);
+  }
+  createCorporateBuilding(accountId: string, dto: CreateBuildingDto): Promise<CorporateBuildingView> {
+    return this.request('POST', `/corporate/accounts/${accountId}/buildings`, { body: dto });
+  }
+  updateCorporateBuilding(siteId: string, dto: UpdateBuildingDto): Promise<CorporateBuildingView> {
+    return this.request('PATCH', `/corporate/buildings/${siteId}`, { body: dto });
+  }
+  getRateCard(accountId: string): Promise<RateCardView> {
+    return this.request('GET', `/corporate/accounts/${accountId}/rate-card`);
+  }
+  setRateCardItem(accountId: string, serviceId: string, dto: SetRateCardItemDto): Promise<RateCardItemView> {
+    return this.request('PUT', `/corporate/accounts/${accountId}/rate-card/items/${serviceId}`, { body: dto });
+  }
+  generateJoinCode(accountId: string, dto: GenerateJoinCodeDto = {}): Promise<JoinCodeView> {
+    return this.request('POST', `/corporate/accounts/${accountId}/join-code`, { body: dto });
+  }
+  /** Member surface (any authenticated user): redeem a join code + read own memberships. */
+  redeemJoinCode(dto: RedeemJoinCodeDto): Promise<RedeemResultView> {
+    return this.request('POST', '/corporate/redeem', { body: dto });
+  }
+  listMyMemberships(): Promise<MembershipsResult> {
+    return this.request('GET', '/corporate/memberships');
   }
 }
 

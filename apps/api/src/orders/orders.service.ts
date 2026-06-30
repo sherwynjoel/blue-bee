@@ -44,6 +44,11 @@ type PhotoRow = {
 };
 
 const FULL_INCLUDE = {
+  // [Inc-16] Thin, read-only: the corporate account that PRICES this order (Inc-15's effective pricing
+  // account), so the customer app can show "Corporate pricing — [name]" from server truth. The scalar
+  // `pricingAccountId` already flows; this only adds the name. NULL ⇒ priced on the payer's own account.
+  // No pricing logic — display only; the order's owner reads their OWN order (scope already enforced).
+  pricingAccount: { select: { name: true } },
   lines: { orderBy: { createdAt: 'asc' as const } },
   items: {
     include: {

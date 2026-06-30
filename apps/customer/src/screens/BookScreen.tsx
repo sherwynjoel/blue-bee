@@ -10,6 +10,7 @@ import { buildBookDto, newIdempotencyKey, tomorrowMorningWindow, type DraftItem 
 import { rangeText } from '../format';
 import { useTheme } from '../../theme';
 import { Button, Card, Text, fireHaptic } from '../../components/ui';
+import { CorporatePricingNote } from '../components/CorporatePricing';
 
 const ITEM_KINDS: ItemKind[] = [ItemKind.RUG, ItemKind.CARPET, ItemKind.BLIND, ItemKind.UPHOLSTERY, ItemKind.GARMENT];
 
@@ -31,6 +32,10 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
   const [sites, setSites] = useState<CustomerSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // [Inc-16] Server truth: if the user holds an active corporate membership, their booking prices on that
+  // account. The badge is informational; pricing itself is resolved server-side at booking (never here).
+  // A building match (no membership) can't be known pre-booking — it surfaces on the order after booking.
+  const [corpAccountName, setCorpAccountName] = useState<string | null>(null);
 
   // Composer for the current item + the staged item list.
   const [kind, setKind] = useState<ItemKind>(ItemKind.RUG);
@@ -57,6 +62,16 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
         setLoadError(e instanceof ApiError ? e.message : 'Could not load the booking options.');
       } finally {
         setLoading(false);
+      }
+    })();
+    // Separate, non-blocking: any failure just hides the badge — booking is never blocked or faked.
+    (async () => {
+      try {
+        const res = await client.listMyMemberships();
+        const active = res.memberships.find((m) => m.status === 'ACTIVE');
+        if (active) setCorpAccountName(active.accountName);
+      } catch {
+        // degrade silently — no membership badge
       }
     })();
   }, [client]);
@@ -125,6 +140,8 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
+      {corpAccountName ? <CorporatePricingNote accountName={corpAccountName} /> : null}
+
       <Card title="What needs cleaning?">
         <Text variant="footnote" color="secondary" style={styles.help}>
           Pick an item type and the service for it.

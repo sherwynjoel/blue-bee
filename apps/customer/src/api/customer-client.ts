@@ -8,11 +8,14 @@ import type {
   InvoiceView,
   ListOrdersQuery,
   MediaResult,
+  MembershipsResult,
   OrderTrackingResult,
   PaymentIntentResponse,
   PaymentView,
   PresignMediaDto,
   PresignMediaResult,
+  RedeemJoinCodeDto,
+  RedeemResultView,
   ServiceCatalogResult,
 } from '@blue-bee/shared';
 import { ApiClient } from '@blue-bee/api-client';
@@ -101,6 +104,23 @@ export class CustomerApiClient extends ApiClient {
 
   confirmMedia(dto: ConfirmMediaDto): Promise<MediaResult> {
     return this.request('POST', '/media/confirm', { body: dto });
+  }
+
+  // ───────────── corporate pricing (Inc-16 — the TTC join-code path; engine shipped in Inc-15) ─────────────
+
+  /**
+   * Redeem a corporate join code → a pricing-only membership for the signed-in user (the order then
+   * prices on that corporate account's rate card while the member still pays individually). Idempotent;
+   * a bad/expired/invalid code is a server 400 → ApiError (the screen surfaces it). Server is the
+   * authority — the app never decides pricing.
+   */
+  redeemJoinCode(dto: RedeemJoinCodeDto): Promise<RedeemResultView> {
+    return this.request('POST', '/corporate/redeem', { body: dto });
+  }
+
+  /** The signed-in user's OWN corporate memberships (userId-scoped server-side — never another user's). */
+  listMyMemberships(): Promise<MembershipsResult> {
+    return this.request('GET', '/corporate/memberships');
   }
 
   // ───────────── account (launch-scaffolding — store-required self-deletion) ─────────────

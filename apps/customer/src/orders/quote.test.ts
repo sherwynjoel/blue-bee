@@ -7,6 +7,8 @@ function order(over: Partial<OrderDetail> = {}): OrderDetail {
     id: 'o1',
     orgId: 'org',
     accountId: 'acc',
+    pricingAccountId: null,
+    pricingAccount: null,
     siteId: null,
     vertical: 'SPECIALTY',
     type: 'JOB',

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { ApiError } from '@blue-bee/api-client';
 import { useSession } from '../session/SessionProvider';
 import { useTheme } from '../../theme';
 import { Button, Card, Text } from '../../components/ui';
+import { CorporatePricingSection } from '../components/CorporatePricing';
 
 /**
  * Settings → account management (PRD §7A). The store-required "Delete account" lives here: a two-step
@@ -34,7 +35,7 @@ export function SettingsScreen(): React.ReactElement {
   const initial = me?.user.name?.trim()?.[0]?.toUpperCase() ?? '?';
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.canvas }]}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.canvas }} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
       <Card>
         <View style={styles.identity}>
           <View style={[styles.avatar, { backgroundColor: colors.azureTint }]}>
@@ -59,6 +60,8 @@ export function SettingsScreen(): React.ReactElement {
       </Card>
 
       <Button testID="signout" label="Sign out" icon="log-out" variant="outline" tone="neutral" onPress={() => void logout()} disabled={deleting} style={{ marginTop: space.lg }} haptic="medium" />
+
+      <CorporatePricingSection />
 
       <Card style={[styles.danger, { borderColor: colors.danger }]}>
         <View style={styles.dangerHead}>
@@ -98,12 +101,12 @@ export function SettingsScreen(): React.ReactElement {
           </View>
         )}
       </Card>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
+  container: { padding: 20, paddingBottom: 40 },
   identity: { flexDirection: 'row', alignItems: 'center' },
   avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   danger: { marginTop: 24 },

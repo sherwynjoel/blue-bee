@@ -4,11 +4,17 @@ import { ApiError } from '@blue-bee/api-client';
 
 const mockDeleteAccount = jest.fn(async () => undefined);
 const mockLogout = jest.fn(async () => undefined);
+// [Inc-16] SettingsScreen now renders <CorporatePricingSection/>, which reads memberships on mount.
+const mockListMemberships = jest.fn(async () => ({ memberships: [] as unknown[] }));
+const mockRedeem = jest.fn();
+// STABLE client object (mirrors the real single useRef instance) — a fresh object per render would loop
+// the membership effect in the corporate section.
+const mockClient = { deleteAccount: mockDeleteAccount, listMyMemberships: mockListMemberships, redeemJoinCode: mockRedeem };
 
 jest.mock('../session/SessionProvider', () => ({
   useSession: () => ({
     me: { user: { name: 'Rita Patel', phone: '+14165550010' } },
-    client: { deleteAccount: mockDeleteAccount },
+    client: mockClient,
     logout: mockLogout,
   }),
 }));

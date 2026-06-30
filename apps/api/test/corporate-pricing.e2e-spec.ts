@@ -191,6 +191,12 @@ describe('Corporate pricing e2e (Increment 15 — corporate accounts + rate card
       expect(row.accountId).toBe(RES_IN.acct);
       expect(row.pricingAccountId).toBe(corpA);
 
+      // [Inc-16] The order read carries the pricing account NAME (the thin additive field the customer app
+      // shows as "Corporate pricing — [name]") — server truth, read by the order's OWNER.
+      const detail = await get(`/v1/orders/${order.id}`, 'resIn').expect(200);
+      expect(detail.body.pricingAccountId).toBe(corpA);
+      expect(detail.body.pricingAccount).toMatchObject({ name: 'CORP E2E — Tower A' });
+
       const { line, subtotal, tax, total } = await quoteFor(order.id, { weightLb: 20 });
       expect(line.amount).toBe('36.00'); // 20 lb × $1.80 (corporate) — NOT 20 × $2.50 retail
       expect(line.rateSource).toBe('account_list');
@@ -287,6 +293,10 @@ describe('Corporate pricing e2e (Increment 15 — corporate accounts + rate card
     it('a residential booking with no point + no membership prices on the default rate (unchanged)', async () => {
       const order = (await book('resOut', RES_OUT.acct, { kind: 'GARMENT', serviceId: SVC_LB, estimatedMeasure: 10 }).expect(201)).body;
       expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).pricingAccountId).toBeNull();
+      // The order read carries no corporate pricing account (the customer app shows no indicator).
+      const detail = await get(`/v1/orders/${order.id}`, 'resOut').expect(200);
+      expect(detail.body.pricingAccountId).toBeNull();
+      expect(detail.body.pricingAccount).toBeNull();
       const { line } = await quoteFor(order.id, { weightLb: 10 });
       expect(line.amount).toBe('25.00'); // 10 lb × $2.50 retail — corporate pricing never leaked in
     });

@@ -8,6 +8,7 @@ import { useSession } from '../session/SessionProvider';
 import type { OrderDetail, ItemView } from '../api/types';
 import type { RootStackParamList } from '../navigation';
 import { StatusTimeline } from '../components/StatusTimeline';
+import { CorporatePricingNote } from '../components/CorporatePricing';
 import { hasActiveStop, preexistingDamageItems, quoteActionability } from '../orders/quote';
 import { capturePhotoToOrder, MediaCaptureError, type CaptureSource } from '../media/capture';
 import { money, orderRef, rangeText, shortDate } from '../format';
@@ -157,6 +158,8 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
         </View>
         <StatusPill status={order.status} />
       </View>
+
+      {order.pricingAccount?.name ? <CorporatePricingNote accountName={order.pricingAccount.name} /> : null}
 
       {showTrack ? (
         <Pressable

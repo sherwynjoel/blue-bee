@@ -28,6 +28,8 @@ function quotedOrder(over: Partial<OrderDetail> = {}): OrderDetail {
     id: 'order-aaaa1111',
     orgId: 'org',
     accountId: 'acc',
+    pricingAccountId: null,
+    pricingAccount: null,
     siteId: null,
     vertical: 'SPECIALTY',
     type: 'JOB',
@@ -74,6 +76,20 @@ describe('OrderDetailScreen', () => {
     expect(getByTestId('damage-notice')).toBeTruthy();
     expect(getAllByTestId('photo-p1').length).toBeGreaterThan(0); // signed downloadUrl rendered
     expect(getByTestId('approve-quote')).toBeTruthy();
+  });
+
+  it('shows the corporate-pricing indicator when the order is priced on a corporate account (server truth)', async () => {
+    mockClient.getOrder.mockResolvedValue(quotedOrder({ pricingAccountId: 'corp-1', pricingAccount: { name: 'Maple District Towers' } }));
+    const { findByTestId, getByText } = render(<OrderDetailScreen navigation={navigation} route={route} />);
+    expect(await findByTestId('corp-pricing-note')).toBeTruthy();
+    expect(getByText('Maple District Towers', { exact: false })).toBeTruthy();
+  });
+
+  it('hides the corporate-pricing indicator on a default-priced order (pricingAccount null)', async () => {
+    mockClient.getOrder.mockResolvedValue(quotedOrder()); // fixture default: pricingAccount = null
+    const { findByTestId, queryByTestId } = render(<OrderDetailScreen navigation={navigation} route={route} />);
+    await findByTestId('status-timeline');
+    expect(queryByTestId('corp-pricing-note')).toBeNull();
   });
 
   it('approve → calls approveQuote and shows Approved', async () => {

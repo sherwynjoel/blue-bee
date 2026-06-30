@@ -12,7 +12,8 @@
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
     "test": "jest",
     "integration": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/integration-proof.ts",
-    "payments-proof": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/payments-proof.ts"
+    "payments-proof": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/payments-proof.ts",
+    "corporate-proof": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/corporate-proof.ts"
   },
   "dependencies": {
     "@blue-bee/api-client": "*",

@@ -102,6 +102,14 @@ export interface OrderDetail {
   id: string;
   orgId: string;
   accountId: string;
+  /**
+   * [Inc-16] The effective PRICING account (Inc-15) — set when this order is priced on a corporate
+   * account's rate card (a building match or a redeemed membership); null ⇒ priced on the payer's own
+   * account. `pricingAccount.name` is the corporate account name shown as the "corporate pricing"
+   * indicator. Server truth — the app never computes pricing.
+   */
+  pricingAccountId: string | null;
+  pricingAccount: { name: string } | null;
   siteId: string | null;
   vertical: string;
   type: string;

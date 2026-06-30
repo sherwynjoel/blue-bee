@@ -23,6 +23,8 @@ function approvedOrder(over: Partial<OrderDetail> = {}): OrderDetail {
     id: 'order-bbbb2222',
     orgId: 'g',
     accountId: 'a',
+    pricingAccountId: null,
+    pricingAccount: null,
     siteId: null,
     vertical: 'SPECIALTY',
     type: 'JOB',

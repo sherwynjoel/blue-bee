@@ -209,7 +209,7 @@ railway variable set CORS_ALLOWED_ORIGINS=https://<web>.up.railway.app --service
 | Item | What to do |
 |---|---|
 | **SMS / true production (a)** | For real OTP SMS, set `SMS_TRANSPORT=twilio` + `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER`, then flip `NODE_ENV=production`. **Until then the pilot runs `NODE_ENV=staging` with console OTP** (the Inc‑2 guard forbids console SMS only under `production`). |
-| **AWS S3 (c)** | Create the `ca-central-1` bucket `bluebee-media` with **default SSE** encryption; set `AWS_REGION=ca-central-1`, `S3_BUCKET=bluebee-media`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` on `api`. **Do NOT set `S3_ENDPOINT`** (that selects MinIO). Until set, `/v1/media/presign` errors (boot is unaffected). |
+| **AWS S3 (c) — bucket now CREATED + PROVEN** | The bucket **`bluebee-media-prod`** (`ca-central-1`, default **SSE‑S3/AES256**, **all public access blocked**, CORS applied) exists and the full media pipeline (generic + POD + catalog) is **proven byte‑identical against it** (`npm run s3-proof`, 18/18). **To activate prod:** set `AWS_REGION=ca-central-1`, `S3_BUCKET=bluebee-media-prod`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` on `api` (and leave `S3_ENDPOINT` **UNSET** — that selects MinIO). Keep `MEDIA_ENSURE_BUCKET` unset/false (the bucket is pre‑provisioned). Full CORS JSON + least‑privilege IAM policy in **§9**. Until the vars are set, `/v1/media/presign` errors (boot is unaffected). |
 | **Stripe test (d)** | In the Stripe **TEST** dashboard, register the webhook `https://api-production-d45a.up.railway.app/v1/webhooks/stripe`; set `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_PUBLISHABLE_KEY=pk_test_…`, `STRIPE_WEBHOOK_SECRET=whsec_…` on `api`. **TEST MODE ONLY — never a live key.** Until set, the API uses `LocalPaymentProvider` (deterministic, no network) + the default test webhook secret. |
 | **Email/Push (a)** | `SENDGRID_API_KEY` (+ `SENDGRID_SANDBOX=false`, `SENDGRID_FROM_EMAIL`) for real email; `PUSH_TRANSPORT=expo` + `EXPO_ACCESS_TOKEN` for real push. |
 | **Mobile apps (later, EAS)** | The customer/owner/driver Expo apps build via EAS later. Set their `EXPO_PUBLIC_API_BASE_URL=https://api-production-d45a.up.railway.app` and the Stripe **publishable** key. Native apps aren't subject to CORS. |
@@ -248,10 +248,72 @@ railway variable set CORS_ALLOWED_ORIGINS=https://<web>.up.railway.app --service
 
 ## 8. Parked‑item status (after 14b · re‑checked at the 2026‑06‑27 `792f701` refresh)
 - **(a) Notification providers** — **OPEN** (sandbox/console; documented above).
-- **(c) AWS S3** — **OPEN** (real‑S3‑no‑creds). ⚠ Now also gates the **driver POD photo/signature uploads** (they ride
-  the same Inc‑10 `/v1/media/presign` path): the POD endpoints are live + authorize, but the actual media upload
-  errors until S3 is set (§5 item **c**). Boot is unaffected.
+- **(c) AWS S3** — **READY** (bucket `bluebee-media-prod` created + the pipeline PROVEN byte‑identical against it,
+  `npm run s3-proof` 18/18). Only remaining step: set the 4 Railway vars on `api` (§5 item **c** / §9) — then the
+  driver POD photo/signature uploads AND the Inc‑17 catalog photos become real in the pilot. Boot is unaffected until then.
 - **(d) Stripe live test‑mode run** — **OPEN** (LocalPaymentProvider; public webhook URL exists + documented).
 - **2026‑06‑27 refresh:** live env upgraded **9→13 migrations** to `main` `792f701` — Track‑A recurring/B2B portal,
   Track‑B resident clothing, cost‑centre split‑billing + web UI, the Daylight reskin, and driver POD are now live
   (no new required env; the parked credentialed items above are unchanged).
+
+---
+
+## 9. S3 media go‑live (bucket created + proven — set the 4 vars to activate)
+
+The media pipeline is env‑selectable already (`apps/api/src/media/storage/s3-storage.provider.ts` + `config/media.config.ts`):
+**`S3_ENDPOINT` set ⇒ MinIO (path‑style); `S3_ENDPOINT` UNSET ⇒ real AWS S3 (virtual‑hosted).** No code change was needed
+to go live — only the bucket + the vars. The bucket **`bluebee-media-prod`** (`ca-central-1`) is created with default
+**SSE‑S3/AES256**, **all public access blocked**, and CORS applied. Proven end‑to‑end (generic + POD + catalog byte‑identical,
+private‑bucket 403, signed‑GET expiry, cross‑org 404) by `cd apps/api && npm run s3-proof` → **18/18** against the real bucket.
+
+**a) Railway vars to flip prod from MinIO → real S3 (on the `api` service):**
+```bash
+railway variable set AWS_REGION=ca-central-1                 --service api
+railway variable set S3_BUCKET=bluebee-media-prod           --service api
+railway variable set AWS_ACCESS_KEY_ID=<key>       --stdin  --service api   # the Blue Bee IAM user's key
+railway variable set AWS_SECRET_ACCESS_KEY=<secret> --stdin --service api   # NEVER commit this
+# Leave S3_ENDPOINT UNSET (setting it selects MinIO). Leave MEDIA_ENSURE_BUCKET unset/false (bucket is pre‑provisioned).
+```
+Reads stay private + signed (`MediaSigner` presigned GET, default TTL 300s). Optional per‑object SSE header via `MEDIA_SSE=AES256`
+is NOT needed — the bucket's default encryption covers every object.
+
+**b) Bucket CORS (already applied — required for presigned PUT/GET from the browser console + apps):**
+```json
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["https://*.up.railway.app", "http://localhost:3001", "http://localhost:19006", "http://localhost:8081"],
+      "AllowedMethods": ["PUT", "GET", "HEAD"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+}
+```
+Apply/adjust: `aws s3api put-bucket-cors --bucket bluebee-media-prod --cors-configuration file://cors.json`. Tighten
+`AllowedOrigins` to the exact web origin (e.g. `https://web-production-ba508.up.railway.app`) when it's stable.
+
+**c) Least‑privilege IAM policy (the `api` runtime user only needs these on this one bucket):**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BlueBeeMediaObjectRW",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:HeadObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::bluebee-media-prod/*"
+    }
+  ]
+}
+```
+(`s3:DeleteObject` is used by the confirm‑time HEAD‑verify to clean up a bad/mismatched upload. `HeadObject` is covered by
+`GetObject` but listed for clarity. No `s3:ListBucket` / `s3:CreateBucket` needed at runtime — the bucket is pre‑provisioned;
+keep `MEDIA_ENSURE_BUCKET` off in prod.)
+
+**d) Object migration:** none. The pilot's MinIO media is local test‑mode; existing catalog/POD demo objects are re‑created
+by re‑running the real seed/flows against S3 (do **not** copy MinIO blobs). New captures go straight to S3 once the vars are set.
+
+**Deferred (recommendations, not built):** CloudFront/CDN in front of S3 (signed S3 GETs suffice for the pilot); image
+resizing/thumbnails; S3 lifecycle/expiry, versioning, cross‑region replication.

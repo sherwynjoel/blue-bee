@@ -2,12 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Photo } from '@prisma/client';
 import {
+  CATALOG_ERRORS,
   MEDIA_ERRORS,
   MediaUploadStatus,
   PhotoKind,
   POD_ERRORS,
+  type CatalogImagePresignResult,
   type ConfirmMediaDto,
   type MediaResult,
+  type PresignCatalogImageDto,
   type PresignMediaDto,
   type PresignMediaResult,
   type PresignPodMediaDto,
@@ -195,6 +198,44 @@ export class MediaService {
   /** Mint a fresh short-lived signed GET for a confirmed POD Photo (§14) — used to build the POD view. */
   signedGetFor(photo: Photo): Promise<string | null> {
     return this.signer.signedGet(photo);
+  }
+
+  // ───────────────────────────── dry-clean catalog image (org-scoped, Increment 17) ─────────────────────────────
+
+  /**
+   * Presign a CATALOG item photo (owner/finance — gated at the controller). Same allow-list + size cap +
+   * unguessable org-namespaced key + PENDING-intent discipline as every other presign; the ONLY difference
+   * is there is no order/item to own (a catalog image is org-level), so no OrderAccess check. Reuses the
+   * exact storage seam — this is NOT a second media path.
+   */
+  async presignCatalogImage(principal: RequestPrincipal, dto: PresignCatalogImageDto): Promise<CatalogImagePresignResult> {
+    this.assertContentType(dto.contentType);
+    if (dto.byteSize > this.config.maxBytes) {
+      throw new BadRequestException({ error: MEDIA_ERRORS.TOO_LARGE, message: `declared size ${dto.byteSize} exceeds max ${this.config.maxBytes}` });
+    }
+    const storageKey = this.newKey(principal.orgId, PhotoKind.CATALOG, dto.contentType);
+    await this.prisma.mediaUpload.create({
+      data: { orgId: principal.orgId, storageKey, kind: PhotoKind.CATALOG, contentType: dto.contentType, byteSize: dto.byteSize, createdBy: principal.userId },
+    });
+    const uploadUrl = await this.storage.presignPut(storageKey, dto.contentType, dto.byteSize, this.config.presignPutTtlSec);
+    return { uploadUrl, storageKey, contentType: dto.contentType, expiresInSec: this.config.presignPutTtlSec, maxBytes: this.config.maxBytes };
+  }
+
+  /**
+   * Verify a catalog image the admin presigned+PUT for THIS org, then mark the intent CONFIRMED. HEAD-
+   * verifies the real object exists + matches the declared content-type/size (a bad object is deleted +
+   * rejected). Returns the verified storageKey the caller stores on `Service.imageKey`. No Photo row (a
+   * catalog image is not an order-custody artifact). Idempotent: re-confirming a CONFIRMED key is a no-op.
+   */
+  async confirmCatalogImage(principal: RequestPrincipal, storageKey: string): Promise<string> {
+    const intent = await this.requireIntent(principal, storageKey);
+    if (intent.kind !== PhotoKind.CATALOG) {
+      throw new BadRequestException({ error: CATALOG_ERRORS.IMAGE_NOT_UPLOADED, message: 'that upload was not presigned as a catalog image' });
+    }
+    if (intent.status === MediaUploadStatus.CONFIRMED) return storageKey;
+    await this.headVerify(intent); // exists + content-type/size match (deletes a bad object + throws otherwise)
+    await this.prisma.mediaUpload.updateMany({ where: { id: intent.id, orgId: principal.orgId, status: MediaUploadStatus.PENDING }, data: { status: MediaUploadStatus.CONFIRMED } });
+    return storageKey;
   }
 
   // ───────────────────────────── signed reads (§14) ─────────────────────────────

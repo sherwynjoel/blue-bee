@@ -11,6 +11,7 @@
  * No fabricated capacity, counts, or certifications (honesty firewall, CLAUDE.md).
  */
 import { PrismaClient, Prisma } from '@prisma/client';
+import { seedDrycleanCatalog } from './seed-catalog';
 import {
   AccountType,
   BillingMode,
@@ -1498,6 +1499,7 @@ async function main(): Promise<void> {
   await seedCostCenters(); // integration reconcile — split-billing demo data on the condo account
   await seedResidentialSpecialty();
   await seedCorporatePricing();
+  await seedDrycleanCatalog(prisma);
   await seedCareHomeEastWing();
   await seedMapleGroveFacilityLinen();
   await seedLiveFleet();

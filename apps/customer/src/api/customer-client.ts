@@ -5,6 +5,7 @@ import type {
   CreatePaymentIntentDto,
   CustomerSitesResult,
   DeclineQuoteDto,
+  DrycleanCatalogView,
   InvoiceView,
   ListOrdersQuery,
   MediaResult,
@@ -39,6 +40,12 @@ export class CustomerApiClient extends ApiClient {
   /** The customer's own sites (row-scoped) — the pickup/delivery address picker. */
   getSites(): Promise<CustomerSitesResult> {
     return this.request('GET', '/sites');
+  }
+
+  /** [Inc-17] The visual dry-clean catalog — categories → items with a photo + a price the SERVER already
+   *  resolved for this caller (corporate override or base). The app renders it; it never prices anything. */
+  getDrycleanCatalog(): Promise<DrycleanCatalogView> {
+    return this.request('GET', '/catalog/dryclean');
   }
 
   // ───────────── orders (Increment 3) ─────────────

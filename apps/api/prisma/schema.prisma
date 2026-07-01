@@ -142,6 +142,9 @@ enum PhotoKind {
   AFTER
   POD
   CLAIM
+  // [Inc-17] A dry-clean catalog item photo — uploaded through the SAME presigned media seam
+  // (MediaUpload intent + HEAD-verify), but org-scoped (owner/finance) and NOT tied to an order/item.
+  CATALOG
 }
 
 enum MediaUploadStatus {
@@ -508,21 +511,50 @@ model Site {
 // ─────────────────────────────── catalog (§9.2 — specialty only this phase) ───────────────────────────────
 
 model Service {
-  id        String          @id @default(uuid()) @db.Uuid
-  orgId     String          @map("org_id") @db.Uuid
-  vertical  ServiceVertical @default(SPECIALTY)
-  name      String
-  unit      ServiceUnit
-  baseRate  Decimal         @map("base_rate") @db.Decimal(12, 4)
-  createdAt DateTime        @default(now()) @map("created_at")
-  updatedAt DateTime        @updatedAt @map("updated_at")
-  createdBy String?         @map("created_by") @db.Uuid
+  id         String          @id @default(uuid()) @db.Uuid
+  orgId      String          @map("org_id") @db.Uuid
+  vertical   ServiceVertical @default(SPECIALTY)
+  name       String
+  unit       ServiceUnit
+  baseRate   Decimal         @map("base_rate") @db.Decimal(12, 4)
+  // [Inc-17 dry-clean catalog] All additive + defaulted/nullable so every existing Service (wash&fold LB,
+  // specialty ITEM/SQFT) is untouched: category is NULL, no image, active, sortOrder 0. `categoryId` groups
+  // a dry-clean ITEM under a ServiceCategory; `imageKey` is the media storageKey of the item photo (signed
+  // on read via MediaSigner — no new URL scheme); `active`/`sortOrder` drive the admin (deactivate + order).
+  categoryId String?         @map("category_id") @db.Uuid
+  imageKey   String?         @map("image_key")
+  active     Boolean         @default(true)
+  sortOrder  Int             @default(0) @map("sort_order")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+  createdBy  String?         @map("created_by") @db.Uuid
 
+  category       ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   orderLines     OrderLine[]
   priceListItems PriceListItem[]
   standingOrders StandingOrder[]
   parLevels      ParLevel[]
   linenStocks    LinenStock[]
+
+  @@index([orgId])
+  @@index([categoryId])
+}
+
+// [Inc-17] A dry-clean catalog category (Shirts / Outerwear / Formalwear …). Org-scoped (per-tenant),
+// NOT per-account. `sortOrder` orders categories in the admin + the customer picker; `active` hides a
+// category without deleting it. Items belong via Service.categoryId (SET NULL on delete → items fall to
+// "uncategorized", never lost).
+model ServiceCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  services Service[]
 
   @@index([orgId])
 }

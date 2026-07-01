@@ -28,4 +28,10 @@ export class CatalogController {
   sites(@CurrentUser() p: RequestPrincipal) {
     return this.catalog.listSites(p);
   }
+
+  @Get('catalog/dryclean')
+  @ApiOperation({ summary: 'The visual dry-clean catalog — categories → items with a photo + a price resolved for the caller (corporate override or base). Increment 17.' })
+  dryclean(@CurrentUser() p: RequestPrincipal) {
+    return this.catalog.listDrycleanCatalog(p);
+  }
 }

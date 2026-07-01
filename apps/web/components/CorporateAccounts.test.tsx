@@ -28,7 +28,7 @@ const accounts: CorporateAccountsResult = {
     { id: 'corp-1', name: 'Maple District Towers', type: 'BUSINESS' as never, billingMode: 'PER_ORDER' as never, corporate: true, joinCode: 'MAPLELOFT', joinCodeExpiresAt: null, buildingCount: 2, memberCount: 5, createdAt: '2026-06-30T00:00:00.000Z' },
   ],
 };
-const account: CorporateAccountView = accounts.accounts[0];
+const account: CorporateAccountView = accounts.accounts[0]!;
 const buildings: CorporateBuildingsResult = {
   buildings: [{ id: 'bldg-1', accountId: 'corp-1', name: 'Tower 1', address: '200 Bay St', geo: { lat: 43.6489, lng: -79.3801 }, matchRadiusM: 300, createdAt: '2026-06-30T00:00:00.000Z' }],
 };

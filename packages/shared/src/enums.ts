@@ -159,6 +159,9 @@ export enum PhotoKind {
   AFTER = 'AFTER',
   POD = 'POD',
   CLAIM = 'CLAIM',
+  // [Inc-17] A dry-clean catalog item photo (org-scoped, not order-tied) — uploaded through the same
+  // presigned media seam, stored as Service.imageKey.
+  CATALOG = 'CATALOG',
 }
 
 /** Presigned-upload intent lifecycle (Increment 10): a presign creates PENDING; confirm (after a real

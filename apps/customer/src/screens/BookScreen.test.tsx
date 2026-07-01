@@ -7,6 +7,8 @@ const mockClient = {
   getSites: jest.fn(async () => ({ sites: [{ id: 'site-1', accountId: 'acc', name: 'Home', address: '1 Main St', accountName: 'Rita', accountType: AccountType.RESIDENTIAL }] })),
   // [Inc-16] BookScreen reads memberships to show the corporate-pricing badge; default = none.
   listMyMemberships: jest.fn(async () => ({ memberships: [] as Array<{ id: string; accountId: string; accountName: string; status: string; source: string; createdAt: string }> })),
+  // [Inc-17] BookScreen reads the dry-clean catalog for the visual picker; default = empty (no picker).
+  getDrycleanCatalog: jest.fn(async () => ({ categories: [] as unknown[], currency: 'CAD', pricingAccountName: null })),
   book: jest.fn(),
 };
 jest.mock('../session/SessionProvider', () => ({
@@ -25,7 +27,28 @@ describe('BookScreen', () => {
     mockClient.book.mockReset();
     mockClient.listMyMemberships.mockReset();
     mockClient.listMyMemberships.mockResolvedValue({ memberships: [] });
+    mockClient.getDrycleanCatalog.mockReset();
+    mockClient.getDrycleanCatalog.mockResolvedValue({ categories: [], currency: 'CAD', pricingAccountName: null });
     navigation.replace.mockClear();
+  });
+
+  it('renders the dry-clean visual picker when the catalog loads, and tapping + stages an ITEM line for booking', async () => {
+    mockClient.getDrycleanCatalog.mockResolvedValue({
+      currency: 'CAD',
+      pricingAccountName: null,
+      categories: [{ id: 'cat-1', name: 'Shirts', sortOrder: 1, items: [{ id: 'dc-1', name: 'Dress shirt', imageUrl: null, price: '6.00', priceSource: 'service_base' }] }],
+    });
+    mockClient.book.mockResolvedValue({ id: 'order-1' });
+    const { getByTestId, findByLabelText, findByTestId } = render(<BookScreen {...screenProps} />);
+    await findByTestId('dryclean-item-dc-1');
+
+    fireEvent.press(await findByLabelText('Add one Dress shirt'));
+    expect(getByTestId('dryclean-qty-dc-1').props.children).toBe(1); // staged one unit
+
+    fireEvent.press(getByTestId('submit-booking'));
+    await waitFor(() => expect(mockClient.book).toHaveBeenCalled());
+    const [dto] = mockClient.book.mock.calls[0]!;
+    expect(dto.items).toEqual([{ kind: 'GARMENT', serviceId: 'dc-1', estimatedMeasure: 1 }]); // through the existing line-item path
   });
 
   it('shows the corporate-pricing badge when the user holds an active membership (server truth); hidden otherwise', async () => {

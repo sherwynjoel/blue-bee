@@ -94,6 +94,17 @@ import type {
   SetRateCardItemDto,
   UpdateBuildingDto,
   UpdateCorporateAccountDto,
+  // Dry-clean visual catalog (Inc-17).
+  AdminCatalogView,
+  CatalogImagePresignResult,
+  CatalogItemView,
+  CategoriesResult,
+  CategoryView,
+  CreateCatalogItemDto,
+  CreateCategoryDto,
+  PresignCatalogImageDto,
+  UpdateCatalogItemDto,
+  UpdateCategoryDto,
   CreateResidentDto,
   CreateStandingOrderDto,
   DropToLostFoundDto,
@@ -618,6 +629,30 @@ export class ConsoleApiClient extends ApiClient {
   }
   listMyMemberships(): Promise<MembershipsResult> {
     return this.request('GET', '/corporate/memberships');
+  }
+
+  // ─────────────── dry-clean visual catalog admin (Inc-17, OWNER/FINANCE) ───────────────
+
+  adminCatalog(): Promise<AdminCatalogView> {
+    return this.request('GET', '/catalog/admin');
+  }
+  listCatalogCategories(): Promise<CategoriesResult> {
+    return this.request('GET', '/catalog/categories');
+  }
+  createCatalogCategory(dto: CreateCategoryDto): Promise<CategoryView> {
+    return this.request('POST', '/catalog/categories', { body: dto });
+  }
+  updateCatalogCategory(id: string, dto: UpdateCategoryDto): Promise<CategoryView> {
+    return this.request('PATCH', `/catalog/categories/${id}`, { body: dto });
+  }
+  createCatalogItem(dto: CreateCatalogItemDto): Promise<CatalogItemView> {
+    return this.request('POST', '/catalog/items', { body: dto });
+  }
+  updateCatalogItem(id: string, dto: UpdateCatalogItemDto): Promise<CatalogItemView> {
+    return this.request('PATCH', `/catalog/items/${id}`, { body: dto });
+  }
+  presignCatalogImage(dto: PresignCatalogImageDto): Promise<CatalogImagePresignResult> {
+    return this.request('POST', '/catalog/image/presign', { body: dto });
   }
 }
 

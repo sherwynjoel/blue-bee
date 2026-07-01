@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { ItemKind, type CustomerSite, type ServiceCatalogItem } from '@blue-bee/shared';
+import { ItemKind, type CustomerSite, type DrycleanCatalogView, type ServiceCatalogItem } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSession } from '../session/SessionProvider';
@@ -11,6 +11,7 @@ import { rangeText } from '../format';
 import { useTheme } from '../../theme';
 import { Button, Card, Text, fireHaptic } from '../../components/ui';
 import { CorporatePricingNote } from '../components/CorporatePricing';
+import { DrycleanPicker } from '../components/DrycleanPicker';
 
 const ITEM_KINDS: ItemKind[] = [ItemKind.RUG, ItemKind.CARPET, ItemKind.BLIND, ItemKind.UPHOLSTERY, ItemKind.GARMENT];
 
@@ -36,6 +37,9 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
   // account. The badge is informational; pricing itself is resolved server-side at booking (never here).
   // A building match (no membership) can't be known pre-booking — it surfaces on the order after booking.
   const [corpAccountName, setCorpAccountName] = useState<string | null>(null);
+  // [Inc-17] The visual dry-clean catalog (server-resolved prices). Non-blocking: if it fails to load, the
+  // specialty composer still books normally — the picker simply doesn't render.
+  const [dryclean, setDryclean] = useState<DrycleanCatalogView | null>(null);
 
   // Composer for the current item + the staged item list.
   const [kind, setKind] = useState<ItemKind>(ItemKind.RUG);
@@ -74,7 +78,43 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
         // degrade silently — no membership badge
       }
     })();
+    // The visual dry-clean catalog (server-resolved prices) — non-blocking; a failure just hides the picker.
+    (async () => {
+      try {
+        setDryclean(await client.getDrycleanCatalog());
+      } catch {
+        // degrade silently — the specialty composer still books
+      }
+    })();
   }, [client]);
+
+  // [Inc-17] Catalog selections feed the SAME draft-item list (unit ITEM, one line per garment type, qty in
+  // estimatedMeasure) — no parallel cart. The picker's +/- adds/removes one unit of a catalog serviceId.
+  const catalogQtyFor = useCallback((sid: string) => items.find((i) => i.serviceId === sid)?.estimatedMeasure ?? 0, [items]);
+  const addCatalog = useCallback((sid: string) => {
+    setItems((prev) => {
+      const idx = prev.findIndex((i) => i.serviceId === sid);
+      const cur = idx >= 0 ? prev[idx] : undefined;
+      if (cur) {
+        const next = [...prev];
+        next[idx] = { ...cur, estimatedMeasure: (cur.estimatedMeasure ?? 0) + 1 };
+        return next;
+      }
+      return [...prev, { kind: ItemKind.GARMENT, serviceId: sid, estimatedMeasure: 1 }];
+    });
+  }, []);
+  const removeCatalog = useCallback((sid: string) => {
+    setItems((prev) => {
+      const idx = prev.findIndex((i) => i.serviceId === sid);
+      const cur = idx >= 0 ? prev[idx] : undefined;
+      if (!cur) return prev;
+      const qty = (cur.estimatedMeasure ?? 0) - 1;
+      if (qty <= 0) return prev.filter((_, i) => i !== idx);
+      const next = [...prev];
+      next[idx] = { ...cur, estimatedMeasure: qty };
+      return next;
+    });
+  }, []);
 
   const addItem = useCallback(() => {
     if (!serviceId) return;
@@ -110,9 +150,15 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
     }
   }, [accountId, siteId, items, schedulePickup, client, navigation]);
 
-  const serviceName = (id: string) => services.find((s) => s.id === id)?.name ?? id.slice(0, 8);
+  const catalogById = new Map((dryclean?.categories ?? []).flatMap((c) => c.items).map((i) => [i.id, i]));
+  const serviceName = (id: string) => services.find((s) => s.id === id)?.name ?? catalogById.get(id)?.name ?? id.slice(0, 8);
   const selectedService = services.find((s) => s.id === serviceId);
-  const estimate = estimateRange(items, services);
+  const rateFor = (id: string): number => {
+    const svc = services.find((s) => s.id === id);
+    if (svc) return Number(svc.baseRate);
+    return Number(catalogById.get(id)?.price ?? 0);
+  };
+  const estimate = estimateRange(items, rateFor);
 
   if (loading)
     return (
@@ -176,6 +222,8 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
           <Button testID="add-item" label="Add" icon="plus" variant="outline" size="md" onPress={addItem} disabled={!serviceId} fullWidth={false} haptic="none" />
         </View>
       </Card>
+
+      {dryclean ? <DrycleanPicker catalog={dryclean} qtyFor={catalogQtyFor} onAdd={addCatalog} onRemove={removeCatalog} /> : null}
 
       {items.length > 0 ? (
         <Card title={`Items to book (${items.length})`}>
@@ -358,13 +406,14 @@ function MeasureInput({ value, onChangeText }: { value: string; onChangeText: (t
 }
 
 /** Rough pre-intake estimate range from the staged items × the catalog base rates (±client preview). */
-function estimateRange(items: DraftItem[], services: ServiceCatalogItem[]): { low: string; high: string } | null {
+/** Rough pre-intake preview from staged items × a rate lookup (specialty base OR the server-resolved
+ *  catalog price). The final quote is computed server-side (this is a client-side estimate only). */
+function estimateRange(items: DraftItem[], rateOf: (serviceId: string) => number): { low: string; high: string } | null {
   let cents = 0;
   let any = false;
   for (const it of items) {
     if (!it.estimatedMeasure) continue;
-    const rate = Number(services.find((s) => s.id === it.serviceId)?.baseRate ?? 0);
-    cents += Math.round(it.estimatedMeasure * rate * 100);
+    cents += Math.round(it.estimatedMeasure * rateOf(it.serviceId) * 100);
     any = true;
   }
   if (!any) return null;

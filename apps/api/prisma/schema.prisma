@@ -1608,6 +1608,11 @@ model Message {
   channel    CommsChannel @default(IN_APP)
   body       String
   sentAt     DateTime     @default(now()) @map("sent_at")
+  // [Inc-18 in-app chat] Per-recipient read-state. NULL ⇒ unread by its recipient (`toUserId`).
+  // The ONLY field ever mutated after a message is sent (the body/from/to/sentAt are immutable);
+  // flipped to now() when the recipient marks the thread read. Additive + nullable ⇒ existing rows
+  // (there are none — Message was dormant before Inc-18) default to unread, the correct baseline.
+  readAt     DateTime?    @map("read_at")
   createdAt  DateTime     @default(now()) @map("created_at")
   updatedAt  DateTime     @updatedAt @map("updated_at")
   createdBy  String?      @map("created_by") @db.Uuid
@@ -1618,6 +1623,9 @@ model Message {
 
   @@index([orgId])
   @@index([threadId])
+  // [Inc-18] Order-scoped thread reads (history GET + unread count + mark-read) filter by order_id;
+  // the pre-existing indexes only covered org_id + thread_id.
+  @@index([orderId])
 }
 
 model Notification {

@@ -10,6 +10,7 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { RouteScreen } from './src/screens/RouteScreen';
 import { StopScreen } from './src/screens/StopScreen';
 import { PodScreen } from './src/screens/PodScreen';
+import { ChatScreen } from './src/screens/ChatScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { useTheme } from './src/theme';
 import { Text } from './src/components/kit';
@@ -69,6 +70,7 @@ function Root(): React.ReactElement {
       <Stack.Screen name="Route" component={RouteScreen} options={{ title: 'My route today' }} />
       <Stack.Screen name="Stop" component={StopScreen} options={{ title: 'Stop' }} />
       <Stack.Screen name="Pod" component={PodScreen} options={{ title: 'Proof of delivery' }} />
+      <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Messages' }} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Stack.Navigator>
   );

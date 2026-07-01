@@ -181,6 +181,14 @@ export const WS_EVENTS = {
   GEOFENCE: 'geofence',
   /** The channel was closed server-side (stop ended / shift ended / token expired). */
   CHANNEL_CLOSED: 'channel:closed',
+  /**
+   * A new in-app chat message was persisted for the order (Increment 18). Emitted to the ORDER
+   * room on the VEHICLE namespace, so exactly the order's customer + assigned driver (both bound
+   * to that room, authorize-by-construction) receive it live. Payload: `ChatMessageEvent`
+   * (messaging.ts). Like every WS event this is an OPTIMIZATION over the persisted REST history —
+   * an offline/degraded client backfills via GET /v1/orders/:id/messages, never losing a message.
+   */
+  CHAT_MESSAGE: 'chat:message',
 } as const;
 
 /** Payload of a `position` event — one vehicle's live position. */
@@ -242,6 +250,14 @@ export interface ChannelTokenClaims {
   stop_id: string;
   /** The principal who minted it (audit). */
   sub: string;
+  /**
+   * Inc-18: chat authorization. Present + true ONLY on a token minted by the participant-gated chat
+   * channel endpoint (GET /v1/orders/:id/messages/channel), which proves the caller is the order's
+   * customer or its assigned driver. The gateway joins the order chat room ONLY for chat:true tokens,
+   * so a plain tracking token (minted by GET /orders/:id/tracking, which org-wide staff may call) can
+   * observe the vehicle but NEVER receives chat — chat stays scoped to exactly the two participants.
+   */
+  chat?: boolean;
   iat?: number;
   exp?: number;
 }

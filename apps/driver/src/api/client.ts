@@ -1,14 +1,19 @@
 import type {
   CaptureProofOfDeliveryDto,
+  ChatMessageDto,
   DriverAssignment,
   DriverStopAction,
   LocationBatchDto,
   LocationBatchResult,
+  MarkReadResult,
+  MessageListResult,
+  MessagesQuery,
   PresignMediaResult,
   PresignPodMediaDto,
   ProofOfDeliveryView,
   StopActionDto,
   StopExceptionDto,
+  UnreadCountResult,
 } from '@blue-bee/shared';
 import { ApiClient as BaseApiClient } from '@blue-bee/api-client';
 
@@ -53,6 +58,41 @@ export class ApiClient extends BaseApiClient {
   /** Read MY stop's captured proof of delivery (signed reads). */
   getProofOfDelivery(stopId: string): Promise<ProofOfDeliveryView> {
     return this.request('GET', `/driver/stops/${stopId}/proof-of-delivery`);
+  }
+
+  // ───────────── in-app chat (Increment 18 — per-order customer ↔ assigned-driver thread) ─────────────
+
+  /** A page of the order's chat thread (newest-first) + the caller's unread count + `open` (composer). */
+  getMessages(orderId: string, query: MessagesQuery = { limit: 30 }): Promise<MessageListResult> {
+    const params = new URLSearchParams();
+    if (query.limit != null) params.set('limit', String(query.limit));
+    if (query.cursor) params.set('cursor', query.cursor);
+    const qs = params.toString();
+    return this.request('GET', `/orders/${orderId}/messages${qs ? `?${qs}` : ''}`);
+  }
+
+  /**
+   * Send a message. `idempotencyKey` (stable per composed message) makes an offline-queued retry
+   * safe — a re-send of the SAME message is de-duped server-side. 409 (chat_read_only) when the
+   * stop is no longer active.
+   */
+  sendMessage(orderId: string, body: string, idempotencyKey?: string): Promise<ChatMessageDto> {
+    return this.request('POST', `/orders/${orderId}/messages`, { body: { body }, idempotencyKey });
+  }
+
+  /** The caller's unread count for this order. */
+  getUnreadCount(orderId: string): Promise<UnreadCountResult> {
+    return this.request('GET', `/orders/${orderId}/messages/unread`);
+  }
+
+  /** Mark the caller's inbound messages in this order read. Idempotent. */
+  markMessagesRead(orderId: string): Promise<MarkReadResult> {
+    return this.request('POST', `/orders/${orderId}/messages/read`, { body: {} });
+  }
+
+  /** Mint the short-lived signed channel token for the live chat socket (same channel as tracking). */
+  getMessagesChannel(orderId: string): Promise<{ channelToken: string | null; stopId: string | null; vehicleId: string | null }> {
+    return this.request('GET', `/orders/${orderId}/messages/channel`);
   }
 
   // ───────────── location ingestion (Increment 5) ─────────────

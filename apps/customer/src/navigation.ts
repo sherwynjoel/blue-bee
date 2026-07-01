@@ -6,6 +6,7 @@ export type RootStackParamList = {
   Book: undefined;
   OrderDetail: { orderId: string };
   Track: { orderId: string };
+  Chat: { orderId: string };
   Pay: { orderId: string };
   Settings: undefined;
 };

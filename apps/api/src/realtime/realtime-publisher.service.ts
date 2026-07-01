@@ -4,6 +4,7 @@ import {
   WS_EVENTS,
   WS_NAMESPACES,
   type ChannelClosedReason,
+  type ChatMessageEvent,
   type LiveEtaEvent,
   type LiveGeofenceEvent,
   type LivePositionEvent,
@@ -44,6 +45,15 @@ export class RealtimePublisher {
   fleetRoom(orgId: string): string {
     return `org:${orgId}:fleet`;
   }
+  /**
+   * Order chat room (Increment 18) — customers + the assigned driver on the VEHICLE namespace who
+   * are conversing about one order. Org-namespaced like every other room so a tenant never receives
+   * another's traffic. Sockets JOIN it server-side on connection from the token's verified order_id
+   * (authorize-by-construction — no client subscribe), so a client can never request another order.
+   */
+  orderRoom(orgId: string, orderId: string): string {
+    return `org:${orgId}:ord:${orderId}`;
+  }
 
   /**
    * Push a new position to the vehicle's customers AND the org fleet. Call ONLY when the
@@ -78,6 +88,18 @@ export class RealtimePublisher {
     if (!this.server) return;
     this.server.of(WS_NAMESPACES.VEHICLE).to(this.stopRoom(orgId, stopId)).emit(WS_EVENTS.GEOFENCE, payload);
     this.server.of(WS_NAMESPACES.FLEET).to(this.fleetRoom(orgId)).emit(WS_EVENTS.GEOFENCE, payload);
+  }
+
+  /**
+   * Push a newly-persisted chat message to the order's participants (Increment 18). Scoped to the
+   * ORDER room on the VEHICLE namespace — exactly the order's customer + assigned driver, who were
+   * server-bound to it at the handshake. NEVER a global/namespace-wide broadcast (no leak of one
+   * order's chat to another), and never the fleet room (owner/console chat is out of scope). The
+   * emit is an OPTIMIZATION: the REST history is source of truth, so an offline client backfills.
+   */
+  publishChatMessage(orgId: string, orderId: string, payload: ChatMessageEvent): void {
+    if (!this.server) return; // gateway not initialised — REST history remains source of truth
+    this.server.of(WS_NAMESPACES.VEHICLE).to(this.orderRoom(orgId, orderId)).emit(WS_EVENTS.CHAT_MESSAGE, payload);
   }
 
   /**

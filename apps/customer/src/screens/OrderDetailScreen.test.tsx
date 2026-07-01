@@ -16,6 +16,7 @@ const mockClient = {
   getOrder: jest.fn(),
   approveQuote: jest.fn(),
   declineQuote: jest.fn(),
+  getUnreadCount: jest.fn(),
 };
 jest.mock('../session/SessionProvider', () => ({ useSession: () => ({ client: mockClient }) }));
 
@@ -67,6 +68,9 @@ describe('OrderDetailScreen', () => {
     mockClient.getOrder.mockReset();
     mockClient.approveQuote.mockReset();
     mockClient.declineQuote.mockReset();
+    mockClient.getUnreadCount.mockReset();
+    // The order screen fetches the chat unread badge (Inc-18) best-effort on load.
+    mockClient.getUnreadCount.mockResolvedValue({ orderId: 'order-aaaa1111', unreadCount: 0 });
   });
 
   it('renders the timeline, the pre-existing-damage notice + photo, and the quote (from server state)', async () => {

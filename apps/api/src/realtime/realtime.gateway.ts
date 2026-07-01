@@ -17,6 +17,8 @@ interface VehicleSocketData {
   vehicleId: string;
   orderId: string;
   stopId: string;
+  /** Inc-18: true only for a chat-authorized token (participant-gated) → may join the order chat room. */
+  chat: boolean;
   exp?: number;
 }
 interface FleetSocketData {
@@ -85,6 +87,7 @@ export class RealtimeGateway implements OnGatewayInit {
       vehicleId: claims.vehicle_id,
       orderId: claims.order_id,
       stopId: claims.stop_id,
+      chat: claims.chat === true,
       exp: claims.exp,
     };
   }
@@ -94,6 +97,13 @@ export class RealtimeGateway implements OnGatewayInit {
     // Server-BOUND to exactly this vehicle + stop; no client subscribe exists.
     void socket.join(this.publisher.vehicleRoom(c.orgId, c.vehicleId));
     void socket.join(this.publisher.stopRoom(c.orgId, c.stopId));
+    // Inc-18: bind to the order's chat room ONLY for a chat-authorized token (c.chat) — one minted by
+    // the participant-gated chat channel endpoint, which proved the caller is the order's customer or
+    // its assigned driver. A plain tracking token (which org-wide staff can mint via GET /tracking) has
+    // chat=false, so it observes the vehicle but is NEVER added to the chat room → no chat leak to a
+    // non-participant. order_id is the token's VERIFIED claim (no client subscribe). Membership drops
+    // with the socket when closeStopChannel disconnects it on stop end.
+    if (c.chat) void socket.join(this.publisher.orderRoom(c.orgId, c.orderId));
     this.scheduleExpiryDisconnect(socket, c.exp, { reason: 'token_expired', vehicleId: c.vehicleId, stopId: c.stopId });
   }
 

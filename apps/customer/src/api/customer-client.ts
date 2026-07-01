@@ -1,6 +1,7 @@
 import type {
   ApproveQuoteDto,
   BookOrderDto,
+  ChatMessageDto,
   ConfirmMediaDto,
   CreatePaymentIntentDto,
   CustomerSitesResult,
@@ -8,8 +9,11 @@ import type {
   DrycleanCatalogView,
   InvoiceView,
   ListOrdersQuery,
+  MarkReadResult,
   MediaResult,
   MembershipsResult,
+  MessageListResult,
+  MessagesQuery,
   OrderTrackingResult,
   PaymentIntentResponse,
   PaymentView,
@@ -18,6 +22,7 @@ import type {
   RedeemJoinCodeDto,
   RedeemResultView,
   ServiceCatalogResult,
+  UnreadCountResult,
 } from '@blue-bee/shared';
 import { ApiClient } from '@blue-bee/api-client';
 import type { OrderDetail, OrderListResult } from './types';
@@ -83,6 +88,44 @@ export class CustomerApiClient extends ApiClient {
   /** REST source-of-truth poll: last-known of the order's one vehicle + first ETA + a channelToken. */
   getOrderTracking(orderId: string): Promise<OrderTrackingResult> {
     return this.request('GET', `/orders/${orderId}/tracking`);
+  }
+
+  // ───────────── in-app chat (Increment 18 — per-order customer ↔ assigned-driver thread) ─────────────
+
+  /** A page of the order's chat thread (newest-first) + the caller's unread count + `open` (composer). */
+  getMessages(orderId: string, query: MessagesQuery = { limit: 30 }): Promise<MessageListResult> {
+    const params = new URLSearchParams();
+    if (query.limit != null) params.set('limit', String(query.limit));
+    if (query.cursor) params.set('cursor', query.cursor);
+    const qs = params.toString();
+    return this.request('GET', `/orders/${orderId}/messages${qs ? `?${qs}` : ''}`);
+  }
+
+  /**
+   * Send a message. Pass a stable `idempotencyKey` so a timeout/offline-composed retry is de-duped
+   * server-side. Returns 409 (chat_read_only → ApiError.isConflict) when the order is not in an
+   * active delivery window — the screen surfaces the read-only state.
+   */
+  sendMessage(orderId: string, body: string, idempotencyKey?: string): Promise<ChatMessageDto> {
+    return this.request('POST', `/orders/${orderId}/messages`, { body: { body }, idempotencyKey });
+  }
+
+  /** The caller's unread count for this order (the badge on the order card). */
+  getUnreadCount(orderId: string): Promise<UnreadCountResult> {
+    return this.request('GET', `/orders/${orderId}/messages/unread`);
+  }
+
+  /** Mark the caller's inbound messages in this order read (clears the badge). Idempotent. */
+  markMessagesRead(orderId: string): Promise<MarkReadResult> {
+    return this.request('POST', `/orders/${orderId}/messages/read`, { body: {} });
+  }
+
+  /**
+   * Mint the short-lived signed channel token for the live chat socket (the SAME `/live/vehicle`
+   * channel + token as live tracking — no second socket path). Null when the thread is read-only.
+   */
+  getMessagesChannel(orderId: string): Promise<{ channelToken: string | null; stopId: string | null; vehicleId: string | null }> {
+    return this.request('GET', `/orders/${orderId}/messages/channel`);
   }
 
   // ───────────── pay (Increment 12 — Stripe PaymentSheet; client gets the client_secret only) ─────────────

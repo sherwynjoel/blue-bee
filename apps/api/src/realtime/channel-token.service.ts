@@ -20,8 +20,12 @@ export class ChannelTokenService {
     @Inject(AUTH_CONFIG) private readonly config: AuthConfig,
   ) {}
 
-  /** Mint a token binding one vehicle/order/stop to the minting principal. */
-  mint(input: { orgId: string; vehicleId: string; orderId: string; stopId: string; sub: string }): string {
+  /**
+   * Mint a token binding one vehicle/order/stop to the minting principal. Pass `chat: true` ONLY from
+   * the participant-gated chat channel endpoint — it authorizes joining the order's chat room (Inc-18);
+   * the tracking read omits it, so a tracking token can observe the vehicle but never receives chat.
+   */
+  mint(input: { orgId: string; vehicleId: string; orderId: string; stopId: string; sub: string; chat?: boolean }): string {
     const claims: Omit<ChannelTokenClaims, 'iat' | 'exp'> = {
       kind: 'vehicle-tracking',
       org_id: input.orgId,
@@ -29,6 +33,8 @@ export class ChannelTokenService {
       order_id: input.orderId,
       stop_id: input.stopId,
       sub: input.sub,
+      // Only stamped when chat-authorized, so plain tracking tokens are byte-identical to before.
+      ...(input.chat ? { chat: true } : {}),
     };
     return this.jwt.sign(claims, {
       secret: this.config.channelToken.secret,

@@ -29,6 +29,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
   const { client } = useSession();
   const { colors, space } = useTheme();
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
@@ -48,6 +49,11 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
     setError(null);
     try {
       setOrder(await client.getOrder(orderId));
+      // Best-effort chat unread for the badge; never blocks the order render.
+      void client
+        .getUnreadCount(orderId)
+        .then((r) => setUnread(r.unreadCount))
+        .catch(() => undefined);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load this order.');
     } finally {
@@ -184,6 +190,28 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
           </Card>
         </Pressable>
       ) : null}
+
+      <Pressable
+        testID="chat-cta"
+        onPress={() => navigation.navigate('Chat', { orderId })}
+        accessibilityRole="button"
+        accessibilityLabel={unread > 0 ? `Messages, ${unread} unread` : 'Messages'}
+      >
+        <Card style={styles.chatCta}>
+          <View style={[styles.chatIcon, { backgroundColor: colors.subtle }]}>
+            <Feather name="message-circle" size={20} color={colors.azure} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text variant="headline" weight="700">
+              Messages
+            </Text>
+            <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
+              {showTrack ? 'Chat with your driver' : 'View your conversation'}
+            </Text>
+          </View>
+          {unread > 0 ? <Badge testID="chat-unread" label={String(unread)} tone="azure" /> : <Feather name="chevron-right" size={22} color={colors.textTertiary} />}
+        </Card>
+      </Pressable>
 
       <Card title="Progress">
         <StatusTimeline status={order.status} heldFrom={order.heldFrom} />
@@ -415,6 +443,8 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   trackCta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   trackIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  chatCta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  chatIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   approvedRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   paidRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginTop: 10 },
   damageNotice: { borderRadius: 12, padding: 12 },

@@ -12,6 +12,7 @@ import { OrdersScreen } from './src/screens/OrdersScreen';
 import { BookScreen } from './src/screens/BookScreen';
 import { OrderDetailScreen } from './src/screens/OrderDetailScreen';
 import { TrackScreen } from './src/screens/TrackScreen';
+import { ChatScreen } from './src/screens/ChatScreen';
 import { PayScreen } from './src/screens/PayScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { navigationRef, openOrderTracking, type RootStackParamList } from './src/navigation';
@@ -82,6 +83,7 @@ function Root(): React.ReactElement {
       <Stack.Screen name="Book" component={BookScreen} options={{ title: 'Book a cleaning' }} />
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order', headerLargeTitle: false }} />
       <Stack.Screen name="Track" component={TrackScreen} options={{ title: 'Track my truck', headerLargeTitle: false }} />
+      <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Messages', headerLargeTitle: false }} />
       <Stack.Screen name="Pay" component={PayScreen} options={{ title: 'Pay', headerLargeTitle: false }} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Stack.Navigator>

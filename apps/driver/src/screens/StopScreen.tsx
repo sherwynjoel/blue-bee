@@ -180,6 +180,20 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
           </>
         )}
 
+        {stop.orderId ? (
+          <>
+            <View style={{ height: t.spacing.lg }} />
+            <Button
+              testID="message-customer"
+              label="Message customer"
+              onPress={() => navigation.navigate('Chat', { orderId: stop.orderId! })}
+              variant="secondary"
+              icon="message-circle"
+              fullWidth
+            />
+          </>
+        ) : null}
+
         <View style={{ height: t.spacing.lg }} />
         <Button label="Back to route" onPress={() => navigation.goBack()} variant="ghost" icon="arrow-left" fullWidth />
       </Screen>

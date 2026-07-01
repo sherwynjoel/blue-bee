@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ServiceUnit } from '@blue-bee/shared';
 import type {
   CustomerSite,
@@ -57,6 +58,10 @@ export class CatalogService {
         account: { select: { name: true, type: true } },
       },
     });
+    // [Inc-19] Surface each site's PostGIS point (Site.geo is Prisma `Unsupported` → raw ST_X/ST_Y read on
+    // the exact ids just fetched via the scoped client). The customer app sends this as the booking
+    // `serviceGeo` so the SERVER can geo-block against active service zones (the app never decides).
+    const geoById = await this.readSiteGeo(rows.map((s) => s.id));
     const sites: CustomerSite[] = rows.map((s) => ({
       id: s.id,
       accountId: s.accountId,
@@ -64,8 +69,22 @@ export class CatalogService {
       address: s.address,
       accountName: s.account.name,
       accountType: s.account.type as unknown as CustomerSite['accountType'],
+      geo: geoById.get(s.id) ?? null,
     }));
     return { sites };
+  }
+
+  /** Read {lng,lat} for a set of sites from the PostGIS geography column (geometry cast → ST_X/ST_Y). */
+  private async readSiteGeo(siteIds: string[]): Promise<Map<string, { lng: number; lat: number }>> {
+    const out = new Map<string, { lng: number; lat: number }>();
+    if (siteIds.length === 0) return out;
+    const rows = await this.prisma.$queryRaw<Array<{ id: string; lat: number | null; lng: number | null }>>(Prisma.sql`
+      SELECT id, ST_Y(geo::geometry) AS lat, ST_X(geo::geometry) AS lng
+      FROM "Site" WHERE geo IS NOT NULL AND id IN (${Prisma.join(siteIds.map((id) => Prisma.sql`${id}::uuid`))})`);
+    for (const r of rows) {
+      if (r.lat !== null && r.lng !== null) out.set(r.id, { lng: Number(r.lng), lat: Number(r.lat) });
+    }
+    return out;
   }
 
   /**

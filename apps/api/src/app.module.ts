@@ -27,6 +27,7 @@ import { FacilityLinenModule } from './facility-linen/facility-linen.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { CorporateModule } from './corporate/corporate.module';
 import { ChatModule } from './chat/chat.module';
+import { ServiceZonesModule } from './service-zones/service-zones.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -73,6 +74,7 @@ import { ChatModule } from './chat/chat.module';
     InvoicesModule,
     CorporateModule,
     ChatModule,
+    ServiceZonesModule,
     HealthModule,
   ],
 })

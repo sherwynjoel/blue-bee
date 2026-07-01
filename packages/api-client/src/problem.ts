@@ -42,6 +42,15 @@ export class ApiError extends Error {
     return this.status === 409;
   }
 
+  /**
+   * [Inc-19] A 422 `zone.out_of_service_area` — the server (authoritative) blocked a booking because its
+   * service point falls outside every active service zone. The app surfaces a calm out-of-area state (the
+   * server already captured the address as demand). Matches ZONE_ERRORS.OUT_OF_SERVICE_AREA in @blue-bee/shared.
+   */
+  get isOutOfServiceArea(): boolean {
+    return this.status === 422 && this.code === 'zone.out_of_service_area';
+  }
+
   static async from(res: Response): Promise<ApiError> {
     let problem: ProblemDetails = {};
     try {

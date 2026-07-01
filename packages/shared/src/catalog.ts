@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import { ServiceUnit } from './enums';
 import type { ServiceVertical, AccountType } from './enums';
+import type { GeoPoint } from './validators';
 
 /** One bookable service in the org catalog (GET /v1/services). `baseRate` is a decimal string (CAD/unit). */
 export interface ServiceCatalogItem {
@@ -33,6 +34,13 @@ export interface CustomerSite {
   /** Account this site belongs to (so the app can group when a customer spans accounts). */
   accountName: string;
   accountType: AccountType;
+  /**
+   * [Inc-19] The site's WGS84 service point ({lng,lat}), surfaced from the PostGIS `Site.geo` column when
+   * set (null otherwise). The customer app sends this as the booking `serviceGeo` so the SERVER can gate
+   * the booking against the org's active service zones (geo-blocking). Display/pass-through only — the app
+   * never decides serviceability; the server is authoritative.
+   */
+  geo: GeoPoint | null;
 }
 
 /** GET /v1/sites result — the caller's own sites, row-scoped to their account(s). */

@@ -26,3 +26,4 @@ export * from './facility-linen';
 export * from './invoices';
 export * from './corporate';
 export * from './messaging';
+export * from './zones';

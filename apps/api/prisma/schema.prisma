@@ -949,6 +949,50 @@ model CustodyEvent {
   @@index([occurredAt])
 }
 
+// ─────────────────────────────── geo-blocking / service zones (Inc-19) ───────────────────────────────
+
+// [Inc-19] An owner-drawn service zone (a polygon on the map). A booking whose service point falls in NO
+// active zone is blocked (422 out_of_service_area) and captured as a CoverageRequest — UNLESS the order is
+// a serviced corporate order (building match or membership) or the payer is a corporate account. Org-scoped
+// (per-tenant, no per-zone pricing/scheduling this increment). The polygon is stored as real PostGIS
+// geography(Polygon,4326) in `area` — Prisma `Unsupported`, set/read via raw SQL (ST_GeomFromGeoJSON /
+// ST_AsGeoJSON / ST_Covers), exactly like Site.geo. Nullable ONLY so the row can be created then the area
+// set in the same tx (mirrors the corporate-building two-step); the service ALWAYS sets it. `active` gates a
+// zone without deleting it; `sortOrder` orders them in the editor.
+model ServiceZone {
+  id        String                                    @id @default(uuid()) @db.Uuid
+  orgId     String                                    @map("org_id") @db.Uuid
+  name      String
+  active    Boolean                                   @default(true)
+  sortOrder Int                                       @default(0) @map("sort_order")
+  area      Unsupported("geography(Polygon, 4326)")?
+  createdAt DateTime                                  @default(now()) @map("created_at")
+  updatedAt DateTime                                  @updatedAt @map("updated_at")
+  createdBy String?                                   @map("created_by") @db.Uuid
+
+  @@index([orgId])
+}
+
+// [Inc-19] The out-of-zone DEMAND signal: a booking attempt whose service point fell outside every active
+// zone. Snapshots the attempted service point + address + the requesting user (+ optional booking context)
+// so the console shows the coverage waitlist. Append-only in practice (never mutated after capture). Deferred
+// (Inc-19 scope OUT): auto-notify a captured point when a new zone later covers it — modeled hook, not built.
+model CoverageRequest {
+  id        String                                 @id @default(uuid()) @db.Uuid
+  orgId     String                                 @map("org_id") @db.Uuid
+  userId    String                                 @map("user_id") @db.Uuid
+  address   String?
+  point     Unsupported("geography(Point, 4326)")?
+  context   Json?
+  createdAt DateTime                               @default(now()) @map("created_at")
+  updatedAt DateTime                               @updatedAt @map("updated_at")
+  createdBy String?                                @map("created_by") @db.Uuid
+
+  @@index([orgId])
+  @@index([userId])
+  @@index([orgId, createdAt])
+}
+
 // ─────────────────────────────── logistics & tracking (§9.5) ───────────────────────────────
 
 model Vehicle {

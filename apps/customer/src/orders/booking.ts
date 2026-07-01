@@ -1,4 +1,4 @@
-import type { BookItemDto, BookOrderDto, ItemKind, TimeWindow } from '@blue-bee/shared';
+import type { BookItemDto, BookOrderDto, GeoPoint, ItemKind, TimeWindow } from '@blue-bee/shared';
 
 /** A line the customer is composing in the Book form before submitting. */
 export interface DraftItem {
@@ -14,6 +14,12 @@ export interface BookForm {
   items: DraftItem[];
   pickupWindow?: TimeWindow;
   notes?: string;
+  /**
+   * [Inc-19] The selected site's service point ({lng,lat}), when it has one. Sent as `serviceGeo` so the
+   * SERVER can geo-block against active service zones (the app never decides serviceability). Omitted when
+   * the site has no point (⇒ the server can't gate ⇒ books, mirroring the building-match `if (serviceGeo)`).
+   */
+  serviceGeo?: GeoPoint;
 }
 
 /**
@@ -37,6 +43,7 @@ export function buildBookDto(form: BookForm): BookOrderDto {
     ...(form.siteId ? { siteId: form.siteId } : {}),
     ...(form.pickupWindow ? { pickupWindow: form.pickupWindow } : {}),
     ...(form.notes ? { notes: form.notes } : {}),
+    ...(form.serviceGeo ? { serviceGeo: form.serviceGeo } : {}),
     items,
   };
 }

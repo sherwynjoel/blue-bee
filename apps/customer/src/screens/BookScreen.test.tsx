@@ -1,6 +1,11 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { ServiceVertical, ServiceUnit, AccountType } from '@blue-bee/shared';
+import { ApiError } from '@blue-bee/api-client';
+
+const siteWithGeo = (address: string, geo: { lng: number; lat: number }) => ({
+  sites: [{ id: 'site-1', accountId: 'acc', name: 'Home', address, accountName: 'Rita', accountType: AccountType.RESIDENTIAL, geo }],
+});
 
 const mockClient = {
   getServices: jest.fn(async () => ({ services: [{ id: 'svc-1', vertical: ServiceVertical.SPECIALTY, name: 'Rug cleaning', unit: ServiceUnit.SQFT, baseRate: '6.5' }] })),
@@ -90,6 +95,34 @@ describe('BookScreen', () => {
     const [dto, key] = mockClient.book.mock.calls[0]!;
     expect(dto).toMatchObject({ accountId: 'acc', siteId: 'site-1', items: [{ serviceId: 'svc-1', estimatedMeasure: 40 }] });
     expect(typeof key).toBe('string');
+  });
+
+  it('[Inc-19] sends the selected site’s serviceGeo so the SERVER can geo-block (app never decides)', async () => {
+    mockClient.getSites.mockResolvedValueOnce(siteWithGeo('1 Main St', { lng: -79.38, lat: 43.65 }));
+    mockClient.book.mockResolvedValue({ id: 'order-1' });
+    const { getByTestId, findByTestId } = render(<BookScreen {...screenProps} />);
+    await findByTestId('service-svc-1');
+    fireEvent.changeText(getByTestId('measure-input'), '40');
+    fireEvent.press(getByTestId('add-item'));
+    fireEvent.press(getByTestId('submit-booking'));
+    await waitFor(() => expect(mockClient.book).toHaveBeenCalled());
+    const [dto] = mockClient.book.mock.calls[0]!;
+    expect(dto.serviceGeo).toEqual({ lng: -79.38, lat: 43.65 });
+  });
+
+  it('[Inc-19] renders a CALM out-of-area state (not the red error) on a 422 out_of_service_area', async () => {
+    mockClient.getSites.mockResolvedValueOnce(siteWithGeo('99 Far Away Rd', { lng: -79.0, lat: 43.5 }));
+    mockClient.book.mockRejectedValue(
+      new ApiError(422, { error: 'zone.out_of_service_area', title: 'zone.out_of_service_area', status: 422 }, 'This address is outside our current service area'),
+    );
+    const { getByTestId, findByTestId, queryByTestId } = render(<BookScreen {...screenProps} />);
+    await findByTestId('service-svc-1');
+    fireEvent.changeText(getByTestId('measure-input'), '40');
+    fireEvent.press(getByTestId('add-item'));
+    fireEvent.press(getByTestId('submit-booking'));
+    await waitFor(() => expect(getByTestId('book-out-of-area')).toBeTruthy());
+    expect(queryByTestId('book-error')).toBeNull(); // NOT the red crash box
+    expect(getByTestId('book-out-of-area-body').props.children).toContain('99 Far Away Rd'); // honest captured address
   });
 
   it('reuses the SAME idempotency key on retry after a failure (no double-booking)', async () => {

@@ -78,6 +78,9 @@ export const can = {
   standingOrderWrite: (me: MeResponse | null) => hasAnyRole(me, STANDING_ORDER_WRITE_ROLES),
   // Corporate accounts + rate cards (Inc-15) — OWNER/FINANCE, mirrors @Roles(OWNER, FINANCE) on /v1/corporate.
   corporate: (me: MeResponse | null) => hasAnyRole(me, FINANCE_ROLES),
+  // Service zones + coverage requests (Inc-19) — OWNER/FINANCE, mirrors @Roles(OWNER, FINANCE) on
+  // /v1/service-zones + /v1/coverage-requests.
+  zones: (me: MeResponse | null) => hasAnyRole(me, FINANCE_ROLES),
   // Dry-clean visual catalog admin (Inc-17) — OWNER/FINANCE, mirrors @Roles(OWNER, FINANCE) on /v1/catalog.
   catalog: (me: MeResponse | null) => hasAnyRole(me, FINANCE_ROLES),
   // Track-B care homes — resident personal clothing.

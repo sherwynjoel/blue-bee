@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -15,6 +16,7 @@ import {
   ORDER_ERRORS,
   TagBinding,
   TagType,
+  ZONE_ERRORS,
   type BookOrderDto,
   type HoldOrderDto,
   type ListOrdersQuery,
@@ -29,6 +31,7 @@ import { OrderAccessService } from './order-access.service';
 import { PricingService } from './pricing.service';
 import { PricingAccountService } from './pricing-account.service';
 import { OrderStateMachine } from './state-machine.service';
+import { ServiceZonesService } from '../service-zones/service-zones.service';
 import { roundCents, centsToMoney } from './money';
 
 /** The photo columns the order read selects (for signing without leaking the raw key). */
@@ -74,6 +77,7 @@ export class OrdersService {
     private readonly stateMachine: OrderStateMachine,
     private readonly audit: AuditService,
     private readonly signer: MediaSigner,
+    private readonly serviceZones: ServiceZonesService,
   ) {}
 
   // ─────────────────────────────── book (REQUESTED) ───────────────────────────────
@@ -96,9 +100,11 @@ export class OrdersService {
       throw new NotFoundException({ error: ORDER_ERRORS.INVALID_BOOKING, message: 'Account not found in your organization' });
     }
 
-    // Site (optional) must belong to that account + org.
+    // Site (optional) must belong to that account + org. Kept in scope so a geo-blocked booking can snapshot
+    // the site's address onto the CoverageRequest (the honest demand signal).
+    let site: { address: string | null } | null = null;
     if (dto.siteId) {
-      const site = await this.prisma.site.findFirst({ where: { id: dto.siteId, orgId, accountId: dto.accountId } });
+      site = await this.prisma.site.findFirst({ where: { id: dto.siteId, orgId, accountId: dto.accountId }, select: { address: true } });
       if (!site) {
         throw new BadRequestException({ error: ORDER_ERRORS.INVALID_BOOKING, message: 'Site does not belong to the account' });
       }
@@ -124,6 +130,35 @@ export class OrdersService {
       serviceGeo: dto.serviceGeo,
     });
     const pricingAccountId = effective?.pricingAccountId ?? dto.accountId;
+
+    // [Inc-19] Geo-blocking gate. Block a booking whose service point falls outside every ACTIVE service zone
+    // and capture the address as demand — UNLESS the order is a serviced corporate order (building match OR
+    // active membership → `effective`) or the payer is itself a corporate account (an explicit service
+    // commitment is never geo-blocked; this also covers the self-match case where resolveForBooking returns
+    // null because the match equals the payer). The gate only evaluates when a service point is supplied AND
+    // the org has drawn active zones (no point ⇒ nothing to test, mirroring building-match's `if (serviceGeo)`;
+    // no active zones ⇒ the org serves everywhere). The SERVER is authoritative — a client hint never bypasses
+    // it. Runs BEFORE the order transaction so a blocked booking never creates an order row (gates creation
+    // only; never mutates status/lifecycle/pricing — PRD §5.1).
+    const corporate = effective !== null || account.corporate === true;
+    if (!corporate && dto.serviceGeo) {
+      const { hasActiveZones, covered } = await this.serviceZones.isServiceable(orgId, dto.serviceGeo);
+      if (hasActiveZones && !covered) {
+        // Capture the demand FIRST (its own commit); only then reject. If the capture throws, no 422 is
+        // returned and no CoverageRequest exists — the app never claims "listed" on a failed write (lens 5).
+        await this.serviceZones.captureCoverageRequest({
+          orgId,
+          userId: principal.userId,
+          point: dto.serviceGeo,
+          address: site?.address ?? null,
+          context: { accountId: dto.accountId, siteId: dto.siteId ?? null },
+        });
+        throw new UnprocessableEntityException({
+          error: ZONE_ERRORS.OUT_OF_SERVICE_AREA,
+          message: 'This address is outside our current service area',
+        });
+      }
+    }
 
     // Pre-resolve rates and build a rough estimate range (PRD §7A A2.1 — pre-intake), on the effective
     // pricing account so the pre-intake estimate already reflects corporate pricing.

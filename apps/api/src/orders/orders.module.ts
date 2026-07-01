@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
+import { ServiceZonesModule } from '../service-zones/service-zones.module';
 import { AuditService } from './audit.service';
 import { IntakeService } from './intake.service';
 import { OrderAccessService } from './order-access.service';
@@ -17,6 +18,9 @@ import { OrderStateMachine } from './state-machine.service';
  * logistics/billing).
  */
 @Module({
+  // [Inc-19] ServiceZonesModule exports ServiceZonesService (the booking geo-block gate). One-directional
+  // (ServiceZonesModule does NOT import OrdersModule) → no cycle.
+  imports: [ServiceZonesModule],
   controllers: [OrdersController],
   providers: [
     OrdersService,

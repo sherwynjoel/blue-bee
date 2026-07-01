@@ -51,6 +51,9 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // [Inc-19] Set when the server (authoritative) blocks the booking as out-of-service-area (422). A calm
+  // informational state, distinct from the red submitError box.
+  const [outOfArea, setOutOfArea] = useState<{ address: string | null } | null>(null);
   // Stable across retries → no double-booking on a timeout (server IdempotencyInterceptor).
   const idemKeyRef = useRef<string | null>(null);
 
@@ -131,24 +134,34 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
     }
     setSubmitting(true);
     setSubmitError(null);
+    setOutOfArea(null);
     if (!idemKeyRef.current) idemKeyRef.current = newIdempotencyKey();
+    // [Inc-19] Send the selected site's service point so the SERVER can geo-block (the app never decides).
+    const selectedSite = sites.find((s) => s.id === siteId);
     try {
       const dto = buildBookDto({
         accountId,
         siteId,
         items,
         pickupWindow: schedulePickup ? tomorrowMorningWindow() : undefined,
+        ...(selectedSite?.geo ? { serviceGeo: selectedSite.geo } : {}),
       });
       const order = await client.book(dto, idemKeyRef.current);
       idemKeyRef.current = null; // booked — a new attempt gets a fresh key
       navigation.replace('OrderDetail', { orderId: order.id });
     } catch (e) {
-      // Keep the SAME idempotency key so a retry de-dupes server-side (no double order).
-      setSubmitError(e instanceof Error ? e.message : 'Could not book. Please try again.');
+      // [Inc-19] Out of service area (422): a calm, server-driven "we don't serve here yet" state — NOT a red
+      // crash. The server already captured the address as demand; we surface only what the 422 confirms (we do
+      // not invent a "you're on the list" promise). Keep the idempotency key for other errors so a retry de-dupes.
+      if (e instanceof ApiError && e.isOutOfServiceArea) {
+        setOutOfArea({ address: selectedSite?.address ?? null });
+      } else {
+        setSubmitError(e instanceof Error ? e.message : 'Could not book. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
-  }, [accountId, siteId, items, schedulePickup, client, navigation]);
+  }, [accountId, siteId, sites, items, schedulePickup, client, navigation]);
 
   const catalogById = new Map((dryclean?.categories ?? []).flatMap((c) => c.items).map((i) => [i.id, i]));
   const serviceName = (id: string) => services.find((s) => s.id === id)?.name ?? catalogById.get(id)?.name ?? id.slice(0, 8);
@@ -337,6 +350,22 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
         style={{ marginTop: space.md }}
       />
 
+      {outOfArea ? (
+        <View testID="book-out-of-area" style={[styles.outOfAreaBox, { backgroundColor: colors.azureTint, borderColor: colors.hairline }]}>
+          <Feather name="map-pin" size={18} color={colors.azure} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text variant="subhead" weight="600">
+              We don’t serve this area yet
+            </Text>
+            <Text testID="book-out-of-area-body" variant="footnote" color="secondary" style={{ marginTop: 2 }}>
+              {outOfArea.address
+                ? `We’ve noted ${outOfArea.address} and will reach out when we expand to your area.`
+                : 'We’ve noted your address and will reach out when we expand to your area.'}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       {submitError ? (
         <View style={[styles.errorBox, { backgroundColor: colors.dangerTint }]}>
           <Text testID="book-error" variant="footnote" color="danger" center>
@@ -440,4 +469,5 @@ const styles = StyleSheet.create({
   siteRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 12, padding: 14, marginBottom: 8 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   errorBox: { borderRadius: 12, padding: 12, marginTop: 12 },
+  outOfAreaBox: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, borderWidth: 1, padding: 12, marginTop: 12 },
 });

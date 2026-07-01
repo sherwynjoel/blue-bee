@@ -127,6 +127,13 @@ import type {
   StandingOrderView,
   TransitionGarmentDto,
   UpdateStandingOrderDto,
+  // Geo-blocking: service zones + coverage requests (Inc-19).
+  CoverageRequestsResult,
+  CreateServiceZoneDto,
+  ListCoverageRequestsQuery,
+  ServiceZoneView,
+  ServiceZonesResult,
+  UpdateServiceZoneDto,
 } from '@blue-bee/shared';
 import type {
   DriverView,
@@ -286,6 +293,25 @@ export class ConsoleApiClient extends ApiClient {
 
   fleetLive(): Promise<FleetLiveResult> {
     return this.request('GET', '/fleet/live');
+  }
+
+  // ───────────── service zones + coverage (Inc 19 — geo-blocking) ─────────────
+
+  listZones(): Promise<ServiceZonesResult> {
+    return this.request('GET', '/service-zones');
+  }
+  createZone(dto: CreateServiceZoneDto): Promise<ServiceZoneView> {
+    return this.request('POST', '/service-zones', { body: dto });
+  }
+  updateZone(id: string, dto: UpdateServiceZoneDto): Promise<ServiceZoneView> {
+    return this.request('PATCH', `/service-zones/${id}`, { body: dto });
+  }
+  listCoverageRequests(query: ListCoverageRequestsQuery = { limit: 50 }): Promise<CoverageRequestsResult> {
+    const p = new URLSearchParams();
+    if (query.limit != null) p.set('limit', String(query.limit));
+    if (query.cursor) p.set('cursor', query.cursor);
+    const qs = p.toString();
+    return this.request('GET', `/coverage-requests${qs ? `?${qs}` : ''}`);
   }
 
   // ───────────── media (Inc 10) ─────────────

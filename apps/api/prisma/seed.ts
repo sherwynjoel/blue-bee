@@ -1487,6 +1487,30 @@ async function seedCorporatePricing(): Promise<void> {
   console.log('[seed] Inc-15 corporate pricing: 1 corporate account + building (300 m) + LB/ITEM rate card + join code MAPLELOFT + 1 in-building resident (corporate-priced order).');
 }
 
+// [Inc-19] Sample service zones for the geo-blocking editor. Seeded INACTIVE (drafts) ON PURPOSE: active zones
+// would gate the shared demo org's existing bookings + the e2e suite (a booking outside every active zone is
+// blocked). The founder reviews, redraws, and ACTIVATES them in the console to turn on block-at-booking. Real
+// drawn polygons (closed rings). Idempotent: fixed ids, upsert scalars + raw ST_GeomFromGeoJSON for the area
+// (the polygon column is Prisma `Unsupported`). The active-zone gate itself is proven end-to-end by the e2e.
+const ZONE_DOWNTOWN = 'e9000000-0000-4000-8000-000000000001';
+const ZONE_NORTH = 'e9000000-0000-4000-8000-000000000002';
+async function seedServiceZones(): Promise<void> {
+  const zones = [
+    { id: ZONE_DOWNTOWN, name: 'Sample — Downtown Toronto (redraw me)', sortOrder: 0, ring: [[-79.40, 43.64], [-79.36, 43.64], [-79.36, 43.66], [-79.40, 43.66], [-79.40, 43.64]] },
+    { id: ZONE_NORTH, name: 'Sample — North York (redraw me)', sortOrder: 1, ring: [[-79.44, 43.74], [-79.38, 43.74], [-79.38, 43.78], [-79.44, 43.78], [-79.44, 43.74]] },
+  ];
+  for (const z of zones) {
+    await prisma.serviceZone.upsert({
+      where: { id: z.id },
+      update: { active: false, sortOrder: z.sortOrder, name: z.name },
+      create: { id: z.id, orgId: ID.org, name: z.name, active: false, sortOrder: z.sortOrder, createdBy: ID.owner },
+    });
+    const geojson = JSON.stringify({ type: 'Polygon', coordinates: [z.ring] });
+    await prisma.$executeRaw`UPDATE "ServiceZone" SET area = ST_SetSRID(ST_GeomFromGeoJSON(${geojson}), 4326)::geography WHERE id = ${z.id}::uuid AND org_id = ${ID.org}::uuid`;
+  }
+  console.log('[seed] Inc-19 geo-blocking: 2 SAMPLE service zones (INACTIVE drafts — activate/redraw in the console to turn on block-at-booking).');
+}
+
 async function main(): Promise<void> {
   await seedDemoOrder();
   await seedAuthFixtures();
@@ -1499,6 +1523,7 @@ async function main(): Promise<void> {
   await seedCostCenters(); // integration reconcile — split-billing demo data on the condo account
   await seedResidentialSpecialty();
   await seedCorporatePricing();
+  await seedServiceZones();
   await seedDrycleanCatalog(prisma);
   await seedCareHomeEastWing();
   await seedMapleGroveFacilityLinen();

@@ -18,6 +18,13 @@ export interface AuthConfig {
     ratePerPhone: number;
     ratePerIp: number;
     rateWindowSeconds: number;
+    /**
+     * Fixed codes that log a seeded phone in WITHOUT an SMS round-trip — a staging/demo testing
+     * convenience so QA doesn't have to fish the code out of the logs. Opt-in via OTP_DEV_BYPASS_CODE
+     * (CSV, e.g. "000000,0000"); empty = disabled. HARD-disabled when NODE_ENV=production, so a demo
+     * shortcut can never weaken real auth even if the env var is left set.
+     */
+    devBypassCodes: string[];
   };
   /**
    * Short-lived signed capability token for the customer WS tracking channel (Increment 6,
@@ -86,6 +93,21 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * Fixed OTP bypass codes for staging/demo login (e.g. "000000,0000"). Opt-in only — empty unless
+ * OTP_DEV_BYPASS_CODE is set — and force-empty in production regardless of the env var so the demo
+ * shortcut can never ship to prod.
+ */
+function loadDevBypassCodes(): string[] {
+  if (process.env.NODE_ENV === 'production') return [];
+  const raw = process.env.OTP_DEV_BYPASS_CODE;
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0);
+}
+
 export function loadAuthConfig(): AuthConfig {
   const accessTtl = process.env.JWT_ACCESS_TTL ?? '15m';
   const refreshTtl = process.env.JWT_REFRESH_TTL ?? '30d';
@@ -106,6 +128,7 @@ export function loadAuthConfig(): AuthConfig {
       ratePerPhone: int('OTP_RATE_PER_PHONE', 5),
       ratePerIp: int('OTP_RATE_PER_IP', 20),
       rateWindowSeconds: int('OTP_RATE_WINDOW_SECONDS', 3600),
+      devBypassCodes: loadDevBypassCodes(),
     },
     channelToken: {
       secret: secret('CHANNEL_TOKEN_SECRET'),

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "cd ../.. && npm ci --workspace=@blue-bee/shared --workspace=@blue-bee/api-client --workspace=@blue-bee/web --include-workspace-root",
+  "buildCommand": "cd ../.. && npm run build --workspace=@blue-bee/shared && npm run build --workspace=@blue-bee/api-client && npm run build --workspace=@blue-bee/web"
+}

@@ -105,6 +105,18 @@ export class OtpService {
 
   /** Step 2 — verify the code. Single-use, attempt-limited, constant-time compare. */
   async verifyOtp(phone: string, code: string): Promise<OtpVerifyOutcome> {
+    // Staging/demo convenience: a fixed bypass code (e.g. 000000) authenticates any seeded phone
+    // without the SMS round-trip or a live challenge. Opt-in via OTP_DEV_BYPASS_CODE and force-
+    // disabled in production (see loadDevBypassCodes), so this list is empty — and this branch inert —
+    // unless a non-prod operator explicitly enables it.
+    if (this.config.otp.devBypassCodes.includes(code)) {
+      const user = await this.resolveUser(phone);
+      if (!user) return { ok: false, reason: 'invalid' };
+      await this.redis.del(`otp:cooldown:${phone}`); // don't throttle repeated test logins
+      this.logger.warn(`OTP dev-bypass code accepted for ${phone} — SMS verification skipped (non-production only)`);
+      return { ok: true, user };
+    }
+
     const now = new Date();
     const challenge = await this.prisma.otpChallenge.findFirst({
       where: { phone, consumedAt: null },

@@ -462,6 +462,9 @@ async function seedAuthFixtures(): Promise<void> {
     { uid: 'e1000000-0000-4000-8000-000000000007', rid: 'e2000000-0000-4000-8000-000000000007', name: 'Demo Account-B Admin', phone: '+14165550020', email: 'admin@account-b.example', orgId: ID.org, role: RoleType.ACCOUNT_ADMIN, scope: RoleScope.ACCOUNT, scopeId: ID2.accountB },
     { uid: 'e1000000-0000-4000-8000-000000000008', rid: 'e2000000-0000-4000-8000-000000000008', name: 'Demo Account-B Staff', phone: '+14165550021', email: 'staff@account-b.example', orgId: ID.org, role: RoleType.ACCOUNT_STAFF, scope: RoleScope.ACCOUNT, scopeId: ID2.accountB },
     { uid: 'e1000000-0000-4000-8000-000000000009', rid: 'e2000000-0000-4000-8000-000000000009', name: 'Demo Org-2 Owner', phone: '+14165559001', email: 'owner@org2.example', orgId: ID2.org2, role: RoleType.OWNER, scope: RoleScope.ORG, scopeId: null },
+    // Memorable "type 1234567890" login into the demo org's dashboard (E.164 = +1 1234567890).
+    // Pair with the OTP_DEV_BYPASS_CODE shortcut (e.g. 000000) for a no-SMS test login.
+    { uid: 'e1000000-0000-4000-8000-000000000010', rid: 'e2000000-0000-4000-8000-000000000010', name: 'Demo Test Owner (simple login)', phone: '+11234567890', email: 'test-owner@bluebee.example', orgId: ID.org, role: RoleType.OWNER, scope: RoleScope.ORG, scopeId: null },
   ];
 
   for (const f of fixtures) {
@@ -481,6 +484,7 @@ async function seedAuthFixtures(): Promise<void> {
   console.log('       Login phones — OWNER:+14165550001 DISPATCHER:+14165550002 CSR:+14165550003 PLANT:+14165550004');
   console.log('                      FINANCE:+14165550005 DRIVER:+14165550006 RITA(resident):+14165550010');
   console.log('                      ACCT_B_ADMIN:+14165550020 ACCT_B_STAFF:+14165550021 ORG2_OWNER:+14165559001');
+  console.log('       Simple test login — OWNER:+11234567890 (type 1234567890); use OTP_DEV_BYPASS_CODE (e.g. 000000) to skip SMS.');
 }
 
 // ─────────────────────── Increment 3 — pricing fixtures (per-account override proof) ───────────────────────

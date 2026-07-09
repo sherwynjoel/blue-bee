@@ -27,7 +27,11 @@ export const SPECIALTY_ORDER_TRANSITIONS: Readonly<Record<OrderStatus, readonly 
   // Pre-existing damage is acknowledged, then the job continues to quoting (§5.1).
   [OrderStatus.DAMAGE_PREEXISTING_FLAGGED]: [OrderStatus.QUOTED],
   [OrderStatus.QUOTED]: [OrderStatus.QUOTE_APPROVED, OrderStatus.QUOTE_DECLINED],
-  [OrderStatus.QUOTE_APPROVED]: [OrderStatus.IN_CLEANING],
+  // [Inc-23 §5.1 branch] RE-QUOTE on a plant re-weigh / re-measure BEFORE cleaning starts: an approved
+  // quote may re-open (→ QUOTED) when the authoritative measure changes. A FIXED line re-prices at the
+  // published rate and auto-re-approves; a FROM_MEASURED line re-opens for customer re-approval. This is a
+  // pre-cleaning correction only (QUOTE_APPROVED still leads forward to IN_CLEANING when work begins).
+  [OrderStatus.QUOTE_APPROVED]: [OrderStatus.IN_CLEANING, OrderStatus.QUOTED],
   [OrderStatus.QUOTE_DECLINED]: [OrderStatus.CLOSED_NO_WORK],
   [OrderStatus.IN_CLEANING]: [OrderStatus.QC, OrderStatus.REWASH],
   [OrderStatus.REWASH]: [OrderStatus.IN_CLEANING],

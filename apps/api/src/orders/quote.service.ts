@@ -24,8 +24,12 @@ import { PricingService } from './pricing.service';
 import { OrderStateMachine } from './state-machine.service';
 import { computeQuote, QuoteCalcError, type QuoteLineInput } from './quote-calc';
 
-/** States from which a quote can be built (§5.1: INTAKE_INSPECTED or the damage branch). */
-const QUOTABLE: OrderStatus[] = [OrderStatus.INTAKE_INSPECTED, OrderStatus.DAMAGE_PREEXISTING_FLAGGED];
+/**
+ * States from which a quote can be (re)built (§5.1: INTAKE_INSPECTED or the damage branch for the initial
+ * quote; QUOTE_APPROVED for the Inc-23 P5 re-quote branch — a plant re-weigh/re-measure re-opens the quote
+ * QUOTE_APPROVED → QUOTED before cleaning starts).
+ */
+const QUOTABLE: OrderStatus[] = [OrderStatus.INTAKE_INSPECTED, OrderStatus.DAMAGE_PREEXISTING_FLAGGED, OrderStatus.QUOTE_APPROVED];
 
 /** Internal sentinel: the atomic quote claim matched 0 rows (expired-in-race or already claimed). */
 class QuoteClaimLost extends Error {}

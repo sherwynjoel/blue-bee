@@ -19,8 +19,12 @@ import { AuditService } from './audit.service';
 import { OrderAccessService } from './order-access.service';
 import { QuoteService } from './quote.service';
 
-/** Order states from which the pricing gate can build a quote (§5.1 — mirrors QuoteService.QUOTABLE). */
-const QUOTABLE: OrderStatus[] = [OrderStatus.INTAKE_INSPECTED, OrderStatus.DAMAGE_PREEXISTING_FLAGGED];
+/**
+ * Order states from which the pricing gate (re)prices (§5.1 — mirrors QuoteService.QUOTABLE). Includes
+ * QUOTE_APPROVED for the Inc-23 P5 re-quote branch: a plant re-weigh after approval re-opens the quote
+ * (QUOTE_APPROVED → QUOTED) and re-prices (FIXED auto-re-approves; FROM_MEASURED re-opens for approval).
+ */
+const QUOTABLE: OrderStatus[] = [OrderStatus.INTAKE_INSPECTED, OrderStatus.DAMAGE_PREEXISTING_FLAGGED, OrderStatus.QUOTE_APPROVED];
 
 /**
  * [Inc-22] Weight → price. A driver/plant approves an actual weight; this writes an APPEND-ONLY
@@ -200,10 +204,14 @@ export class WeighService {
     currentStatus: OrderStatus,
   ): Promise<WeightCaptureResult['pricing']> {
     if (!QUOTABLE.includes(currentStatus)) {
-      // Weighed outside a quotable state (e.g. a pickup weigh before intake, or after the quote is settled) —
+      // Weighed outside a quotable state (e.g. a pickup weigh before intake, or once cleaning has begun) —
       // the weight is recorded; pricing runs when the order is inspected. Never silently re-price.
       return { status: 'none', total: null, currency: 'CAD', awaitsCustomerApproval: false, orderStatus: currentStatus };
     }
+
+    // [Inc-23 P5] A re-weigh of an already-APPROVED order re-opens the quote (QUOTE_APPROVED → QUOTED) and
+    // re-prices; the audit note distinguishes it from the initial auto-price.
+    const isRequote = currentStatus === OrderStatus.QUOTE_APPROVED;
 
     let quoteId: string;
     try {
@@ -221,10 +229,10 @@ export class WeighService {
 
     if (!hasFromMeasured) {
       // All FIXED → auto-approve at the published rate (customer sees the price; no approval tap required).
-      await this.quotes.approve(principal, orderId, { note: 'auto-priced at published rate' });
+      await this.quotes.approve(principal, orderId, { note: isRequote ? 're-priced on plant re-weigh' : 'auto-priced at published rate' });
       return { status: 'auto_approved', total, currency: 'CAD', awaitsCustomerApproval: false, orderStatus: OrderStatus.QUOTE_APPROVED };
     }
-    // A FROM_MEASURED specialty line is present → the quote is SENT; the customer approves/declines.
+    // A FROM_MEASURED specialty line is present → the quote is SENT; the customer (re-)approves/declines.
     return { status: 'quote_sent', total, currency: 'CAD', awaitsCustomerApproval: true, orderStatus: OrderStatus.QUOTED };
   }
 

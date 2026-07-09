@@ -161,6 +161,54 @@ describe('Weigh e2e — Increment 22 (weight → hybrid pricing)', () => {
     expect(order.status).toBe('QUOTE_APPROVED');
   });
 
+  it('[P5] re-quote after approval — a plant re-weigh of an APPROVED wash RE-PRICES + auto-re-approves (audited "re-priced on plant re-weigh")', async () => {
+    const { orderId } = await bookToInspected([{ kind: 'GARMENT', serviceId: SVC_WF, measurements: { pieces: 1 } }]);
+    // initial weigh → auto-priced + approved (6kg × $3.50 = $21.00)
+    await post(`/v1/orders/${orderId}/weigh`, 'plant', { weightKg: 6, weighPoint: 'PICKUP' }, `p5f-a-${orderId}`).expect(201);
+    let order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(order.status).toBe('QUOTE_APPROVED');
+    expect(order.totals.subtotal).toBe('21.00');
+
+    // plant re-weighs HEAVIER → re-open (QUOTE_APPROVED → QUOTED) → re-price → auto-re-approve. No customer tap.
+    const res = (await post(`/v1/orders/${orderId}/weigh`, 'plant', { weightKg: 8, weighPoint: 'PLANT' }, `p5f-b-${orderId}`).expect(201)).body;
+    expect(res.pricing.status).toBe('auto_approved');
+    expect(res.pricing.orderStatus).toBe('QUOTE_APPROVED');
+    order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(order.status).toBe('QUOTE_APPROVED');
+    expect(order.totals.subtotal).toBe('28.00'); // 8kg × $3.50 — re-priced on the new authoritative weight
+
+    const audit = await prisma.auditLog.findFirst({ where: { orgId: ORG1, entityId: orderId, action: 'STATUS_TRANSITION' }, orderBy: { createdAt: 'desc' } });
+    expect(JSON.stringify(audit?.after)).toContain('re-priced on plant re-weigh');
+    const weight = (await get(`/v1/orders/${orderId}/weight`, 'plant').expect(200)).body;
+    expect(weight.authoritativeWeightKg).toBe('8.00');
+    expect(weight.captures).toHaveLength(2); // both retained (append-only)
+  });
+
+  it('[P5] re-quote after approval — re-weighing a MIXED (specialty) order RE-OPENS the quote (→ QUOTED) for customer re-approval', async () => {
+    const { orderId, itemIds } = await bookToInspected([
+      { kind: 'GARMENT', serviceId: SVC_WF, measurements: { pieces: 1 } },
+      { kind: 'RUG', serviceId: SVC_RUG, measurements: { sqft: 40 } },
+    ]);
+    // weigh wash 4kg → SENT (specialty) → customer approves → QUOTE_APPROVED
+    await post(`/v1/orders/${orderId}/weigh`, 'plant', { weightKg: 4, weighPoint: 'PLANT', itemId: itemIds[0] }, `p5m-a-${orderId}`).expect(201);
+    await post(`/v1/orders/${orderId}/quote:approve`, 'rita', {}).expect(200);
+    let order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(order.status).toBe('QUOTE_APPROVED');
+
+    // plant re-weighs the wash heavier → because a FROM_MEASURED line is present, RE-OPEN for re-approval.
+    const res = (await post(`/v1/orders/${orderId}/weigh`, 'plant', { weightKg: 6, weighPoint: 'PLANT', itemId: itemIds[0] }, `p5m-b-${orderId}`).expect(201)).body;
+    expect(res.pricing.status).toBe('quote_sent');
+    expect(res.pricing.awaitsCustomerApproval).toBe(true);
+    order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(order.status).toBe('QUOTED'); // re-opened
+    expect(order.totals.subtotal).toBe('261.00'); // wash 6×$3.50=$21 + rug 40×$6=$240
+
+    // the customer re-approves the new quote → QUOTE_APPROVED
+    await post(`/v1/orders/${orderId}/quote:approve`, 'rita', {}).expect(200);
+    order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(order.status).toBe('QUOTE_APPROVED');
+  });
+
   it('idempotency + re-weigh: same key → one capture; a NEW key → a NEW capture, old retained, authoritative = latest', async () => {
     const { orderId } = await bookToInspected([{ kind: 'GARMENT', serviceId: SVC_WF, measurements: { pieces: 1 } }]);
     const key = `weigh-idem-${orderId}`;

@@ -169,7 +169,10 @@ Branches:
   any → ON_HOLD (reason) → resumes
   IN_CLEANING → REWASH → IN_CLEANING
   DELIVERED → CLAIM_OPENED → CLAIM_RESOLVED
+  QUOTE_APPROVED → QUOTED (re-quote on a plant re-weigh / re-measure, pre-cleaning — added 2026-07-10, Inc-23 P5)
 ```
+
+**Re-quote branch (Inc-23 P5, 2026-07-10).** Before cleaning starts, a plant re-weigh (or re-measure) can change the authoritative measure of an already-approved order. `QUOTE_APPROVED → QUOTED` re-opens the quote: a **FIXED** line (per-kg / per-item) re-prices at the published rate (+ minimum-order floor) and **auto-re-approves** (audited "re-priced on plant re-weigh") — the customer + dashboard see the new number live; a **FROM_MEASURED** specialty line re-opens as a **SENT** quote for customer re-approval. It is a pre-cleaning correction only; the forward path `QUOTE_APPROVED → IN_CLEANING` is unchanged. No new status was invented — the edge reuses the existing `QUOTED`/`QUOTE_APPROVED` states.
 
 **Narrative.** Customer books (app/web/phone) → CSR or auto schedules a pickup window → driver dispatched, **customer tracks the truck** → at door, driver tags each item (QR), takes intake condition photos, notes pre-existing damage (customer acknowledges in-app or on device) → items arrive at plant, measured (sq ft for rugs/carpet; pieces for blinds) → **quote generated** (rate card × measure × service) → customer approves in app (push + SMS) → cleaning stages (dusting/wash/dry/finish) scanned per item → QC + before/after photos → ready → delivery scheduled → **customer tracks delivery truck** → delivered with POD → invoice → paid → closed. Damage/claim is a first-class branch with photo evidence and owner approval.
 
@@ -597,7 +600,14 @@ RFID linen pooling · full production/plant module + rewash/reject/reclaim · BI
 Consumer wash-&-fold (subscription-first, dense core) · laundromat machine-booking SaaS wedge · multi-operator marketplace / multi-city (the national-scale vision). Each gated on Phase 1–3 traction and explicit validation.
 
 ### 14.1 MVP cut line (what is NOT in v1)
-RFID · full plant module · resident-clothing (moves to early P2) · cost-center billing · consumer wash-fold · machine-booking · marketplace · WhatsApp · FR. v1 proves: **book → track → custody → deliver → bill** for specialty, with the logistics backbone reused by P2.
+RFID · full plant module · resident-clothing (moves to early P2) · cost-center billing · ~~consumer wash-fold~~ (revised — see §14.2: transactional wash services pulled into v1 on 2026-07-10; subscription-first consumer remains Phase 4) · machine-booking · marketplace · WhatsApp · FR. v1 proves: **book → track → custody → deliver → bill** for specialty (plus transactional wash), with the logistics backbone reused by P2.
+
+### 14.2 Decision — transactional wash services pulled into v1 (2026-07-10)
+**Founder decision (Gowtham):** add **Wash & Fold** (per-kg) and **Wash & Iron** (per-item) as published-price, pay-per-order services in v1, alongside the specialty menu (Dry Cleaning, Ironing, Rug, Carpet, Upholstery, Blinds). Rationale: the customer app is a Laundryheap-style service menu, and a published-price wash line makes the app coherent for everyday customers. These are priced **transparently** (weight/count × the founder-set CAD rate + minimum-order floor), **not quoted**.
+
+**Scope guard (what is NOT changing):** this covers the *transactional* wash service only. The Phase-4 deferral of **subscription-first consumer, laundromat machine-booking, and marketplace** still stands (§14 Phase 4, §15) — no consumer subscription, no "Uber for laundry" framing in v1.
+
+**Build:** Inc-21 (catalog service menu) + Inc-22 (weight→price, hybrid gate) on branch `feature/s3-media-golive` (`5d65ae4`, `3649576`). Pricing ships with `priceFrom = NULL` and no backing rate until the founder enters real CAD rates in the console `/catalog` editor (honesty firewall — no invented price ships). Weight = the measure for wash; it slots into the existing `INTAKE_INSPECTED → QUOTED → QUOTE_APPROVED` lifecycle (no new statuses).
 
 ---
 

@@ -12,12 +12,41 @@
  */
 import { deflateSync } from 'node:zlib';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type PricingModel, type PricingUnit } from '@prisma/client';
 
 const ORG = '11111111-1111-4111-8111-111111111111'; // ID.org (matches seed.ts)
 const OWNER = '22222222-2222-4222-8222-222222222222'; // ID.owner
 const uuidIn = (prefix: string) => (n: number): string => `${prefix}-0000-4000-8000-${n.toString().padStart(12, '0')}`;
 const cat = uuidIn('ca000000');
+const svc = uuidIn('5e000000'); // [Inc-21] the 8 top-level service-menu cards
+
+// [Inc-21] The 8 top-level customer Home service cards (ServiceCategory, parentId = NULL). STRUCTURE + COPY
+// only — NO price. `priceFrom` is seeded NULL and NO backing rate Service is created (honesty firewall: no
+// SAMPLE/placeholder rate ships; the card shows "Get a quote" until the founder enters a real CAD price + rate
+// in the /catalog console). `icon` is a semantic key the customer app maps to an icon + tint (HomeScreen
+// CATEGORY_ICONS). This increment INTENTIONALLY introduces consumer Wash & Fold + Wash & Iron — beyond the
+// specialty-only MVP (PRD §14.1 "no consumer wash-fold") — a deliberate, founder-approved product pivot.
+const DRY_CLEANING_ID = svc(3); // the Dry Cleaning card nests the Shirts/Outerwear/Formalwear garment sub-catalog
+interface ServiceCard {
+  id: string;
+  name: string;
+  sortOrder: number;
+  description: string;
+  features: string[];
+  icon: string;
+  unit: PricingUnit;
+  pricingModel: PricingModel;
+}
+const SERVICE_CARDS: ServiceCard[] = [
+  { id: svc(1), name: 'Wash & Fold', sortOrder: 1, description: 'For everyday laundry, bedsheets and towels.', features: ['WASH', 'TUMBLE-DRY', 'FOLDED', 'IN A BAG'], icon: 'wash-fold', unit: 'PER_KG', pricingModel: 'FIXED' },
+  { id: svc(2), name: 'Wash & Iron', sortOrder: 2, description: 'Everyday clothes washed and pressed, back on hangers.', features: ['WASH', 'TUMBLE-DRY', 'IRONING', 'ON HANGERS'], icon: 'wash-iron', unit: 'PER_ITEM', pricingModel: 'FIXED' },
+  { id: DRY_CLEANING_ID, name: 'Dry Cleaning', sortOrder: 3, description: 'Delicates, suits and formalwear, professionally dry cleaned.', features: ['DRY CLEANING', 'IRONING', 'ON HANGERS'], icon: 'dry-clean', unit: 'PER_ITEM', pricingModel: 'FIXED' },
+  { id: svc(4), name: 'Ironing only', sortOrder: 4, description: 'Freshly pressed and ready to wear — ironing only.', features: ['IRONING', 'ON HANGERS'], icon: 'iron', unit: 'PER_ITEM', pricingModel: 'FIXED' },
+  { id: svc(5), name: 'Rug Cleaning', sortOrder: 5, description: 'Deep clean for rugs; final price after we measure at pickup.', features: ['DEEP CLEAN', 'MEASURED AT PICKUP'], icon: 'rug', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED' },
+  { id: svc(6), name: 'Carpet Cleaning', sortOrder: 6, description: 'Deep clean for carpets; final price after we measure at pickup.', features: ['DEEP CLEAN', 'MEASURED AT PICKUP'], icon: 'carpet', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED' },
+  { id: svc(7), name: 'Upholstery', sortOrder: 7, description: 'Sofas and armchairs refreshed; final price after we measure at pickup.', features: ['SPECIALTY CARE', 'MEASURED AT PICKUP'], icon: 'sofa', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED' },
+  { id: svc(8), name: 'Blinds', sortOrder: 8, description: 'Blinds cleaned and de-dusted; final price after we measure at pickup.', features: ['SPECIALTY CARE', 'MEASURED AT PICKUP'], icon: 'blinds', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED' },
+];
 
 // ── local MinIO defaults (overridable by env; the founder never runs the demo seed against prod) ──
 function s3(): { client: S3Client; bucket: string } {
@@ -118,11 +147,30 @@ const CATEGORIES: SeedCategory[] = [
 export async function seedDrycleanCatalog(prisma: PrismaClient): Promise<void> {
   const { client, bucket } = s3();
   let images = 0;
+
+  // [Inc-21] The 8 top-level service-menu cards FIRST (Dry Cleaning must exist before the garment categories
+  // reference it as their parent). Idempotent. IMPORTANT — the `update` branch refreshes ONLY presentation
+  // copy and NEVER touches `priceFrom`, `unit`, `pricingModel`, or a backing rate Service: those are money +
+  // pricing structure the FOUNDER owns via the console, so re-seeding never clobbers real rates the owner
+  // entered. `create` ships priceFrom = NULL and NO backing Service (honesty firewall — no invented price).
+  for (const s of SERVICE_CARDS) {
+    await prisma.serviceCategory.upsert({
+      where: { id: s.id },
+      update: { name: s.name, sortOrder: s.sortOrder, description: s.description, features: s.features, icon: s.icon },
+      create: {
+        id: s.id, orgId: ORG, name: s.name, sortOrder: s.sortOrder, description: s.description, features: s.features,
+        icon: s.icon, unit: s.unit, pricingModel: s.pricingModel, currency: 'CAD', priceFrom: null, parentId: null,
+        active: true, createdBy: OWNER,
+      },
+    });
+  }
+
   for (const c of CATEGORIES) {
     await prisma.serviceCategory.upsert({
       where: { id: c.id },
-      update: { name: c.name, sortOrder: c.sortOrder, description: c.description, features: c.features, icon: c.icon },
-      create: { id: c.id, orgId: ORG, name: c.name, sortOrder: c.sortOrder, description: c.description, features: c.features, icon: c.icon, active: true, createdBy: OWNER },
+      // Reparent the garment sub-catalog under the Dry Cleaning card (drill-in detail, not a top-level Home card).
+      update: { name: c.name, sortOrder: c.sortOrder, description: c.description, features: c.features, icon: c.icon, parentId: DRY_CLEANING_ID },
+      create: { id: c.id, orgId: ORG, name: c.name, sortOrder: c.sortOrder, description: c.description, features: c.features, icon: c.icon, parentId: DRY_CLEANING_ID, active: true, createdBy: OWNER },
     });
     for (let i = 0; i < c.items.length; i += 1) {
       const it = c.items[i];
@@ -148,5 +196,9 @@ export async function seedDrycleanCatalog(prisma: PrismaClient): Promise<void> {
       });
     }
   }
-  console.log(`[seed] Inc-17 dry-clean catalog: ${CATEGORIES.length} categories + ${CATEGORIES.reduce((n, c) => n + c.items.length, 0)} sample items; ${images} real PNGs uploaded to MinIO bucket '${bucket}' (SAMPLE prices/images — founder overwrites via /catalog admin).`);
+  console.log(
+    `[seed] Inc-21 service menu: ${SERVICE_CARDS.length} top-level Home cards (priceFrom NULL, NO rate — founder sets real CAD prices via /catalog) ` +
+      `+ Inc-17 dry-clean sub-catalog: ${CATEGORIES.length} garment categories (nested under Dry Cleaning) + ` +
+      `${CATEGORIES.reduce((n, c) => n + c.items.length, 0)} sample items; ${images} real PNGs uploaded to MinIO bucket '${bucket}'.`,
+  );
 }

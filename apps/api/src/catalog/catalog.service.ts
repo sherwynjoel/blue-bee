@@ -7,6 +7,8 @@ import type {
   DrycleanCatalogItemView,
   DrycleanCatalogView,
   DrycleanCategoryView,
+  HomeServiceCardView,
+  HomeServiceMenuView,
   ServiceCatalogItem,
   ServiceCatalogResult,
 } from '@blue-bee/shared';
@@ -88,10 +90,41 @@ export class CatalogService {
   }
 
   /**
-   * [Inc-17] The customer visual dry-clean catalog — active categories → active per-item (ITEM) items with
-   * a signed photo + a price RESOLVED for the caller's effective pricing account (Inc-16: an active
-   * corporate membership prices on that corporate account, else the caller's own account → base). Reuses
-   * `PricingService.resolveRate` (the same engine the quote uses) — no client-side pricing, no new logic.
+   * [Inc-21] The customer Home SERVICE MENU — the org's ACTIVE top-level service cards (`ServiceCategory`
+   * with `parentId = NULL`), sorted by sortOrder. Each card carries its founder-set presentation + pricing
+   * model + display `priceFrom` (NULL until a real CAD price is entered → the app shows "Get a quote"; the
+   * honesty firewall guarantees no invented price ships). Child categories (the Dry Cleaning garment
+   * sub-catalog) are drill-in detail served by `listDrycleanCatalog`, not here.
+   */
+  async listHomeMenu(principal: RequestPrincipal): Promise<HomeServiceMenuView> {
+    const db = scopedPrisma(this.prisma, principal);
+    const cards = await db.serviceCategory.findMany({
+      where: { active: true, parentId: null },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+    const cardViews: HomeServiceCardView[] = cards.map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description ?? null,
+      features: c.features ?? [],
+      icon: c.icon ?? null,
+      pricingModel: c.pricingModel as unknown as HomeServiceCardView['pricingModel'],
+      unit: c.unit as unknown as HomeServiceCardView['unit'],
+      // Stored founder "from $X" anchor — NULL until a real CAD price is set (never a computed/invented figure).
+      priceFrom: c.priceFrom != null ? c.priceFrom.toFixed(2) : null,
+      currency: c.currency ?? 'CAD',
+      sortOrder: c.sortOrder,
+    }));
+    return { cards: cardViews, currency: 'CAD' };
+  }
+
+  /**
+   * [Inc-17/21] The customer visual DRY-CLEAN garment picker (GET /v1/catalog/dryclean, used by the Book
+   * flow). Returns the drill-in garment sub-catalog — the CHILD categories (parentId set, i.e. the
+   * Shirts/Outerwear/Formalwear under the Dry Cleaning card) → active per-item (ITEM) items with a signed
+   * photo + a price RESOLVED for the caller's effective pricing account (Inc-16 corporate override, else
+   * base). Reuses `PricingService.resolveRate` — no client-side pricing. Top-level cards are the Home menu
+   * (`listHomeMenu`), not this picker.
    */
   async listDrycleanCatalog(principal: RequestPrincipal): Promise<DrycleanCatalogView> {
     const db = scopedPrisma(this.prisma, principal);
@@ -105,8 +138,9 @@ export class CatalogService {
     const pricingAccountId = membership?.accountId ?? principal.accountIds[0] ?? null;
     const pricingAccountName = membership?.account.name ?? null;
 
+    // Drill-in garment categories = child categories (a top-level Home card has parentId NULL).
     const categories = await db.serviceCategory.findMany({
-      where: { active: true },
+      where: { active: true, parentId: { not: null } },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
         services: { where: { active: true, unit: ServiceUnit.ITEM }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] },
@@ -129,9 +163,7 @@ export class CatalogService {
         });
       }
       if (items.length > 0) {
-        // [Inc-20] "from" price for the Home service card = the lowest RESOLVED item price in the group
-        // (real data — the min of the same prices returned above; never a client-side figure). items is
-        // non-empty here, so the reduce is always finite.
+        // "from" price for the group = the lowest RESOLVED item price (real data; never a client-side figure).
         const priceFrom = items.reduce((min, it) => Math.min(min, Number(it.price)), Number.POSITIVE_INFINITY);
         out.push({
           id: cat.id,

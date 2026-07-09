@@ -7,6 +7,7 @@ import type {
   CustomerSitesResult,
   DeclineQuoteDto,
   DrycleanCatalogView,
+  HomeServiceMenuView,
   InvoiceView,
   ListOrdersQuery,
   MarkReadResult,
@@ -47,8 +48,14 @@ export class CustomerApiClient extends ApiClient {
     return this.request('GET', '/sites');
   }
 
-  /** [Inc-17] The visual dry-clean catalog — categories → items with a photo + a price the SERVER already
-   *  resolved for this caller (corporate override or base). The app renders it; it never prices anything. */
+  /** [Inc-21] The customer Home service menu — the 8 top-level service cards (icon/title/description/tags +
+   *  pricingModel/unit + founder-set "from" price; NULL price → the card shows "Get a quote"). */
+  getServiceMenu(): Promise<HomeServiceMenuView> {
+    return this.request('GET', '/catalog/home');
+  }
+
+  /** [Inc-17] The visual dry-clean garment picker (Dry Cleaning drill-in) — categories → items with a photo +
+   *  a price the SERVER already resolved for this caller (corporate override or base). Used by the Book flow. */
   getDrycleanCatalog(): Promise<DrycleanCatalogView> {
     return this.request('GET', '/catalog/dryclean');
   }

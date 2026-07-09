@@ -59,12 +59,38 @@ export enum ServiceVertical {
   WASHFOLD = 'WASHFOLD',
 }
 
-/** [§9 LITERAL] Service.unit (§9.2: sqft|piece|lb|item). */
+/** [§9 LITERAL] Service.unit (§9.2: sqft|piece|lb|item). `KG` [Inc-21] added additively for the
+ *  consumer Wash & Fold per-kilogram backing rate (the PRD §14.1 wash-fold expansion) — existing rows
+ *  are untouched; nothing that switches on ServiceUnit throws on an unknown value. */
 export enum ServiceUnit {
   SQFT = 'SQFT',
   PIECE = 'PIECE',
   LB = 'LB',
   ITEM = 'ITEM',
+  KG = 'KG',
+}
+
+/**
+ * [Inc-21] How a catalog service card is priced — drives the customer Home footer copy AND the weight/
+ * measure pricing gate (Inc-22): FIXED = a published per-unit rate that auto-prices on an approved
+ * measure/count; FROM_MEASURED = specialty (rug/carpet/upholstery/blinds), measured at pickup then a
+ * quote is SENT for customer approval. Mirrored 1:1 to the Prisma `PricingModel` enum.
+ */
+export enum PricingModel {
+  FIXED = 'FIXED',
+  FROM_MEASURED = 'FROM_MEASURED',
+}
+
+/**
+ * [Inc-21] The unit a service card is priced in (customer-facing). The card lives on `ServiceCategory`;
+ * the actual per-unit RATE lives on the backing `Service` (`ServiceUnit` KG/ITEM/SQFT/…), which the owner
+ * sets in the console. PER_KG → Wash & Fold; PER_ITEM → wash&iron/dry-clean/ironing; PER_MEASURE →
+ * rug/carpet/upholstery/blinds (measured at pickup). Mirrored 1:1 to the Prisma `PricingUnit` enum.
+ */
+export enum PricingUnit {
+  PER_ITEM = 'PER_ITEM',
+  PER_KG = 'PER_KG',
+  PER_MEASURE = 'PER_MEASURE',
 }
 
 // ──────────────────────────── Orders & custody ─────────────────────────────

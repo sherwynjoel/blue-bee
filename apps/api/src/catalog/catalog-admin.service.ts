@@ -4,6 +4,8 @@ import {
   CATALOG_ERRORS,
   ServiceUnit,
   ServiceVertical,
+  PricingUnit,
+  backingServiceUnit,
   type AdminCatalogView,
   type CatalogImagePresignResult,
   type CatalogItemView,
@@ -12,8 +14,12 @@ import {
   type CreateCatalogItemDto,
   type CreateCategoryDto,
   type PresignCatalogImageDto,
+  type PricingModel,
+  type ServiceMenuCardView,
+  type ServiceMenuResult,
   type UpdateCatalogItemDto,
   type UpdateCategoryDto,
+  type UpdateServiceMenuCardDto,
 } from '@blue-bee/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { scopedPrisma } from '../prisma/scoped-prisma';
@@ -101,6 +107,109 @@ export class CatalogAdminService {
       return row;
     });
     return this.toCategoryView(updated, existing._count.services);
+  }
+
+  // ─────────────────────────── service menu (Inc-21 — the 8 Home cards + per-unit rate) ───────────────────────────
+
+  /**
+   * The org's top-level service cards (`ServiceCategory` with `parentId = NULL`) + each card's backing rate.
+   * This is the console rate editor's source — where the owner sets the real CAD per-kg/per-item rate that
+   * the Inc-22 weight/measure pricing consumes. Org-scoped via `scopedPrisma`.
+   */
+  async listServiceMenu(principal: RequestPrincipal): Promise<ServiceMenuResult> {
+    const db = scopedPrisma(this.prisma, principal);
+    const cards = await db.serviceCategory.findMany({
+      where: { parentId: null },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      include: {
+        // A top-level card's directly-attached Service(s) ARE its backing rate service(s); garment items live
+        // on CHILD categories, so they never leak in here. There is at most one rate service per card.
+        services: { orderBy: { createdAt: 'asc' } },
+        _count: { select: { children: true } },
+      },
+    });
+    return {
+      cards: cards.map((c) => this.toServiceMenuCardView(c, c.services[0] ?? null, c._count.children)),
+      currency: CURRENCY,
+    };
+  }
+
+  /**
+   * Update a service card's presentation + pricing model + display `priceFrom`, and set/clear its backing
+   * per-unit RATE. Setting a rate upserts the backing `Service` (created on first entry → no invented rate
+   * ever sits in the seed); clearing it (rate: null) deactivates the backing service. `unit` changes re-map
+   * the backing `Service.unit`. Every write is org-scoped + audited in one transaction.
+   */
+  async updateServiceMenuCard(principal: RequestPrincipal, id: string, dto: UpdateServiceMenuCardDto): Promise<ServiceMenuCardView> {
+    const db = scopedPrisma(this.prisma, principal);
+    const existing = await db.serviceCategory.findFirst({ where: { id }, include: { services: { orderBy: { createdAt: 'asc' } } } });
+    if (!existing) throw new NotFoundException({ error: CATALOG_ERRORS.CATEGORY_NOT_FOUND, message: `service card ${id} not found in scope` });
+    // Only a TOP-LEVEL card is editable here — a drill-in child category is managed via the dry-clean admin.
+    if (existing.parentId !== null) {
+      throw new BadRequestException({ error: CATALOG_ERRORS.NOT_A_SERVICE_CARD, message: `category ${id} is a drill-in child, not a top-level service card` });
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const card = await tx.serviceCategory.update({
+        where: { id, orgId: principal.orgId },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.features !== undefined ? { features: dto.features } : {}),
+          ...(dto.icon !== undefined ? { icon: dto.icon } : {}),
+          ...(dto.pricingModel !== undefined ? { pricingModel: dto.pricingModel } : {}),
+          ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
+          // priceFrom: an explicit null clears it (back to "Get a quote"); a number sets the display anchor.
+          ...(dto.priceFrom !== undefined ? { priceFrom: dto.priceFrom === null ? null : dto.priceFrom.toFixed(2) } : {}),
+          ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
+          ...(dto.active !== undefined ? { active: dto.active } : {}),
+          ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+        },
+        include: { _count: { select: { children: true } } },
+      });
+
+      const effectiveUnit = (dto.unit ?? existing.unit) as unknown as PricingUnit;
+      const svcUnit = backingServiceUnit(effectiveUnit);
+      let rateService = existing.services[0] ?? null;
+
+      if (dto.rate !== undefined) {
+        if (dto.rate === null) {
+          // Clear the rate → deactivate the backing service (never hard-delete: it may be referenced by orders).
+          if (rateService && rateService.active) {
+            rateService = await tx.service.update({ where: { id: rateService.id, orgId: principal.orgId }, data: { active: false } });
+          }
+        } else if (rateService) {
+          rateService = await tx.service.update({
+            where: { id: rateService.id, orgId: principal.orgId },
+            data: { baseRate: dto.rate.toFixed(4), unit: svcUnit, active: true },
+          });
+        } else {
+          rateService = await tx.service.create({
+            data: {
+              orgId: principal.orgId,
+              vertical: effectiveUnit === PricingUnit.PER_KG ? ServiceVertical.WASHFOLD : ServiceVertical.SPECIALTY,
+              unit: svcUnit,
+              name: card.name,
+              baseRate: dto.rate.toFixed(4),
+              categoryId: card.id,
+              active: true,
+              createdBy: principal.userId,
+            },
+          });
+        }
+      } else if (dto.unit !== undefined && rateService) {
+        // Unit changed without a rate change → keep the backing service's ServiceUnit consistent.
+        rateService = await tx.service.update({ where: { id: rateService.id, orgId: principal.orgId }, data: { unit: svcUnit } });
+      }
+
+      await this.audit.record(
+        { orgId: principal.orgId, actorId: principal.userId, entity: 'ServiceCategory', entityId: id, action: 'CATALOG_SERVICE_CARD_UPDATED', after: { ...dto } },
+        tx,
+      );
+      return { card, rateService, childCount: card._count.children };
+    });
+
+    return this.toServiceMenuCardView(result.card, result.rateService, result.childCount);
   }
 
   // ─────────────────────────── catalog items (Service, unit = ITEM) ───────────────────────────
@@ -222,6 +331,26 @@ export class CatalogAdminService {
       active: c.active,
       itemCount,
       createdAt: c.createdAt.toISOString(),
+    };
+  }
+
+  private toServiceMenuCardView(c: ServiceCategory, rateService: Service | null, childCount: number): ServiceMenuCardView {
+    const activeRate = rateService && rateService.active ? rateService : null;
+    return {
+      id: c.id,
+      name: c.name,
+      description: c.description ?? null,
+      features: c.features ?? [],
+      icon: c.icon ?? null,
+      pricingModel: c.pricingModel as unknown as PricingModel,
+      unit: c.unit as unknown as PricingUnit,
+      priceFrom: c.priceFrom != null ? Number(c.priceFrom).toFixed(2) : null,
+      currency: c.currency ?? CURRENCY,
+      active: c.active,
+      sortOrder: c.sortOrder,
+      rate: activeRate ? Number(activeRate.baseRate).toFixed(4) : null,
+      rateServiceId: activeRate ? activeRate.id : null,
+      childCount,
     };
   }
 

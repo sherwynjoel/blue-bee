@@ -105,6 +105,10 @@ import type {
   PresignCatalogImageDto,
   UpdateCatalogItemDto,
   UpdateCategoryDto,
+  // Service menu — the 8 top-level Home cards + rate editor (Inc-21).
+  ServiceMenuResult,
+  ServiceMenuCardView,
+  UpdateServiceMenuCardDto,
   CreateResidentDto,
   CreateStandingOrderDto,
   DropToLostFoundDto,
@@ -679,6 +683,15 @@ export class ConsoleApiClient extends ApiClient {
   }
   presignCatalogImage(dto: PresignCatalogImageDto): Promise<CatalogImagePresignResult> {
     return this.request('POST', '/catalog/image/presign', { body: dto });
+  }
+
+  // ─────────────── service menu — the 8 top-level Home cards + per-unit rate editor (Inc-21, OWNER/FINANCE) ───────────────
+
+  serviceMenu(): Promise<ServiceMenuResult> {
+    return this.request('GET', '/catalog/service-menu');
+  }
+  updateServiceMenuCard(id: string, dto: UpdateServiceMenuCardDto): Promise<ServiceMenuCardView> {
+    return this.request('PATCH', `/catalog/service-menu/${id}`, { body: dto });
   }
 }
 

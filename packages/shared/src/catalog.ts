@@ -6,7 +6,7 @@
  * the wire shapes shared by the API and the app.
  */
 import { z } from 'zod';
-import { ServiceUnit } from './enums';
+import { ServiceUnit, PricingModel, PricingUnit } from './enums';
 import type { ServiceVertical, AccountType } from './enums';
 import type { GeoPoint } from './validators';
 
@@ -185,16 +185,16 @@ export interface DrycleanCatalogItemView {
 export interface DrycleanCategoryView {
   id: string;
   name: string;
-  /** [Inc-20] Card sub-line for the customer Home service grid (null when the founder hasn't set one). */
+  /** [Inc-20] Card sub-line (null when unset). */
   description: string | null;
-  /** [Inc-20] Tag chips for the service card (e.g. ["DRY CLEAN","PRESS","ON HANGERS"]); [] when unset. */
+  /** [Inc-20] Tag chips (e.g. ["DRY CLEAN","PRESS","ON HANGERS"]); [] when unset. */
   features: string[];
   /** [Inc-20] Semantic icon key the app maps to an icon + tint (null when unset). */
   icon: string | null;
   /**
    * [Inc-20] The lowest resolved price among this category's items, as a decimal string in `currency`
-   * (the Home card's "from" price). null when the category has no priced items. Real data — the minimum of
-   * the same server-resolved item prices returned below; never a client-invented figure.
+   * (null when the category has no priced items). Real data — the minimum of the same server-resolved item
+   * prices returned below; never a client-invented figure.
    */
   priceFrom: string | null;
   sortOrder: number;
@@ -212,6 +212,106 @@ export interface DrycleanCatalogView {
   pricingAccountName: string | null;
 }
 
+// ───────────────────────────── customer Home service menu (Inc-21) ─────────────────────────────
+
+/**
+ * One top-level service card on the customer Home grid (GET /v1/catalog/home). A card IS a top-level
+ * `ServiceCategory` (parentId = NULL). `pricingModel`/`unit` drive the footer copy; `priceFrom` is the
+ * founder-entered "from $X" display anchor — NULL until a real CAD price is set in the console (honesty
+ * firewall: the app shows "Get a quote" until then; never a client-invented or placeholder figure).
+ */
+export interface HomeServiceCardView {
+  id: string;
+  name: string;
+  description: string | null;
+  features: string[];
+  icon: string | null;
+  pricingModel: PricingModel;
+  unit: PricingUnit;
+  priceFrom: string | null;
+  currency: string;
+  sortOrder: number;
+}
+
+/** GET /v1/catalog/home — the customer Home service menu (the 8 top-level cards, active + sorted). */
+export interface HomeServiceMenuView {
+  cards: HomeServiceCardView[];
+  currency: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// Increment 21 — the top-level SERVICE MENU (the 8 Home cards) admin/rate editor. A "card" IS a top-level
+// `ServiceCategory` (parentId = NULL). The card carries presentation + pricing model; the actual per-unit
+// RATE lives on ONE backing `Service` (categoryId = the card) that this editor creates on first rate entry
+// (so no invented rate ever sits in the seed). OWNER/FINANCE only, org-scoped, audited.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+/** One top-level service card in the console rate editor (GET /v1/catalog/service-menu). */
+export interface ServiceMenuCardView {
+  id: string;
+  name: string;
+  description: string | null;
+  features: string[];
+  icon: string | null;
+  pricingModel: PricingModel;
+  unit: PricingUnit;
+  /** Founder "from $X" display anchor (decimal string), or null until set. NULL in seed (honesty firewall). */
+  priceFrom: string | null;
+  currency: string;
+  active: boolean;
+  sortOrder: number;
+  /** The backing per-unit RATE (the price Inc-22 weight/measure pricing uses), decimal string, or null until set. */
+  rate: string | null;
+  /** The backing Service id that holds the rate, or null until the first rate is entered. */
+  rateServiceId: string | null;
+  /** Count of drill-in child categories (e.g. Dry Cleaning nests the garment sub-catalog). */
+  childCount: number;
+}
+
+export interface ServiceMenuResult {
+  cards: ServiceMenuCardView[];
+  currency: string;
+}
+
+/**
+ * Update a service card. Every field is optional (patch); at least one must be present. `priceFrom`/`rate`
+ * accept an explicit null to CLEAR the value (e.g. reset to "Get a quote"). `rate` upserts the backing
+ * Service; `unit` changes re-map the backing Service's ServiceUnit (PER_KG→KG, PER_ITEM→ITEM, PER_MEASURE→SQFT).
+ */
+export const updateServiceMenuCardSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+    features: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
+    icon: z.string().trim().min(1).max(60).nullable().optional(),
+    pricingModel: z.nativeEnum(PricingModel).optional(),
+    unit: z.nativeEnum(PricingUnit).optional(),
+    priceFrom: z.number().positive().max(1_000_000).nullable().optional(),
+    currency: z.string().trim().length(3).optional(),
+    active: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).max(100000).optional(),
+    rate: z.number().positive().max(1_000_000).nullable().optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
+export type UpdateServiceMenuCardDto = z.infer<typeof updateServiceMenuCardSchema>;
+
+/**
+ * [Inc-21] The backing `Service.unit` (ServiceUnit) for a card's customer-facing `PricingUnit`. PER_KG → KG
+ * (consumer wash&fold), PER_ITEM → ITEM, PER_MEASURE → SQFT (rug/carpet/upholstery/blinds are measured). The
+ * rate lives on that Service; Inc-22 weight/measure pricing reads the card's `unit` to pick the measure.
+ */
+export function backingServiceUnit(unit: PricingUnit): ServiceUnit {
+  switch (unit) {
+    case PricingUnit.PER_KG:
+      return ServiceUnit.KG;
+    case PricingUnit.PER_MEASURE:
+      return ServiceUnit.SQFT;
+    case PricingUnit.PER_ITEM:
+    default:
+      return ServiceUnit.ITEM;
+  }
+}
+
 // ───────────────────────────── error codes (problem+json `error`) ─────────────────────────────
 
 export const CATALOG_ERRORS = {
@@ -219,5 +319,6 @@ export const CATALOG_ERRORS = {
   ITEM_NOT_FOUND: 'catalog.item_not_found',
   IMAGE_NOT_UPLOADED: 'catalog.image_not_uploaded',
   NOT_A_CATALOG_ITEM: 'catalog.not_a_catalog_item',
+  NOT_A_SERVICE_CARD: 'catalog.not_a_service_card',
 } as const;
 export type CatalogErrorCode = (typeof CATALOG_ERRORS)[keyof typeof CATALOG_ERRORS];

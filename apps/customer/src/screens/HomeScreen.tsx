@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@blue-bee/api-client';
-import type { DrycleanCatalogView, DrycleanCategoryView } from '@blue-bee/shared';
+import { PricingModel, PricingUnit, type HomeServiceMenuView, type HomeServiceCardView } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { money } from '../format';
@@ -24,14 +24,14 @@ export function HomeScreen(): React.ReactElement {
   const { colors, space } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const [catalog, setCatalog] = useState<DrycleanCatalogView | null>(null);
+  const [catalog, setCatalog] = useState<HomeServiceMenuView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     setError(null);
     try {
-      setCatalog(await client.getDrycleanCatalog());
+      setCatalog(await client.getServiceMenu());
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load our services.');
     } finally {
@@ -44,7 +44,7 @@ export function HomeScreen(): React.ReactElement {
   }, [load]);
 
   const firstName = me?.user.name ? me.user.name.split(' ')[0] : null;
-  const categories = catalog?.categories ?? [];
+  const categories = catalog?.cards ?? [];
   const currency = catalog?.currency ?? 'CAD';
 
   const header = (
@@ -133,14 +133,35 @@ const CATEGORY_ICONS: Record<string, { icon: React.ComponentProps<typeof Feather
   'dry-clean': { icon: 'wind', tint: 'success' },
   iron: { icon: 'feather', tint: 'honey' },
   delicates: { icon: 'feather', tint: 'azure' },
+  // [Inc-21] the specialty service cards (Feather has no furniture glyphs — closest recognisable shapes).
+  rug: { icon: 'square', tint: 'honey' },
+  carpet: { icon: 'grid', tint: 'success' },
+  sofa: { icon: 'box', tint: 'azure' },
+  blinds: { icon: 'align-justify', tint: 'honey' },
 };
+
+/**
+ * [Inc-21] The card footer, driven by the service's pricing model + unit + founder-set `priceFrom`:
+ *   • priceFrom null                       → "Get a quote"  (NEVER a fake number — honesty firewall)
+ *   • FROM_MEASURED (rug/carpet/…)         → "from $X" + "measured at pickup"
+ *   • FIXED PER_KG (Wash & Fold)           → "from $X" + "per kg"
+ *   • FIXED PER_ITEM / other               → "from $X" + "per item"
+ */
+function priceFooter(category: HomeServiceCardView, currency: string): { quote: boolean; primary: string; sub: string | null } {
+  if (!category.priceFrom) return { quote: true, primary: 'Get a quote', sub: null };
+  const amt = `from ${money(category.priceFrom, currency)}`;
+  if (category.pricingModel === PricingModel.FROM_MEASURED) return { quote: false, primary: amt, sub: 'measured at pickup' };
+  if (category.unit === PricingUnit.PER_KG) return { quote: false, primary: amt, sub: 'per kg' };
+  if (category.unit === PricingUnit.PER_ITEM) return { quote: false, primary: amt, sub: 'per item' };
+  return { quote: false, primary: amt, sub: null };
+}
 
 function ServiceCard({
   category,
   currency,
   onPress,
 }: {
-  category: DrycleanCategoryView;
+  category: HomeServiceCardView;
   currency: string;
   onPress: () => void;
 }): React.ReactElement {
@@ -152,6 +173,7 @@ function ServiceCard({
     success: { bg: colors.successTint, fg: colors.success },
   }[look.tint];
   const features = category.features.slice(0, 4);
+  const footer = priceFooter(category, currency);
 
   return (
     <View style={styles.cell}>
@@ -197,17 +219,21 @@ function ServiceCard({
           </View>
           <View style={[styles.footer, { borderTopColor: colors.hairline, backgroundColor: colors.subtle }]}>
             <View style={{ flex: 1 }}>
-              <Text variant="caption" color="tertiary">
-                Price per item
-              </Text>
-              {category.priceFrom ? (
-                <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="azure" tabular>
-                  from {money(category.priceFrom, currency)}
+              {footer.quote ? (
+                <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="secondary">
+                  {footer.primary}
                 </Text>
               ) : (
-                <Text variant="subhead" weight="600" color="secondary">
-                  View
-                </Text>
+                <>
+                  <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="azure" tabular>
+                    {footer.primary}
+                  </Text>
+                  {footer.sub ? (
+                    <Text variant="caption" color="tertiary">
+                      {footer.sub}
+                    </Text>
+                  ) : null}
+                </>
               )}
             </View>
             <Feather name="chevron-right" size={18} color={colors.textTertiary} />

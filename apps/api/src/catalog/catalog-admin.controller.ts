@@ -7,11 +7,13 @@ import {
   presignCatalogImageSchema,
   updateCatalogItemSchema,
   updateCategorySchema,
+  updateServiceMenuCardSchema,
   type CreateCatalogItemDto,
   type CreateCategoryDto,
   type PresignCatalogImageDto,
   type UpdateCatalogItemDto,
   type UpdateCategoryDto,
+  type UpdateServiceMenuCardDto,
 } from '@blue-bee/shared';
 import { ZodBody } from '../common/zod-validation.pipe';
 import { CurrentUser, Roles } from '../auth/rbac/decorators';
@@ -50,6 +52,24 @@ export class CatalogAdminController {
   @ApiOperation({ summary: 'Rename / reorder (sortOrder) / activate-deactivate a category. Audited.' })
   updateCategory(@CurrentUser() p: RequestPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodBody(updateCategorySchema)) dto: UpdateCategoryDto) {
     return this.catalog.updateCategory(p, id, dto);
+  }
+
+  // ── service menu (Inc-21 — the 8 top-level Home cards + per-unit rate editor) ──
+
+  @Get('service-menu')
+  @ApiOperation({ summary: 'The top-level service cards (the Home menu) + each card\'s backing per-unit rate. OWNER/FINANCE.' })
+  listServiceMenu(@CurrentUser() p: RequestPrincipal) {
+    return this.catalog.listServiceMenu(p);
+  }
+
+  @Patch('service-menu/:id')
+  @ApiOperation({ summary: 'Edit a service card (description/features/icon/unit/pricingModel/priceFrom/active/order) + set/clear the backing CAD rate. Audited.' })
+  updateServiceMenuCard(
+    @CurrentUser() p: RequestPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBody(updateServiceMenuCardSchema)) dto: UpdateServiceMenuCardDto,
+  ) {
+    return this.catalog.updateServiceMenuCard(p, id, dto);
   }
 
   // ── catalog items ──

@@ -66,6 +66,23 @@ enum ServiceUnit {
   PIECE
   LB
   ITEM
+  // [Inc-21] per-kilogram — the consumer Wash & Fold backing rate (PRD §14.1 wash-fold expansion). Additive.
+  KG
+}
+
+// [Inc-21] Mirrors packages/shared/src/enums.ts PricingModel. FIXED = published per-unit rate, auto-priced
+// on an approved measure/count (Inc-22); FROM_MEASURED = specialty, measured at pickup → quote SENT.
+enum PricingModel {
+  FIXED
+  FROM_MEASURED
+}
+
+// [Inc-21] Mirrors packages/shared/src/enums.ts PricingUnit. The customer-facing unit of a service card;
+// the actual per-unit rate lives on the backing Service (ServiceUnit).
+enum PricingUnit {
+  PER_ITEM
+  PER_KG
+  PER_MEASURE
 }
 
 enum OrderVertical {
@@ -556,15 +573,31 @@ model ServiceCategory {
   description String?  @map("description")
   features    String[] @default([]) @map("features")
   icon        String?  @map("icon")
+  // [Inc-21] Top-level service-menu (the 8 Home cards). A top-level card (parentId = NULL) IS a Home service
+  // card; a child category (parentId set) is a drill-in sub-catalog (e.g. Shirts/Outerwear/Formalwear under
+  // "Dry Cleaning"). `pricingModel`/`unit` drive the customer footer + the Inc-22 weight/measure pricing gate.
+  // `priceFrom` is the founder-entered "from $X" display anchor — NULLABLE and NULL until the owner sets a real
+  // CAD price in the console (honesty firewall: no invented price ever ships; the card shows "Get a quote" until
+  // set). The per-unit RATE lives on the backing Service (created/edited via the console rate editor), not here.
+  pricingModel PricingModel @default(FIXED) @map("pricing_model")
+  unit         PricingUnit  @default(PER_ITEM)
+  priceFrom    Decimal?     @map("price_from") @db.Decimal(12, 2)
+  currency     String       @default("CAD")
+  parentId     String?      @map("parent_id") @db.Uuid
   sortOrder Int      @default(0) @map("sort_order")
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by") @db.Uuid
 
+  // Self-relation for the Dry Cleaning → garment sub-catalog nesting. SET NULL on parent delete so a child
+  // never cascades away (it falls back to top-level), matching the Service→category SET NULL precedent.
+  parent   ServiceCategory?  @relation("ServiceCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ServiceCategory[] @relation("ServiceCategoryTree")
   services Service[]
 
   @@index([orgId])
+  @@index([parentId])
 }
 
 // PRD §9.2 — PriceList / PriceListItem (catalog pricing with per-account overrides).

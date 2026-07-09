@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@blue-bee/api-client';
-import { PricingModel, PricingUnit, type HomeServiceMenuView, type HomeServiceCardView } from '@blue-bee/shared';
+import { ItemKind, PricingModel, PricingUnit, type HomeServiceMenuView, type HomeServiceCardView } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { money } from '../format';
@@ -113,7 +113,20 @@ export function HomeScreen(): React.ReactElement {
       ) : (
         <View style={styles.grid}>
           {categories.map((cat) => (
-            <ServiceCard key={cat.id} category={cat} currency={currency} onPress={() => navigation.navigate('Book')} />
+            <ServiceCard
+              key={cat.id}
+              category={cat}
+              currency={currency}
+              // [Inc-23] Carry the card's backing service into Book so the order references the right
+              // service → pricingModel. A card with no backing service yet (rate unset) opens the general
+              // composer (undefined param).
+              onPress={() =>
+                navigation.navigate(
+                  'Book',
+                  cat.serviceId ? { serviceId: cat.serviceId, serviceName: cat.name, unit: cat.unit, kind: kindForCard(cat) } : undefined,
+                )
+              }
+            />
           ))}
         </View>
       )}
@@ -147,6 +160,22 @@ const CATEGORY_ICONS: Record<string, { icon: React.ComponentProps<typeof Feather
  *   • FIXED PER_KG (Wash & Fold)           → "from $X" + "per kg"
  *   • FIXED PER_ITEM / other               → "from $X" + "per item"
  */
+/** [Inc-23] The default ItemKind for a booked line from a card (custody/tag only; pricing uses the service). */
+function kindForCard(card: HomeServiceCardView): ItemKind {
+  switch (card.icon) {
+    case 'rug':
+      return ItemKind.RUG;
+    case 'carpet':
+      return ItemKind.CARPET;
+    case 'sofa':
+      return ItemKind.UPHOLSTERY;
+    case 'blinds':
+      return ItemKind.BLIND;
+    default:
+      return ItemKind.GARMENT; // wash-fold / wash-iron / dry-clean / iron
+  }
+}
+
 function priceFooter(category: HomeServiceCardView, currency: string): { quote: boolean; primary: string; sub: string | null } {
   if (!category.priceFrom) return { quote: true, primary: 'Get a quote', sub: null };
   const amt = `from ${money(category.priceFrom, currency)}`;

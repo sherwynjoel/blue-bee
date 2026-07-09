@@ -1,12 +1,12 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import { PricingModel, PricingUnit, type HomeServiceCardView, type HomeServiceMenuView } from '@blue-bee/shared';
+import { ItemKind, PricingModel, PricingUnit, type HomeServiceCardView, type HomeServiceMenuView } from '@blue-bee/shared';
 
 // [Inc-21] HomeScreen renders the service menu off client.getServiceMenu(); mock the session + navigation
 // (safe-area / icons / theme are handled by jest.setup + the useTheme() lightTheme fallback).
 const card = (over: Partial<HomeServiceCardView>): HomeServiceCardView => ({
   id: 'c', name: 'Svc', description: 'desc', features: ['A', 'B'], icon: 'wash-fold',
-  pricingModel: PricingModel.FIXED, unit: PricingUnit.PER_ITEM, priceFrom: null, currency: 'CAD', sortOrder: 1, ...over,
+  pricingModel: PricingModel.FIXED, unit: PricingUnit.PER_ITEM, priceFrom: null, currency: 'CAD', sortOrder: 1, serviceId: null, ...over,
 });
 
 const mockClient = { getServiceMenu: jest.fn<Promise<HomeServiceMenuView>, []>() };
@@ -63,11 +63,21 @@ describe('HomeScreen service grid (Inc-21)', () => {
     expect(getByText('measured at pickup')).toBeTruthy();
   });
 
-  it('tapping a card routes to the existing Book flow', async () => {
-    mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold' })] });
+  it('tapping an unpriced card (no backing service) opens the general Book composer', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold', serviceId: null })] });
     const { findByTestId } = render(<HomeScreen />);
     fireEvent.press(await findByTestId('home-service-wf'));
-    expect(mockNavigate).toHaveBeenCalledWith('Book');
+    expect(mockNavigate).toHaveBeenCalledWith('Book', undefined);
+  });
+
+  it('[Inc-23] tapping a priced card carries its backing service + unit + kind into Book', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({
+      currency: 'CAD',
+      cards: [card({ id: 'wf', name: 'Wash & Fold', unit: PricingUnit.PER_KG, icon: 'wash-fold', serviceId: 'svc-wf-1', priceFrom: '21.00' })],
+    });
+    const { findByTestId } = render(<HomeScreen />);
+    fireEvent.press(await findByTestId('home-service-wf'));
+    expect(mockNavigate).toHaveBeenCalledWith('Book', { serviceId: 'svc-wf-1', serviceName: 'Wash & Fold', unit: PricingUnit.PER_KG, kind: ItemKind.GARMENT });
   });
 
   it('shows the empty state when the catalog has no cards', async () => {

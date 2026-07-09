@@ -231,6 +231,13 @@ export interface HomeServiceCardView {
   priceFrom: string | null;
   currency: string;
   sortOrder: number;
+  /**
+   * [Inc-23] The backing bookable `Service` (the card's rate service), or null until the founder sets a
+   * rate in the console. An order booked from this card references this serviceId, so its OrderLine →
+   * Service → ServiceCategory.pricingModel drives the weigh/measure pricing gate. A card with `serviceId:
+   * null` is not yet bookable as a priced job (the app shows "Get a quote" / a drill-in).
+   */
+  serviceId: string | null;
 }
 
 /** GET /v1/catalog/home — the customer Home service menu (the 8 top-level cards, active + sorted). */

@@ -1,9 +1,12 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
+import type { ItemKind, PricingUnit } from '@blue-bee/shared';
 
 /** The signed-in navigation stack (PRD §7A customer flows). */
 export type RootStackParamList = {
   Orders: undefined;
-  Book: undefined;
+  // [Inc-23] Optional card context — tapping a Home service card pre-selects its backing service in Book.
+  // Additive: `navigation.navigate('Book')` with no params still opens the general composer.
+  Book: { serviceId?: string; serviceName?: string; unit?: PricingUnit; kind?: ItemKind } | undefined;
   OrderDetail: { orderId: string };
   Track: { orderId: string };
   Chat: { orderId: string };

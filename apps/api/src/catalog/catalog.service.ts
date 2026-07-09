@@ -101,6 +101,9 @@ export class CatalogService {
     const cards = await db.serviceCategory.findMany({
       where: { active: true, parentId: null },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      // The card's backing rate Service (categoryId = the card) — created by the console rate editor on
+      // first rate entry. Null until then → the card is not yet bookable as a priced job.
+      include: { services: { where: { active: true }, orderBy: { createdAt: 'asc' }, take: 1, select: { id: true } } },
     });
     const cardViews: HomeServiceCardView[] = cards.map((c) => ({
       id: c.id,
@@ -114,6 +117,7 @@ export class CatalogService {
       priceFrom: c.priceFrom != null ? c.priceFrom.toFixed(2) : null,
       currency: c.currency ?? 'CAD',
       sortOrder: c.sortOrder,
+      serviceId: c.services[0]?.id ?? null,
     }));
     return { cards: cardViews, currency: 'CAD' };
   }

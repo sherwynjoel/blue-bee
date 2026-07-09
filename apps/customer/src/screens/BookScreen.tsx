@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { ItemKind, type CustomerSite, type DrycleanCatalogView, type ServiceCatalogItem } from '@blue-bee/shared';
+import { ItemKind, PricingUnit, type CustomerSite, type DrycleanCatalogView, type ServiceCatalogItem } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSession } from '../session/SessionProvider';
@@ -24,10 +24,12 @@ const KIND_ICON: Record<string, React.ComponentProps<typeof Feather>['name']> = 
 };
 
 /** Book a specialty job (PRD §7A A2.1): pick service + items + site + pickup window → POST /v1/orders. */
-export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Book'>): React.ReactElement {
+export function BookScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Book'>): React.ReactElement {
   const { client, me } = useSession();
   const { colors, space } = useTheme();
   const accountId = me?.user.accountIds[0];
+  // [Inc-23] Optional card context from a tapped Home service card — pre-selects the card's backing service.
+  const card = route?.params;
 
   const [services, setServices] = useState<ServiceCatalogItem[]>([]);
   const [sites, setSites] = useState<CustomerSite[]>([]);
@@ -41,9 +43,9 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
   // specialty composer still books normally — the picker simply doesn't render.
   const [dryclean, setDryclean] = useState<DrycleanCatalogView | null>(null);
 
-  // Composer for the current item + the staged item list.
-  const [kind, setKind] = useState<ItemKind>(ItemKind.RUG);
-  const [serviceId, setServiceId] = useState<string | null>(null);
+  // Composer for the current item + the staged item list. Seed from the tapped card when present.
+  const [kind, setKind] = useState<ItemKind>(card?.kind ?? ItemKind.RUG);
+  const [serviceId, setServiceId] = useState<string | null>(card?.serviceId ?? null);
   const [measure, setMeasure] = useState('');
   const [items, setItems] = useState<DraftItem[]>([]);
   const [siteId, setSiteId] = useState<string | undefined>(undefined);
@@ -63,7 +65,8 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
         const [svc, st] = await Promise.all([client.getServices(), client.getSites()]);
         setServices(svc.services);
         setSites(st.sites);
-        if (svc.services[0]) setServiceId(svc.services[0].id);
+        // Keep the card's pre-selected service; otherwise default to the first service.
+        if (!card?.serviceId && svc.services[0]) setServiceId(svc.services[0].id);
         if (st.sites[0]) setSiteId(st.sites[0].id);
       } catch (e) {
         setLoadError(e instanceof ApiError ? e.message : 'Could not load the booking options.');
@@ -201,27 +204,37 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
     >
       {corpAccountName ? <CorporatePricingNote accountName={corpAccountName} /> : null}
 
-      <Card title="What needs cleaning?">
-        <Text variant="footnote" color="secondary" style={styles.help}>
-          Pick an item type and the service for it.
-        </Text>
-        <View style={styles.chips}>
-          {ITEM_KINDS.map((k) => (
-            <Chip key={k} testID={`kind-${k}`} label={titleCase(k)} icon={KIND_ICON[k]} selected={kind === k} onPress={() => setKind(k)} />
-          ))}
-        </View>
+      <Card title={card?.serviceName ? `Book ${card.serviceName}` : 'What needs cleaning?'}>
+        {card?.serviceName ? (
+          // [Inc-23] Focused card booking — the service is chosen (from the tapped Home card); the customer
+          // just adds the size/count. The full item-type + service pickers are for the general composer.
+          <Text testID="book-card-service" variant="footnote" color="secondary" style={styles.help}>
+            {cardSizeHelp(card.unit)}
+          </Text>
+        ) : (
+          <>
+            <Text variant="footnote" color="secondary" style={styles.help}>
+              Pick an item type and the service for it.
+            </Text>
+            <View style={styles.chips}>
+              {ITEM_KINDS.map((k) => (
+                <Chip key={k} testID={`kind-${k}`} label={titleCase(k)} icon={KIND_ICON[k]} selected={kind === k} onPress={() => setKind(k)} />
+              ))}
+            </View>
+
+            <Text variant="subhead" weight="600" style={styles.sectionLabel}>
+              Service
+            </Text>
+            <View style={styles.chips}>
+              {services.map((s) => (
+                <Chip key={s.id} testID={`service-${s.id}`} label={s.name} selected={serviceId === s.id} onPress={() => setServiceId(s.id)} />
+              ))}
+            </View>
+          </>
+        )}
 
         <Text variant="subhead" weight="600" style={styles.sectionLabel}>
-          Service
-        </Text>
-        <View style={styles.chips}>
-          {services.map((s) => (
-            <Chip key={s.id} testID={`service-${s.id}`} label={s.name} selected={serviceId === s.id} onPress={() => setServiceId(s.id)} />
-          ))}
-        </View>
-
-        <Text variant="subhead" weight="600" style={styles.sectionLabel}>
-          Approx. size {selectedService ? `(${selectedService.unit.toLowerCase()})` : ''}
+          {card?.unit ? cardSizeLabel(card.unit) : `Approx. size ${selectedService ? `(${selectedService.unit.toLowerCase()})` : ''}`}
         </Text>
         <View style={styles.measureRow}>
           <View
@@ -236,7 +249,8 @@ export function BookScreen({ navigation }: NativeStackScreenProps<RootStackParam
         </View>
       </Card>
 
-      {dryclean ? <DrycleanPicker catalog={dryclean} qtyFor={catalogQtyFor} onAdd={addCatalog} onRemove={removeCatalog} /> : null}
+      {/* The dry-clean garment picker is for the general composer (or the Dry Cleaning drill-in), not a focused card book. */}
+      {!card?.serviceId && dryclean ? <DrycleanPicker catalog={dryclean} qtyFor={catalogQtyFor} onAdd={addCatalog} onRemove={removeCatalog} /> : null}
 
       {items.length > 0 ? (
         <Card title={`Items to book (${items.length})`}>
@@ -451,6 +465,31 @@ function estimateRange(items: DraftItem[], rateOf: (serviceId: string) => number
 
 function titleCase(s: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+/** [Inc-23] Size input label for a focused card booking, by the card's pricing unit. */
+function cardSizeLabel(unit: PricingUnit | undefined): string {
+  switch (unit) {
+    case PricingUnit.PER_KG:
+      return 'Approx. weight (kg) — optional';
+    case PricingUnit.PER_ITEM:
+      return 'How many items?';
+    case PricingUnit.PER_MEASURE:
+    default:
+      return 'Approx. size';
+  }
+}
+/** [Inc-23] Helper copy under a focused card booking, by the card's pricing unit. */
+function cardSizeHelp(unit: PricingUnit | undefined): string {
+  switch (unit) {
+    case PricingUnit.PER_KG:
+      return 'We weigh your load at pickup — an estimate here is optional.';
+    case PricingUnit.PER_ITEM:
+      return 'Add how many items you’re sending; we confirm at intake.';
+    case PricingUnit.PER_MEASURE:
+    default:
+      return 'Add a rough size; the final price is confirmed after we measure at pickup.';
+  }
 }
 
 const styles = StyleSheet.create({

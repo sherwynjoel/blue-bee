@@ -60,6 +60,14 @@ export class CatalogAdminService {
   }
 
   async createCategory(principal: RequestPrincipal, dto: CreateCategoryDto): Promise<CategoryView> {
+    // [Inc-23] This admin creates DRY-CLEAN garment categories — the drill-in sub-catalog under the "Dry
+    // Cleaning" service card. Nest new categories under it (parentId) so they appear in the /catalog/dryclean
+    // garment picker (children) and are NOT surfaced on the customer Home menu (which shows top-level cards
+    // only). Falls back to top-level if no Dry Cleaning card exists yet (a pre-catalog-seed org).
+    const dryCleaning = await this.prisma.serviceCategory.findFirst({
+      where: { orgId: principal.orgId, parentId: null, icon: 'dry-clean' },
+      select: { id: true },
+    });
     const created = await this.prisma.$transaction(async (tx) => {
       const row = await tx.serviceCategory.create({
         data: {
@@ -68,6 +76,7 @@ export class CatalogAdminService {
           description: dto.description ?? null,
           features: dto.features ?? [],
           icon: dto.icon ?? null,
+          parentId: dryCleaning?.id ?? null,
           sortOrder: dto.sortOrder ?? 0,
           active: true,
           createdBy: principal.userId,

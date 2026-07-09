@@ -209,6 +209,32 @@ describe('Weigh e2e — Increment 22 (weight → hybrid pricing)', () => {
     expect(order.status).toBe('QUOTE_APPROVED');
   });
 
+  it('[P6] FULL CHAIN: book from a card → weigh → auto-price at the catalog rate → visible on BOTH surfaces → re-weigh → re-price', async () => {
+    // Phase 0 — an order booked from the Wash & Fold card references its backing Service (→ FIXED pricingModel).
+    const { orderId } = await bookToInspected([{ kind: 'GARMENT', serviceId: SVC_WF, measurements: { pieces: 1 } }]);
+    const lines = await prisma.orderLine.findMany({ where: { orderId }, select: { serviceId: true } });
+    expect(lines[0]?.serviceId).toBe(SVC_WF); // the line carries the card's backing service
+
+    // Weigh → auto-priced at the PUBLISHED CATALOG RATE ($3.50/kg × 6kg = $21.00) and approved (no fabricated price).
+    const w = (await post(`/v1/orders/${orderId}/weigh`, 'plant', { weightKg: 6, weighPoint: 'PICKUP' }, `fc-a-${orderId}`).expect(201)).body;
+    expect(w.pricing.status).toBe('auto_approved');
+    let order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(order.status).toBe('QUOTE_APPROVED');
+    expect(order.totals.subtotal).toBe('21.00'); // traces to the founder-set catalog rate $3.50
+
+    // VISIBLE ON BOTH SURFACES (REST source of truth): staff (dashboard) AND the owning customer read the weight.
+    expect((await get(`/v1/orders/${orderId}/weight`, 'owner').expect(200)).body.authoritativeWeightKg).toBe('6.00'); // dashboard
+    expect((await get(`/v1/orders/${orderId}/weight`, 'rita').expect(200)).body.authoritativeWeightKg).toBe('6.00'); // customer
+
+    // Phase 5 — a plant re-weigh RE-PRICES the approved order; both surfaces see the new authoritative weight.
+    const w2 = (await post(`/v1/orders/${orderId}/weigh`, 'plant', { weightKg: 9, weighPoint: 'PLANT' }, `fc-b-${orderId}`).expect(201)).body;
+    expect(w2.pricing.status).toBe('auto_approved');
+    order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(order.totals.subtotal).toBe('31.50'); // 9kg × $3.50 — re-priced
+    expect((await get(`/v1/orders/${orderId}/weight`, 'owner').expect(200)).body.authoritativeWeightKg).toBe('9.00');
+    expect((await get(`/v1/orders/${orderId}/weight`, 'rita').expect(200)).body.authoritativeWeightKg).toBe('9.00');
+  });
+
   it('idempotency + re-weigh: same key → one capture; a NEW key → a NEW capture, old retained, authoritative = latest', async () => {
     const { orderId } = await bookToInspected([{ kind: 'GARMENT', serviceId: SVC_WF, measurements: { pieces: 1 } }]);
     const key = `weigh-idem-${orderId}`;

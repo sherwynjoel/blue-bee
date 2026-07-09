@@ -1312,6 +1312,17 @@ async function seedLiveFleet(): Promise<void> {
     await prisma.shift.upsert({ where: { id: d.shift }, update: {}, create: { id: d.shift, orgId: ID.org, driverId: d.drv, vehicleId: d.veh, status: ShiftStatus.ACTIVE, startedAt, createdBy: ID.owner } });
   }
 
+  // [Inc-23 QC] Ensure the "Demo Driver" (+14165550006) has a Driver row. It is referenced by many e2e specs
+  // (e.g. the care-home linen loop), some of which previously depended on tracking.e2e running FIRST to
+  // create it (a pre-existing inter-spec ordering gap — see the fixtures note above). Seeding it makes those
+  // specs order-independent; tracking.e2e's `ensureDriver()` (findUnique-by-userId, then create) tolerates
+  // this pre-existing row. Minimal (userId only; no default vehicle) — enough for the driver-identity lookups.
+  await prisma.driver.upsert({
+    where: { userId: 'e1000000-0000-4000-8000-000000000005' },
+    update: {},
+    create: { orgId: ID.org, userId: 'e1000000-0000-4000-8000-000000000005', createdBy: ID.owner },
+  });
+
   // Idempotency guard for the route/stop/POD/ping block (route createMany has no upsert).
   if (await prisma.route.findUnique({ where: { id: fid(51) } })) {
     console.log('[seed] Branch4 live fleet already present — skipping routes/pings (idempotent, no duplicate pings).');

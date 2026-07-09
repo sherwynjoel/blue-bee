@@ -1,19 +1,21 @@
-import React, { createContext, useContext, useMemo } from 'react';
-import { useColorScheme } from 'react-native';
-import { buildTheme, lightTheme, type Theme } from './theme';
+import React, { createContext, useContext } from 'react';
+import { lightTheme, type Theme } from './theme';
 
 /**
- * Resolves the Daylight theme from the OS appearance (`useColorScheme`) and exposes it to the tree.
- * Every screen + primitive reads colors/spacing/type/motion through `useTheme()` — light ⇄ dark is a
- * single source-of-truth switch here. `app.json` sets `userInterfaceStyle: automatic`, so the device's
- * Light/Dark setting (and live toggles) flow straight through.
+ * Exposes the Daylight theme to the tree. Every screen + primitive reads colors/spacing/type/motion
+ * through `useTheme()`.
+ *
+ * The customer app is pinned to the LIGHT palette to match the founder's reference: the product surface
+ * is always the clean, bright "Daylight" look regardless of the device's Light/Dark setting. The dark
+ * palette + `buildTheme('dark')` still exist in theme.ts, so restoring OS-driven light⇄dark is a one-line
+ * change here (resolve from `useColorScheme()` again) — nothing else in the app needs to change.
+ * NB: for the native chrome (status bar, keyboard, launch) to stay light too, set
+ * `expo.userInterfaceStyle: "light"` in app.json (takes effect on the next native build).
  */
 const ThemeContext = createContext<Theme | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }): React.ReactElement {
-  const scheme = useColorScheme();
-  const theme = useMemo(() => buildTheme(scheme === 'dark' ? 'dark' : 'light'), [scheme]);
-  return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={lightTheme}>{children}</ThemeContext.Provider>;
 }
 
 /**

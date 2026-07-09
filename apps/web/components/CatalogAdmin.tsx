@@ -103,6 +103,14 @@ function CategorySection({ category, onChanged }: { category: CategoryView & { i
   const [draftName, setDraftName] = useState(category.name);
   const [err, setErr] = useState<string | null>(null);
 
+  // [Inc-20] The Home service-card presentation (description / feature tags / icon key). Founder-editable
+  // here; the customer app renders these on the Home grid. features is edited as a comma-separated list.
+  const [editingCard, setEditingCard] = useState(false);
+  const [savingCard, setSavingCard] = useState(false);
+  const [draftDesc, setDraftDesc] = useState(category.description ?? '');
+  const [draftFeatures, setDraftFeatures] = useState((category.features ?? []).join(', '));
+  const [draftIcon, setDraftIcon] = useState(category.icon ?? '');
+
   const saveName = async (): Promise<void> => {
     setErr(null);
     try {
@@ -122,11 +130,31 @@ function CategorySection({ category, onChanged }: { category: CategoryView & { i
       setErr(apiErr(e, 'Could not update the category.'));
     }
   };
+  const saveCard = async (): Promise<void> => {
+    setSavingCard(true);
+    setErr(null);
+    try {
+      // Split the comma-separated tags into a clean array; a blank description/icon clears the field (null).
+      const features = draftFeatures.split(',').map((s) => s.trim()).filter(Boolean);
+      await client.updateCatalogCategory(category.id, {
+        description: draftDesc.trim() ? draftDesc.trim() : null,
+        features,
+        icon: draftIcon.trim() ? draftIcon.trim() : null,
+      });
+      setEditingCard(false);
+      onChanged();
+    } catch (e) {
+      setErr(apiErr(e, 'Could not update the card presentation.'));
+    } finally {
+      setSavingCard(false);
+    }
+  };
 
   const actions = (
     <div className="flex items-center gap-2">
       {!category.active && <Badge tone="neutral">Hidden</Badge>}
       <Button size="sm" variant="secondary" onClick={() => setRenaming((r) => !r)}>Rename</Button>
+      <Button size="sm" variant="secondary" onClick={() => setEditingCard((c) => !c)}>Card</Button>
       <Button size="sm" variant="secondary" onClick={() => void toggleActive()}>{category.active ? 'Deactivate' : 'Activate'}</Button>
     </div>
   );
@@ -138,6 +166,15 @@ function CategorySection({ category, onChanged }: { category: CategoryView & { i
         <div className="mb-4 flex items-end gap-2" data-testid={`catalog-rename-${category.id}`}>
           <div className="flex-1"><Field label="New name"><Input value={draftName} onChange={(e) => setDraftName(e.target.value)} /></Field></div>
           <Button size="sm" onClick={() => void saveName()} disabled={!draftName.trim()}>Save</Button>
+        </div>
+      )}
+      {editingCard && (
+        <div className="mb-4 space-y-3 rounded-card border border-hairline bg-subtle p-4" data-testid={`catalog-card-${category.id}`}>
+          <p className="text-footnote text-secondary">How this service appears on the customer Home grid.</p>
+          <Field label="Description"><Input value={draftDesc} onChange={(e) => setDraftDesc(e.target.value)} placeholder="Crisp, hand-finished shirts and blouses." aria-label={`${category.name} description`} /></Field>
+          <Field label="Feature tags (comma-separated)"><Input value={draftFeatures} onChange={(e) => setDraftFeatures(e.target.value)} placeholder="DRY CLEAN, PRESS, ON HANGERS" aria-label={`${category.name} features`} /></Field>
+          <Field label="Icon key"><Input value={draftIcon} onChange={(e) => setDraftIcon(e.target.value)} placeholder="shirts" aria-label={`${category.name} icon`} /></Field>
+          <Button size="sm" loading={savingCard} onClick={() => void saveCard()}>Save card</Button>
         </div>
       )}
       {err && <p className="mb-2 text-sm text-danger" role="alert">{err}</p>}

@@ -58,8 +58,16 @@ export interface CustomerSitesResult {
 
 // ───────────────────────────── categories ─────────────────────────────
 
+/** Presentation fields for the customer Home service grid (Inc-20). Editable by owner/finance in the
+ *  console; the app renders `description` as the card sub-line, `features` as tag chips, and maps `icon`
+ *  (a semantic key) to an icon + tint. `features` is capped so a card stays readable. */
+const categoryFeaturesSchema = z.array(z.string().trim().min(1).max(40)).max(12);
+
 export const createCategorySchema = z.object({
   name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(500).nullable().optional(),
+  features: categoryFeaturesSchema.optional(),
+  icon: z.string().trim().min(1).max(60).nullable().optional(),
   sortOrder: z.number().int().min(0).max(100000).optional(),
 });
 export type CreateCategoryDto = z.infer<typeof createCategorySchema>;
@@ -67,6 +75,9 @@ export type CreateCategoryDto = z.infer<typeof createCategorySchema>;
 export const updateCategorySchema = z
   .object({
     name: z.string().trim().min(1).max(80).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+    features: categoryFeaturesSchema.optional(),
+    icon: z.string().trim().min(1).max(60).nullable().optional(),
     sortOrder: z.number().int().min(0).max(100000).optional(),
     active: z.boolean().optional(),
   })
@@ -76,6 +87,12 @@ export type UpdateCategoryDto = z.infer<typeof updateCategorySchema>;
 export interface CategoryView {
   id: string;
   name: string;
+  /** Card sub-line for the Home service grid (null when unset). */
+  description: string | null;
+  /** Tag chips (e.g. ["DRY CLEAN","PRESS","ON HANGERS"]); [] when unset. */
+  features: string[];
+  /** Semantic icon key the app maps to an icon + tint (null when unset). */
+  icon: string | null;
   sortOrder: number;
   active: boolean;
   itemCount: number;
@@ -168,6 +185,18 @@ export interface DrycleanCatalogItemView {
 export interface DrycleanCategoryView {
   id: string;
   name: string;
+  /** [Inc-20] Card sub-line for the customer Home service grid (null when the founder hasn't set one). */
+  description: string | null;
+  /** [Inc-20] Tag chips for the service card (e.g. ["DRY CLEAN","PRESS","ON HANGERS"]); [] when unset. */
+  features: string[];
+  /** [Inc-20] Semantic icon key the app maps to an icon + tint (null when unset). */
+  icon: string | null;
+  /**
+   * [Inc-20] The lowest resolved price among this category's items, as a decimal string in `currency`
+   * (the Home card's "from" price). null when the category has no priced items. Real data — the minimum of
+   * the same server-resolved item prices returned below; never a client-invented figure.
+   */
+  priceFrom: string | null;
   sortOrder: number;
   items: DrycleanCatalogItemView[];
 }

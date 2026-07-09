@@ -128,7 +128,22 @@ export class CatalogService {
           priceSource: resolved.source,
         });
       }
-      if (items.length > 0) out.push({ id: cat.id, name: cat.name, sortOrder: cat.sortOrder, items });
+      if (items.length > 0) {
+        // [Inc-20] "from" price for the Home service card = the lowest RESOLVED item price in the group
+        // (real data — the min of the same prices returned above; never a client-side figure). items is
+        // non-empty here, so the reduce is always finite.
+        const priceFrom = items.reduce((min, it) => Math.min(min, Number(it.price)), Number.POSITIVE_INFINITY);
+        out.push({
+          id: cat.id,
+          name: cat.name,
+          description: cat.description ?? null,
+          features: cat.features ?? [],
+          icon: cat.icon ?? null,
+          priceFrom: Number.isFinite(priceFrom) ? priceFrom.toFixed(2) : null,
+          sortOrder: cat.sortOrder,
+          items,
+        });
+      }
     }
     return { categories: out, currency: 'CAD', pricingAccountName };
   }

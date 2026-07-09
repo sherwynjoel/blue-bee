@@ -56,10 +56,19 @@ export class CatalogAdminService {
   async createCategory(principal: RequestPrincipal, dto: CreateCategoryDto): Promise<CategoryView> {
     const created = await this.prisma.$transaction(async (tx) => {
       const row = await tx.serviceCategory.create({
-        data: { orgId: principal.orgId, name: dto.name, sortOrder: dto.sortOrder ?? 0, active: true, createdBy: principal.userId },
+        data: {
+          orgId: principal.orgId,
+          name: dto.name,
+          description: dto.description ?? null,
+          features: dto.features ?? [],
+          icon: dto.icon ?? null,
+          sortOrder: dto.sortOrder ?? 0,
+          active: true,
+          createdBy: principal.userId,
+        },
       });
       await this.audit.record(
-        { orgId: principal.orgId, actorId: principal.userId, entity: 'ServiceCategory', entityId: row.id, action: 'CATALOG_CATEGORY_CREATED', after: { name: dto.name, sortOrder: dto.sortOrder ?? 0 } },
+        { orgId: principal.orgId, actorId: principal.userId, entity: 'ServiceCategory', entityId: row.id, action: 'CATALOG_CATEGORY_CREATED', after: { ...dto } },
         tx,
       );
       return row;
@@ -77,6 +86,10 @@ export class CatalogAdminService {
         where: { id, orgId: principal.orgId },
         data: {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
+          // description/icon are nullable — an explicit null clears the field (undefined leaves it untouched).
+          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.features !== undefined ? { features: dto.features } : {}),
+          ...(dto.icon !== undefined ? { icon: dto.icon } : {}),
           ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
         },
@@ -195,8 +208,21 @@ export class CatalogAdminService {
     if (!cat) throw new NotFoundException({ error: CATALOG_ERRORS.CATEGORY_NOT_FOUND, message: `category ${id} not found in scope` });
   }
 
-  private toCategoryView(c: Pick<ServiceCategory, 'id' | 'name' | 'sortOrder' | 'active' | 'createdAt'>, itemCount: number): CategoryView {
-    return { id: c.id, name: c.name, sortOrder: c.sortOrder, active: c.active, itemCount, createdAt: c.createdAt.toISOString() };
+  private toCategoryView(
+    c: Pick<ServiceCategory, 'id' | 'name' | 'description' | 'features' | 'icon' | 'sortOrder' | 'active' | 'createdAt'>,
+    itemCount: number,
+  ): CategoryView {
+    return {
+      id: c.id,
+      name: c.name,
+      description: c.description ?? null,
+      features: c.features ?? [],
+      icon: c.icon ?? null,
+      sortOrder: c.sortOrder,
+      active: c.active,
+      itemCount,
+      createdAt: c.createdAt.toISOString(),
+    };
   }
 
   private async toItemView(s: Service & { category?: { name: string } | null }): Promise<CatalogItemView> {

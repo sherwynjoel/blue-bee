@@ -77,9 +77,16 @@ function solidPng(r: number, g: number, b: number, size = 64): Buffer {
 }
 
 interface SeedItem { id: string; name: string; price: string; rgb: [number, number, number] }
-const CATEGORIES: Array<{ id: string; name: string; sortOrder: number; items: SeedItem[] }> = [
+// [Inc-20] `description`/`features`/`icon` drive the customer Home service grid. SAMPLE copy — realistic so
+// the demo looks right, but the founder overwrites it per-category via the /catalog console admin. `icon` is
+// a SEMANTIC KEY the app maps to an icon + tint (see HomeScreen CATEGORY_ICONS) — not a raw asset path.
+interface SeedCategory { id: string; name: string; sortOrder: number; description: string; features: string[]; icon: string; items: SeedItem[] }
+const CATEGORIES: SeedCategory[] = [
   {
     id: cat(1), name: 'Shirts', sortOrder: 1,
+    description: 'Crisp, hand-finished shirts and blouses — pressed and ready to wear.',
+    features: ['DRY CLEAN', 'PRESS', 'ON HANGERS'],
+    icon: 'shirts',
     items: [
       { id: cat(11), name: 'Dress shirt', price: '6.0000', rgb: [90, 140, 200] },
       { id: cat(12), name: 'Blouse', price: '8.0000', rgb: [120, 170, 210] },
@@ -87,6 +94,9 @@ const CATEGORIES: Array<{ id: string; name: string; sortOrder: number; items: Se
   },
   {
     id: cat(2), name: 'Outerwear', sortOrder: 2,
+    description: 'Coats and jackets cleaned, refreshed and protected for the season.',
+    features: ['DRY CLEAN', 'STEAM', 'ON HANGERS'],
+    icon: 'outerwear',
     items: [
       { id: cat(21), name: 'Winter coat', price: '28.0000', rgb: [70, 90, 110] },
       { id: cat(22), name: 'Blazer', price: '18.0000', rgb: [100, 110, 130] },
@@ -94,6 +104,9 @@ const CATEGORIES: Array<{ id: string; name: string; sortOrder: number; items: Se
   },
   {
     id: cat(3), name: 'Formalwear', sortOrder: 3,
+    description: 'Suits, gowns and tuxedos — event-ready with a flawless finish.',
+    features: ['DRY CLEAN', 'PRESS', 'ON HANGERS'],
+    icon: 'formalwear',
     items: [
       { id: cat(31), name: 'Suit (2-piece)', price: '30.0000', rgb: [50, 50, 60] },
       { id: cat(32), name: 'Evening gown', price: '45.0000', rgb: [150, 60, 110] },
@@ -108,8 +121,8 @@ export async function seedDrycleanCatalog(prisma: PrismaClient): Promise<void> {
   for (const c of CATEGORIES) {
     await prisma.serviceCategory.upsert({
       where: { id: c.id },
-      update: { name: c.name, sortOrder: c.sortOrder },
-      create: { id: c.id, orgId: ORG, name: c.name, sortOrder: c.sortOrder, active: true, createdBy: OWNER },
+      update: { name: c.name, sortOrder: c.sortOrder, description: c.description, features: c.features, icon: c.icon },
+      create: { id: c.id, orgId: ORG, name: c.name, sortOrder: c.sortOrder, description: c.description, features: c.features, icon: c.icon, active: true, createdBy: OWNER },
     });
     for (let i = 0; i < c.items.length; i += 1) {
       const it = c.items[i];

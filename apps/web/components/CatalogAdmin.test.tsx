@@ -29,7 +29,7 @@ const catalog: AdminCatalogView = {
   currency: 'CAD',
   categories: [
     {
-      id: 'cat-1', name: 'Shirts', sortOrder: 1, active: true, itemCount: 1, createdAt: '2026-07-01T00:00:00.000Z',
+      id: 'cat-1', name: 'Shirts', description: 'Crisp shirts and blouses.', features: ['DRY CLEAN', 'PRESS'], icon: 'shirts', sortOrder: 1, active: true, itemCount: 1, createdAt: '2026-07-01T00:00:00.000Z',
       items: [
         { id: 'item-1', name: 'Dress shirt', unit: 'ITEM' as never, baseRate: '6.0000', categoryId: 'cat-1', categoryName: 'Shirts', imageKey: 'org/g/catalog/x.png', imageUrl: 'https://minio.local/x.png?sig=1', active: true, sortOrder: 1, createdAt: '2026-07-01T00:00:00.000Z' },
       ],

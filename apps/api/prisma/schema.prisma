@@ -548,6 +548,14 @@ model ServiceCategory {
   id        String   @id @default(uuid()) @db.Uuid
   orgId     String   @map("org_id") @db.Uuid
   name      String
+  // Presentation fields for the customer Home service grid (Inc-20). All additive — nullable or
+  // array-defaulted — so every existing category row is untouched (description NULL, features [], icon
+  // NULL). `description` = the card sub-line; `features` = the tag chips (e.g. WASH + PRESS + ON HANGERS);
+  // `icon` = a semantic key the app maps to an icon + tint (NOT a raw asset path). Founder-editable via
+  // the /catalog console admin; seeded with clearly-labelled SAMPLE values.
+  description String?  @map("description")
+  features    String[] @default([]) @map("features")
+  icon        String?  @map("icon")
   sortOrder Int      @default(0) @map("sort_order")
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")

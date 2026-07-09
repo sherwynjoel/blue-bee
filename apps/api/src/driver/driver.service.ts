@@ -2,12 +2,14 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import type { Photo } from '@prisma/client';
 import {
   type CaptureProofOfDeliveryDto,
+  type CaptureWeightDto,
   DRIVER_ERRORS,
   type DriverAssignment,
   type DriverRouteView,
   type DriverShiftView,
   type DriverStopAction,
   type DriverStopView,
+  type OrderWeightView,
   POD_ERRORS,
   type PodMediaView,
   type PresignMediaResult,
@@ -20,10 +22,12 @@ import {
   ShiftStatus,
   type StopActionDto,
   type StopExceptionDto,
+  type WeightCaptureResult,
 } from '@blue-bee/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from '../orders/audit.service';
+import { WeighService } from '../orders/weigh.service';
 import { MediaService } from '../media/media.service';
 import { ShiftService } from '../logistics/fleet.service';
 import { RouteStopService } from '../logistics/route-stop.service';
@@ -54,6 +58,7 @@ export class DriverService {
     private readonly stops: RouteStopService,
     private readonly media: MediaService,
     private readonly audit: AuditService,
+    private readonly weigh: WeighService,
   ) {}
 
   /** The caller's Driver profile (the duty loop is meaningless without one). */
@@ -265,6 +270,36 @@ export class DriverService {
       throw new BadRequestException({ error: POD_ERRORS.STOP_HAS_NO_ORDER, message: 'this stop has no order to attach proof of delivery to' });
     }
     return stop.orderId;
+  }
+
+  // ── weigh a load at MY stop (Inc-23 P2): driver-self-scoped weight capture → the Inc-22 hybrid gate ──
+
+  /** Load the stop's order (must exist) for a weigh — the weigh capture attaches to it. */
+  private async requireStopOrder(stop: OwnedStop): Promise<import('@prisma/client').Order> {
+    if (!stop.orderId) {
+      throw new BadRequestException({ error: POD_ERRORS.STOP_HAS_NO_ORDER, message: 'this stop has no order to weigh' });
+    }
+    const order = await this.prisma.order.findFirst({ where: { id: stop.orderId, orgId: stop.orgId } });
+    if (!order) throw new NotFoundException({ error: DRIVER_ERRORS.NOT_OWN_STOP, message: 'the stop order was not found' });
+    return order;
+  }
+
+  /**
+   * Approve a weighed load at MY stop → an APPEND-ONLY weight capture + the Inc-22 hybrid pricing gate.
+   * Authorized by STOP OWNERSHIP (a driver has no direct order-write). Idempotent (the controller's
+   * Idempotency-Key): same key = the first capture, a new key = a re-weigh (new immutable capture).
+   */
+  async weighLoad(p: RequestPrincipal, stopId: string, dto: CaptureWeightDto): Promise<WeightCaptureResult> {
+    const stop = await this.requireOwnStop(p, stopId);
+    const order = await this.requireStopOrder(stop);
+    return this.weigh.weighForOrder(p, order, dto);
+  }
+
+  /** The authoritative weight + append-only history + the customer estimate for MY stop's order. */
+  async getStopWeight(p: RequestPrincipal, stopId: string): Promise<OrderWeightView> {
+    const stop = await this.requireOwnStop(p, stopId);
+    const order = await this.requireStopOrder(stop);
+    return this.weigh.weightViewForOrder(order);
   }
 
   /** Presign a POD photo/signature upload for MY delivery stop (the order comes from the stop). */

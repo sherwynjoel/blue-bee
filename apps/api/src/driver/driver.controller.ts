@@ -2,11 +2,13 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, UseIntercepto
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   captureProofOfDeliverySchema,
+  captureWeightSchema,
   presignPodMediaSchema,
   RoleType,
   stopActionSchema,
   stopExceptionSchema,
   type CaptureProofOfDeliveryDto,
+  type CaptureWeightDto,
   type PresignPodMediaDto,
   type StopActionDto,
   type StopExceptionDto,
@@ -115,5 +117,23 @@ export class DriverController {
   @ApiOperation({ summary: 'Read MY stop’s captured proof of delivery (signed reads).' })
   getPod(@CurrentUser() p: RequestPrincipal, @Param('id') id: string) {
     return this.driver.getProofOfDelivery(p, id);
+  }
+
+  // ── weigh a load at MY stop (Inc-23 P2 — driver-self-scoped; offline-first client) ──
+
+  @Post('stops/:id/weigh')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Approve a weighed load at MY stop (append-only, idempotent) → authoritative weight + the Inc-22 hybrid pricing gate. A re-weigh (new Idempotency-Key) is a new immutable capture; the old one is never edited.',
+  })
+  weighLoad(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(captureWeightSchema)) dto: CaptureWeightDto) {
+    return this.driver.weighLoad(p, id, dto);
+  }
+
+  @Get('stops/:id/weight')
+  @ApiOperation({ summary: 'MY stop order’s authoritative weight + append-only capture history + the customer estimate.' })
+  getStopWeight(@CurrentUser() p: RequestPrincipal, @Param('id') id: string) {
+    return this.driver.getStopWeight(p, id);
   }
 }

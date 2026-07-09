@@ -1,13 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type Order } from '@prisma/client';
 import {
   OrderStatus,
   ORDER_ERRORS,
   PricingModel,
+  RoleScope,
+  RoleType,
   WeighPoint,
   type CaptureWeightDto,
   type OrderWeightView,
-  type WeighPricingStatus,
   type WeightCaptureResult,
   type WeightCaptureView,
 } from '@blue-bee/shared';
@@ -46,9 +47,23 @@ export class WeighService {
     private readonly realtime: RealtimePublisher,
   ) {}
 
+  /** Order-scoped entry (staff/org-wide): authorize the order for write, then run the core. */
   async weigh(principal: RequestPrincipal, orderId: string, dto: CaptureWeightDto): Promise<WeightCaptureResult> {
     const order = await this.access.requireOrderForWrite(principal, orderId);
+    return this.weighForOrder(principal, order, dto);
+  }
+
+  /**
+   * The weigh core (append-only capture → denormalize → hybrid pricing gate → live push). The `order` is
+   * ALREADY authorized by the caller — order-scoped staff via `requireOrderForWrite`, OR a driver via stop
+   * ownership (DriverService.weighLoad). The append-only capture is attributed to the real weigher
+   * (`principal.userId`); the pricing gate (build/approve need org-write) runs with an ORG-SYSTEM principal
+   * so a driver's approved weight still prices — the price is a system rule, decoupled from actor scope,
+   * and every write it makes is audited to the real weigher.
+   */
+  async weighForOrder(principal: RequestPrincipal, order: Order, dto: CaptureWeightDto): Promise<WeightCaptureResult> {
     const orgId = order.orgId;
+    const orderId = order.id;
     const targetItemId = await this.resolveTargetItem(orgId, orderId, dto.itemId);
 
     // Prior authoritative weight for this order/item (for the audited "switch" when a re-weigh corrects it).
@@ -102,7 +117,8 @@ export class WeighService {
     });
 
     // 2) Hybrid pricing gate (only when the order is quotable — a pickup weigh before intake just records it).
-    const pricing = await this.runPricingGate(principal, order.id, orgId, order.status as unknown as OrderStatus);
+    //    Runs with an org-system principal so a driver's weigh can trigger the auto-price (system rule).
+    const pricing = await this.runPricingGate(this.systemPrincipal(order, principal.userId), orderId, orgId, order.status as unknown as OrderStatus);
 
     // 3) Live push to the dashboard (FLEET) + the order's customer (ORDER room). REST stays source of truth.
     this.realtime.publishWeight(orgId, orderId, {
@@ -120,23 +136,50 @@ export class WeighService {
     return { capture: toCaptureView(capture), authoritativeWeightKg: weightStr, pricing };
   }
 
-  /** The authoritative weight (most recent capture) + the full append-only history for an order. */
+  /** The authoritative weight (most recent capture) + the full append-only history for an order (staff read). */
   async getOrderWeight(principal: RequestPrincipal, orderId: string): Promise<OrderWeightView> {
     const order = await this.access.getOrderForRead(principal, orderId);
+    return this.weightViewForOrder(order);
+  }
+
+  /** The weight view for an ALREADY-authorized order (order-scoped read OR driver stop-scoped read). */
+  async weightViewForOrder(order: Pick<Order, 'id' | 'orgId'>): Promise<OrderWeightView> {
     const captures = await this.prisma.weightCapture.findMany({
-      where: { orgId: order.orgId, orderId },
+      where: { orgId: order.orgId, orderId: order.id },
       orderBy: { capturedAt: 'desc' },
     });
     const authoritative = captures[0] ?? null;
+    // Customer booking estimate = the order's total estimated measure (OrderLine.measure at book time,
+    // before the quote overwrites it). Null when none was given / already priced away.
+    const lines = await this.prisma.orderLine.findMany({ where: { orderId: order.id, orgId: order.orgId }, select: { measure: true } });
+    const estimate = lines.reduce((sum, l) => sum + (l.measure ?? 0), 0);
     return {
-      orderId,
+      orderId: order.id,
       authoritativeWeightKg: authoritative ? authoritative.weightKg.toFixed(2) : null,
       authoritativeWeighPoint: authoritative ? (authoritative.weighPoint as unknown as WeighPoint) : null,
       captures: captures.map(toCaptureView),
+      customerEstimate: estimate > 0 ? estimate : null,
     };
   }
 
   // ─────────────────────────── internals ───────────────────────────
+
+  /**
+   * An org-wide system principal for the pricing gate (build/approve require org-write). `userId` stays the
+   * REAL weigher so every audited write attributes correctly; the org-wide role only widens row scope so a
+   * driver's approved weight can auto-price. Never leaves the server (not a token, no jti/exp of value).
+   */
+  private systemPrincipal(order: Pick<Order, 'orgId'>, actorUserId: string | null): RequestPrincipal {
+    return {
+      userId: actorUserId ?? '',
+      orgId: order.orgId,
+      roles: [{ role: RoleType.OWNER, scope: RoleScope.ORG, scopeId: null }],
+      accountIds: [],
+      siteIds: [],
+      jti: 'system-weigh',
+      accessExp: 0,
+    };
+  }
 
   private async resolveTargetItem(orgId: string, orderId: string, itemId?: string): Promise<string | null> {
     if (itemId) {

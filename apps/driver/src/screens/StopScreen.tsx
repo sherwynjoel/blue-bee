@@ -183,6 +183,16 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
         {stop.orderId ? (
           <>
             <View style={{ height: t.spacing.lg }} />
+            {/* [Inc-23 P2] Weigh the load (pickup or plant) — offline-first; records an append-only capture. */}
+            <Button
+              testID="weigh-load"
+              label="Weigh load"
+              onPress={() => navigation.navigate('Weigh', { stopId })}
+              variant="secondary"
+              icon="package"
+              fullWidth
+            />
+            <View style={{ height: t.spacing.sm }} />
             <Button
               testID="message-customer"
               label="Message customer"

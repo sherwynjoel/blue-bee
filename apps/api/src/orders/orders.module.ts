@@ -42,6 +42,6 @@ import { WeighService } from './weigh.service';
   // gate drive the pickup leg, and the audit writer is shared. OrdersService is exported so the
   // Track-A B2B portal's account-scoped orders read can DELEGATE to its proven listing logic
   // (GET /v1/accounts/:accountId/orders → OrdersService.listOrders) — no duplicated query.
-  exports: [OrderStateMachine, OrderAccessService, AuditService, OrdersService, PricingService],
+  exports: [OrderStateMachine, OrderAccessService, AuditService, OrdersService, PricingService, WeighService],
 })
 export class OrdersModule {}

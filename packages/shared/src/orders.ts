@@ -192,6 +192,12 @@ export interface OrderWeightView {
   authoritativeWeightKg: string | null;
   authoritativeWeighPoint: WeighPoint | null;
   captures: WeightCaptureView[];
+  /**
+   * [Inc-23] The customer's booking estimate (the order's total estimated measure entered at book time,
+   * e.g. an estimated wash weight in kg), or null when none was given. Shown to the driver as a reference
+   * before they weigh — the approved actual always overrides it.
+   */
+  customerEstimate: number | null;
 }
 
 // ───────────────────── shared error codes (problem+json `title`) ─────────────────────

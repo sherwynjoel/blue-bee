@@ -1,5 +1,6 @@
 import type {
   CaptureProofOfDeliveryDto,
+  CaptureWeightDto,
   ChatMessageDto,
   DriverAssignment,
   DriverStopAction,
@@ -8,12 +9,14 @@ import type {
   MarkReadResult,
   MessageListResult,
   MessagesQuery,
+  OrderWeightView,
   PresignMediaResult,
   PresignPodMediaDto,
   ProofOfDeliveryView,
   StopActionDto,
   StopExceptionDto,
   UnreadCountResult,
+  WeightCaptureResult,
 } from '@blue-bee/shared';
 import { ApiClient as BaseApiClient } from '@blue-bee/api-client';
 
@@ -58,6 +61,21 @@ export class ApiClient extends BaseApiClient {
   /** Read MY stop's captured proof of delivery (signed reads). */
   getProofOfDelivery(stopId: string): Promise<ProofOfDeliveryView> {
     return this.request('GET', `/driver/stops/${stopId}/proof-of-delivery`);
+  }
+
+  // ───────────── weigh a load at MY stop (Inc-23 P2 — offline-first) ─────────────
+
+  /**
+   * Approve a weighed load at MY stop. `idempotencyKey` (stable per approval) makes an offline-queued
+   * retry safe — a re-send of the SAME approval is de-duped server-side; a re-weigh mints a NEW key.
+   */
+  weighLoad(stopId: string, dto: CaptureWeightDto, idempotencyKey?: string): Promise<WeightCaptureResult> {
+    return this.request('POST', `/driver/stops/${stopId}/weigh`, { body: dto, idempotencyKey });
+  }
+
+  /** MY stop order's authoritative weight + append-only history + the customer estimate. */
+  getStopWeight(stopId: string): Promise<OrderWeightView> {
+    return this.request('GET', `/driver/stops/${stopId}/weight`);
   }
 
   // ───────────── in-app chat (Increment 18 — per-order customer ↔ assigned-driver thread) ─────────────

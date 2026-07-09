@@ -37,6 +37,22 @@ export class PricingService {
     return rate;
   }
 
+  /**
+   * [Inc-22] The configurable minimum-order floor (cents) from Organization.billing_config.minOrderCents →
+   * env MIN_ORDER_CENTS → 0 (no floor). Applied to the auto-priced/quoted subtotal (max(subtotal, floor)).
+   */
+  resolveMinOrderCents(org: { billingConfig: unknown }): number {
+    const cfg = (org.billingConfig ?? {}) as Record<string, unknown>;
+    const fromOrg = typeof cfg.minOrderCents === 'number' ? cfg.minOrderCents : undefined;
+    const envRaw = process.env.MIN_ORDER_CENTS;
+    const fromEnv = envRaw !== undefined && envRaw !== '' ? Number(envRaw) : undefined;
+    const cents = fromOrg ?? (fromEnv !== undefined && Number.isFinite(fromEnv) ? fromEnv : undefined) ?? 0;
+    if (!(Number.isInteger(cents) && cents >= 0)) {
+      throw new Error(`Configured minimum-order floor ${cents} must be a non-negative integer number of cents`);
+    }
+    return cents;
+  }
+
   /** Resolve the effective rate for (org, account, service). Throws if the service is missing. */
   async resolveRate(orgId: string, accountId: string, serviceId: string): Promise<ResolvedRate> {
     const service = await this.prisma.service.findFirst({ where: { id: serviceId, orgId } });

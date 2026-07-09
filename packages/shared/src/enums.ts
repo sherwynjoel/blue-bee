@@ -93,6 +93,16 @@ export enum PricingUnit {
   PER_MEASURE = 'PER_MEASURE',
 }
 
+/**
+ * [Inc-22] Where a load was weighed. A PICKUP weight (driver, at the door) may be corrected by a later
+ * PLANT weight (plant scale); BOTH are retained as append-only WeightCapture rows and the authoritative
+ * weight is the most recent capture — the switch is audited, never a mutation. Mirrored 1:1 to Prisma.
+ */
+export enum WeighPoint {
+  PICKUP = 'PICKUP',
+  PLANT = 'PLANT',
+}
+
 // ──────────────────────────── Orders & custody ─────────────────────────────
 
 /** [§9 LITERAL] Order.vertical (§9.3). Mirrors ServiceVertical. */

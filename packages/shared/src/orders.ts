@@ -7,7 +7,7 @@
  * the wire shapes for book → intake/inspection → quote → approve/decline.
  */
 import { z } from 'zod';
-import { ItemKind, PhotoKind, OrderStatus } from './enums';
+import { ItemKind, PhotoKind, OrderStatus, WeighPoint } from './enums';
 import { geoPointSchema, timeWindowSchema } from './validators';
 
 /** Free-form measurement bag persisted to Item.measurements (sqft, pieces, weightLb, dims…). */
@@ -135,6 +135,65 @@ export type HoldOrderDto = z.infer<typeof holdOrderSchema>;
 export const resumeOrderSchema = z.object({ note: z.string().max(500).optional() }).default({});
 export type ResumeOrderDto = z.infer<typeof resumeOrderSchema>;
 
+// ───────────────────── weight capture (POST …/weigh) — Increment 22 ─────────────────────
+
+/**
+ * [Inc-22] A driver/plant weight approval → an APPEND-ONLY WeightCapture. `weightKg` is the approved
+ * actual (overrides any customer estimate); `weighPoint` = PICKUP or PLANT; `itemId` targets a specific
+ * line item (omit for a single-line order → the server resolves the one weighable line). The mutation
+ * carries an Idempotency-Key (drivers re-submit on flaky networks) — a repeat with the same key returns
+ * the first capture, a NEW key writes a NEW (re-weigh) capture; the old capture is never mutated.
+ */
+export const captureWeightSchema = z.object({
+  weightKg: z.number().positive().max(100000),
+  weighPoint: z.nativeEnum(WeighPoint),
+  itemId: z.string().uuid().optional(),
+  /** Free-form provenance: 'driver' | 'plant' | 'owner_adjustment' (audited). */
+  source: z.string().trim().min(1).max(40).optional(),
+  note: z.string().trim().max(500).optional(),
+});
+export type CaptureWeightDto = z.infer<typeof captureWeightSchema>;
+
+/** One append-only weight capture row (newest first in the history). */
+export interface WeightCaptureView {
+  id: string;
+  orderId: string;
+  itemId: string | null;
+  weightKg: string;
+  weighPoint: WeighPoint;
+  capturedByUserId: string | null;
+  capturedAt: string;
+  source: string | null;
+  note: string | null;
+}
+
+/** What the pricing gate did after an approved weight/measure. */
+export type WeighPricingStatus = 'auto_approved' | 'quote_sent' | 'none';
+
+/** Result of a weigh: the new capture, the current authoritative weight, and the pricing outcome. */
+export interface WeightCaptureResult {
+  capture: WeightCaptureView;
+  /** The authoritative weight for the order/item = the most recent capture (this one). */
+  authoritativeWeightKg: string;
+  pricing: {
+    status: WeighPricingStatus;
+    /** Quote total (decimal string) when priced, else null. */
+    total: string | null;
+    currency: string;
+    /** True when the FROM_MEASURED specialty gate left a quote awaiting customer approval. */
+    awaitsCustomerApproval: boolean;
+    orderStatus: OrderStatus;
+  };
+}
+
+/** GET …/weight — the authoritative weight + the full append-only capture history for an order. */
+export interface OrderWeightView {
+  orderId: string;
+  authoritativeWeightKg: string | null;
+  authoritativeWeighPoint: WeighPoint | null;
+  captures: WeightCaptureView[];
+}
+
 // ───────────────────── shared error codes (problem+json `title`) ─────────────────────
 
 export const ORDER_ERRORS = {
@@ -148,5 +207,8 @@ export const ORDER_ERRORS = {
   MEASURE_MISSING: 'measure_missing',
   INVALID_MEDIA_URL: 'invalid_media_url',
   INVALID_BOOKING: 'invalid_booking',
+  // [Inc-22] weight capture
+  WEIGH_ITEM_AMBIGUOUS: 'weigh_item_ambiguous',
+  WEIGH_NOT_WEIGHABLE: 'weigh_not_weighable',
 } as const;
 export type OrderErrorCode = (typeof ORDER_ERRORS)[keyof typeof ORDER_ERRORS];

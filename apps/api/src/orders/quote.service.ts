@@ -46,6 +46,10 @@ export function deriveMeasure(unit: string, measurements: Record<string, unknown
       return num(measurements.pieces) ?? num(measurements.count) ?? num(measurements.qty);
     case ServiceUnit.LB:
       return num(measurements.weightLb) ?? num(measurements.lb) ?? num(measurements.weight);
+    // [Inc-22] per-kilogram (consumer Wash & Fold) — the measure is the approved weigh capture (kg),
+    // denormalized onto Item.measurements.weightKg by the WeighService.
+    case ServiceUnit.KG:
+      return num(measurements.weightKg) ?? num(measurements.kg) ?? num(measurements.weight);
     default:
       return num(measurements.measure);
   }
@@ -75,6 +79,7 @@ export class QuoteService {
 
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: order.orgId } });
     const taxRate = this.pricing.resolveTaxRate(org);
+    const minOrderCents = this.pricing.resolveMinOrderCents(org);
 
     const lines = await this.prisma.orderLine.findMany({
       where: { orderId, orgId: order.orgId },
@@ -127,6 +132,7 @@ export class QuoteService {
         inputs,
         taxRate,
         dto.manualAdjustment ? { reason: dto.manualAdjustment.reason, amount: dto.manualAdjustment.amount, actorId: principal.userId } : undefined,
+        { minOrderCents },
       );
     } catch (err) {
       if (err instanceof QuoteCalcError) {

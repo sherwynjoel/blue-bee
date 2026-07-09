@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { ServiceZonesModule } from '../service-zones/service-zones.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { AuditService } from './audit.service';
 import { IntakeService } from './intake.service';
 import { OrderAccessService } from './order-access.service';
@@ -10,6 +11,7 @@ import { PricingService } from './pricing.service';
 import { PricingAccountService } from './pricing-account.service';
 import { QuoteService } from './quote.service';
 import { OrderStateMachine } from './state-machine.service';
+import { WeighService } from './weigh.service';
 
 /**
  * Orders module (Increment 3, BUILD-PLAN item 5) — specialty book → intake/inspection
@@ -20,12 +22,15 @@ import { OrderStateMachine } from './state-machine.service';
 @Module({
   // [Inc-19] ServiceZonesModule exports ServiceZonesService (the booking geo-block gate). One-directional
   // (ServiceZonesModule does NOT import OrdersModule) → no cycle.
-  imports: [ServiceZonesModule],
+  // [Inc-22] RealtimeModule exports RealtimePublisher (the weigh live-push). RealtimeModule imports only
+  // Jwt/Auth (not OrdersModule) → no cycle.
+  imports: [ServiceZonesModule, RealtimeModule],
   controllers: [OrdersController],
   providers: [
     OrdersService,
     IntakeService,
     QuoteService,
+    WeighService,
     PricingService,
     PricingAccountService,
     OrderStateMachine,

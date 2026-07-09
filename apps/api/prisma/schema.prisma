@@ -85,6 +85,13 @@ enum PricingUnit {
   PER_MEASURE
 }
 
+// [Inc-22] Mirrors packages/shared/src/enums.ts WeighPoint. Where a load was weighed (a PLANT weight may
+// correct a PICKUP weight; both retained as append-only WeightCapture rows).
+enum WeighPoint {
+  PICKUP
+  PLANT
+}
+
 enum OrderVertical {
   SPECIALTY
   LINEN
@@ -988,6 +995,35 @@ model CustodyEvent {
   @@index([orgId])
   @@index([itemId])
   @@index([occurredAt])
+}
+
+// [Inc-22] APPEND-ONLY weight capture — the driver/plant "measure" for a per-kg (or weighed) service.
+// A DB trigger (`weight_capture_append_only`, reusing bluebee_block_mutation) blocks UPDATE/DELETE, so a
+// capture is never mutated (PRD §8.2/§8.6). The authoritative weight for an order/item = the MOST RECENT
+// capture (by capturedAt); a PLANT weight can correct a PICKUP weight (both retained; the switch is audited
+// via AuditLog, never a mutation). Parent refs are SCALAR columns (no FK relations) — the LinenMovement
+// ledger precedent — so a (rare) parent hard-delete never fires a cascade UPDATE/DELETE the append-only
+// trigger would (correctly) refuse. Booking may carry a customer estimate (OrderLine.estimatedMeasure); the
+// driver/plant actual here always overrides it for pricing.
+model WeightCapture {
+  id               String     @id @default(uuid()) @db.Uuid
+  orgId            String     @map("org_id") @db.Uuid
+  orderId          String     @map("order_id") @db.Uuid
+  itemId           String?    @map("item_id") @db.Uuid
+  weightKg         Decimal    @map("weight_kg") @db.Decimal(10, 2)
+  weighPoint       WeighPoint @map("weigh_point")
+  capturedByUserId String?    @map("captured_by_user_id") @db.Uuid
+  capturedAt       DateTime   @default(now()) @map("captured_at")
+  source           String? // 'driver' | 'plant' | 'owner_adjustment'
+  note             String?
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+  createdBy        String?    @map("created_by") @db.Uuid
+
+  @@index([orgId])
+  @@index([orderId])
+  @@index([itemId])
+  @@index([capturedAt])
 }
 
 // ─────────────────────────────── geo-blocking / service zones (Inc-19) ───────────────────────────────

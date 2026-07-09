@@ -8,6 +8,7 @@ import {
   type LiveEtaEvent,
   type LiveGeofenceEvent,
   type LivePositionEvent,
+  type LiveWeightEvent,
 } from '@blue-bee/shared';
 
 /**
@@ -100,6 +101,18 @@ export class RealtimePublisher {
   publishChatMessage(orgId: string, orderId: string, payload: ChatMessageEvent): void {
     if (!this.server) return; // gateway not initialised — REST history remains source of truth
     this.server.of(WS_NAMESPACES.VEHICLE).to(this.orderRoom(orgId, orderId)).emit(WS_EVENTS.CHAT_MESSAGE, payload);
+  }
+
+  /**
+   * [Inc-22] Push an approved weight capture + re-price to BOTH the org FLEET room (dashboard: live
+   * authoritative weight + computed price line) AND the order's ORDER room on the VEHICLE namespace (the
+   * order's customer, server-bound at the handshake). REST stays the source of truth — this is the live
+   * push; an offline client backfills via the order read. Never a namespace-wide broadcast.
+   */
+  publishWeight(orgId: string, orderId: string, payload: LiveWeightEvent): void {
+    if (!this.server) return; // gateway not initialised — REST read remains source of truth
+    this.server.of(WS_NAMESPACES.FLEET).to(this.fleetRoom(orgId)).emit(WS_EVENTS.WEIGHT, payload);
+    this.server.of(WS_NAMESPACES.VEHICLE).to(this.orderRoom(orgId, orderId)).emit(WS_EVENTS.WEIGHT, payload);
   }
 
   /**

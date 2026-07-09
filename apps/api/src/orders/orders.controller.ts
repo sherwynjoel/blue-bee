@@ -4,6 +4,7 @@ import {
   RoleType,
   approveQuoteSchema,
   bookOrderSchema,
+  captureWeightSchema,
   declineQuoteSchema,
   holdOrderSchema,
   inspectionSchema,
@@ -14,6 +15,7 @@ import {
   schedulePickupSchema,
   type ApproveQuoteDto,
   type BookOrderDto,
+  type CaptureWeightDto,
   type DeclineQuoteDto,
   type HoldOrderDto,
   type InspectionDto,
@@ -30,6 +32,7 @@ import type { RequestPrincipal } from '../auth/rbac/types';
 import { IntakeService } from './intake.service';
 import { OrdersService } from './orders.service';
 import { QuoteService } from './quote.service';
+import { WeighService } from './weigh.service';
 
 /**
  * Specialty order endpoints (PRD §11.1, §5.1, §8.3) — book → intake/inspection →
@@ -46,6 +49,7 @@ export class OrdersController {
     private readonly orders: OrdersService,
     private readonly intake: IntakeService,
     private readonly quote: QuoteService,
+    private readonly weigh: WeighService,
   ) {}
 
   // ─────────────────────────── book + read/list ───────────────────────────
@@ -131,6 +135,26 @@ export class OrdersController {
   @ApiOperation({ summary: 'Decline the quote → QUOTE_DECLINED → schedule return → CLOSED_NO_WORK (§5.1 branch).' })
   decline(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(declineQuoteSchema)) dto: DeclineQuoteDto) {
     return this.quote.decline(p, id, dto);
+  }
+
+  // ─────────────────────────── weigh (Inc-22 — driver/plant weight → hybrid pricing) ───────────────────────────
+
+  @Post(':id/weigh')
+  @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP, RoleType.DRIVER, RoleType.DISPATCHER)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Approve an actual weight (append-only, idempotent) → the authoritative weight; runs the hybrid pricing gate (all-FIXED auto-priced+approved at the published rate; a FROM_MEASURED specialty line → quote SENT for customer approval) and emits the live weight push.',
+  })
+  weighLoad(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(captureWeightSchema)) dto: CaptureWeightDto) {
+    return this.weigh.weigh(p, id, dto);
+  }
+
+  @Get(':id/weight')
+  @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP, RoleType.DRIVER, RoleType.DISPATCHER, RoleType.FINANCE)
+  @ApiOperation({ summary: 'The order authoritative weight (most recent capture) + the full append-only capture history.' })
+  orderWeight(@CurrentUser() p: RequestPrincipal, @Param('id') id: string) {
+    return this.weigh.getOrderWeight(p, id);
   }
 
   // ─────────────────────────── hold / resume (staff) ───────────────────────────

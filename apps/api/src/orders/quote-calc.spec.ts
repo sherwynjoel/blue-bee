@@ -77,4 +77,41 @@ describe('computeQuote (PRD §8.3 quote engine)', () => {
     expect(q.subtotal).toBe('650000.00');
     expect(q.total).toBe('734500.00');
   });
+
+  // [Inc-22] the configurable minimum-order floor applied by the hybrid weight/measure pricing gate.
+  describe('minimum-order floor (Inc-22)', () => {
+    // A small consumer Wash & Fold line: 4kg × $3.50 = $14.00 (TEST rate, arithmetic only).
+    const wash = line({ itemId: 'wf', serviceId: 'svc-wf', serviceName: 'Wash & Fold', unit: 'KG', measure: 4, rate: 3.5, rateSource: 'service_base' });
+
+    it('tops the subtotal up to the floor when it falls short (and taxes the floored subtotal)', () => {
+      const q = computeQuote([wash], 0.13, undefined, { minOrderCents: 2000 }); // $14.00 < $20.00 floor
+      expect(q.lines[0].amount).toBe('14.00');
+      expect(q.minimumTopUp).toBe('6.00');
+      expect(q.subtotal).toBe('20.00');
+      expect(q.tax).toBe('2.60');
+      expect(q.total).toBe('22.60');
+    });
+
+    it('does NOT top up when the subtotal already meets/exceeds the floor', () => {
+      const q = computeQuote([wash], 0.13, undefined, { minOrderCents: 1000 }); // $14.00 ≥ $10.00 floor
+      expect(q.minimumTopUp).toBeNull();
+      expect(q.subtotal).toBe('14.00');
+    });
+
+    it('a zero / unset floor never tops up', () => {
+      expect(computeQuote([wash], 0.13, undefined, { minOrderCents: 0 }).minimumTopUp).toBeNull();
+      expect(computeQuote([wash], 0.13).minimumTopUp).toBeNull();
+    });
+
+    it('applies the floor AFTER a manual adjustment', () => {
+      const q = computeQuote([wash], 0.13, { reason: 'promo', amount: -10, actorId: 'a' }, { minOrderCents: 2000 });
+      expect(q.subtotal).toBe('20.00'); // $14.00 − $10.00 = $4.00, floored up to $20.00
+      expect(q.minimumTopUp).toBe('16.00');
+    });
+
+    it('rejects a negative / non-integer floor', () => {
+      expect(() => computeQuote([wash], 0.13, undefined, { minOrderCents: -5 })).toThrow(QuoteCalcError);
+      expect(() => computeQuote([wash], 0.13, undefined, { minOrderCents: 10.5 })).toThrow(QuoteCalcError);
+    });
+  });
 });

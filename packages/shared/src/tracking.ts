@@ -189,7 +189,32 @@ export const WS_EVENTS = {
    * an offline/degraded client backfills via GET /v1/orders/:id/messages, never losing a message.
    */
   CHAT_MESSAGE: 'chat:message',
+  /**
+   * [Inc-22] A driver/plant-approved weight capture was recorded and the order re-priced. Emitted to the
+   * org FLEET room (dashboard: live authoritative weight + computed price line) AND the order's ORDER room
+   * on the VEHICLE namespace (the order's customer, server-bound). Payload: `LiveWeightEvent`. An
+   * OPTIMIZATION over the REST source of truth — an offline client backfills via the order read.
+   */
+  WEIGHT: 'weight',
 } as const;
+
+/**
+ * [Inc-22] Payload of a `weight` event — a driver/plant weight was approved and the order re-priced.
+ * `pricingStatus` mirrors what the pricing gate did: `auto_approved` (all-FIXED lines auto-priced at the
+ * published rate) or `quote_sent` (a FROM_MEASURED specialty line awaits customer approval). `priceTotal`
+ * is the quote total (decimal string) or null if not yet priced.
+ */
+export interface LiveWeightEvent {
+  orderId: string;
+  itemId: string | null;
+  weightKg: string;
+  weighPoint: 'PICKUP' | 'PLANT';
+  authoritativeWeightKg: string;
+  capturedAt: string;
+  pricingStatus: 'auto_approved' | 'quote_sent' | 'none';
+  priceTotal: string | null;
+  currency: string;
+}
 
 /** Payload of a `position` event — one vehicle's live position. */
 export interface LivePositionEvent {

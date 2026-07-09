@@ -42,6 +42,12 @@ export interface ComputedQuote {
   taxRate: number;
   subtotalBeforeAdjustment: string;
   adjustment: { reason: string; actorId: string; amount: string; before: string; after: string } | null;
+  /**
+   * [Inc-22] The configurable minimum-order floor top-up applied to the subtotal (decimal string), or null
+   * when the computed subtotal already met/exceeded the floor (or no floor is configured). TODO: kg banding
+   * can be layered later if wanted; today pricing is exact measure × rate + this order-level floor.
+   */
+  minimumTopUp: string | null;
   subtotal: string;
   tax: string;
   total: string;
@@ -52,12 +58,15 @@ export class QuoteCalcError extends Error {}
 /**
  * Compute a quote from already-resolved line inputs. Throws `QuoteCalcError` on
  * invalid measures (≤ 0 or non-finite) or an adjustment that drives the subtotal
- * below zero — surfaced by the caller as a 422 problem+json.
+ * below zero — surfaced by the caller as a 422 problem+json. `opts.minOrderCents` [Inc-22] applies the
+ * configurable minimum-order floor: after lines (+ any manual adjustment), the subtotal is topped up to the
+ * floor if it falls short (max(subtotal, floor)); tax is charged on the floored subtotal.
  */
 export function computeQuote(
   lines: QuoteLineInput[],
   taxRate: number,
   adjustment?: ManualAdjustmentInput,
+  opts?: { minOrderCents?: number },
 ): ComputedQuote {
   if (lines.length === 0) throw new QuoteCalcError('a quote needs at least one line');
   if (!(taxRate >= 0 && taxRate < 1)) throw new QuoteCalcError(`invalid tax rate ${taxRate}`);
@@ -115,6 +124,19 @@ export function computeQuote(
     subtotalCents = after;
   }
 
+  // [Inc-22] Minimum-order floor: top the subtotal up to the configured floor if it falls short.
+  let minimumTopUp: string | null = null;
+  const floorCents = opts?.minOrderCents;
+  if (floorCents !== undefined) {
+    if (!(Number.isInteger(floorCents) && floorCents >= 0)) {
+      throw new QuoteCalcError(`minimum-order floor must be a non-negative integer number of cents (got ${floorCents})`);
+    }
+    if (subtotalCents < floorCents) {
+      minimumTopUp = centsToMoney(floorCents - subtotalCents);
+      subtotalCents = floorCents;
+    }
+  }
+
   const taxCents = roundCents((subtotalCents / 100) * taxRate);
   const totalCents = subtotalCents + taxCents;
 
@@ -123,6 +145,7 @@ export function computeQuote(
     taxRate,
     subtotalBeforeAdjustment: centsToMoney(subtotalBeforeAdjustment),
     adjustment: adjustmentRecord,
+    minimumTopUp,
     subtotal: centsToMoney(subtotalCents),
     tax: centsToMoney(taxCents),
     total: centsToMoney(totalCents),

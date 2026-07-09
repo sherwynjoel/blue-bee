@@ -149,6 +149,8 @@ import type {
   ShiftView,
   VehicleView,
 } from './types';
+// [Inc-23 P3] weight capture (order-scoped read + audited override).
+import type { CaptureWeightDto, OrderWeightView, WeightCaptureResult } from '@blue-bee/shared';
 
 /** Standing-order list page (cursor-paginated) — the server's list shape. */
 export interface StandingOrderListResult {
@@ -187,6 +189,21 @@ export class ConsoleApiClient extends ApiClient {
 
   getOrder(id: string): Promise<OrderDetail> {
     return this.request('GET', `/orders/${id}`);
+  }
+
+  // ───────────── weight (Inc-22/23 P3) — authoritative weight + audited owner override ─────────────
+
+  /** The order's authoritative weight + weigh point + full append-only capture history + customer estimate. */
+  orderWeight(orderId: string): Promise<OrderWeightView> {
+    return this.request('GET', `/orders/${orderId}/weight`);
+  }
+
+  /**
+   * Post an AUDITED weight correction (owner/plant) — writes a NEW append-only capture (never mutates
+   * history); the authoritative weight becomes this one. Server-side RBAC + org-scoping enforced.
+   */
+  weighOrder(orderId: string, dto: CaptureWeightDto): Promise<WeightCaptureResult> {
+    return this.request('POST', `/orders/${orderId}/weigh`, { body: dto });
   }
 
   schedulePickup(id: string, dto: SchedulePickupDto): Promise<OrderDetail> {

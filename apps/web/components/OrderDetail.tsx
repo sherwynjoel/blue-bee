@@ -15,6 +15,7 @@ import { CostCenterPicker } from './CostCenters';
 import { StatusTimeline } from './StatusTimeline';
 import { OrderActions } from './order/OrderActions';
 import { QuotePanel } from './order/QuotePanel';
+import { WeightPanel } from './order/WeightPanel';
 import { InspectionForm } from './order/InspectionForm';
 
 export function OrderDetailView({ orderId }: { orderId: string }): React.ReactElement {
@@ -70,6 +71,8 @@ export function OrderDetailView({ orderId }: { orderId: string }): React.ReactEl
           <Card title="Quote">
             <QuotePanel order={order} onChanged={setOrder} />
           </Card>
+          {/* [Inc-23 P3] Live authoritative weight + capture history + owner audited override. */}
+          <WeightPanel orderId={order.id} />
           {can.finance(me) && (
             <Card title="Billing">
               <div className="space-y-0.5">

@@ -12,6 +12,10 @@ const catalog = (over: Partial<DrycleanCatalogView> = {}): DrycleanCatalogView =
     {
       id: 'cat-1',
       name: 'Shirts',
+      description: 'Crisp shirts and blouses.',
+      features: ['DRY CLEAN', 'PRESS'],
+      icon: 'shirts',
+      priceFrom: '6.00',
       sortOrder: 1,
       items: [{ id: 'item-1', name: 'Dress shirt', imageUrl: 'https://minio.local/x.png?sig=1', price: '6.00', priceSource: 'service_base' }],
     },

@@ -1,0 +1,235 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ApiError } from '@blue-bee/api-client';
+import type { DrycleanCatalogView, DrycleanCategoryView } from '@blue-bee/shared';
+import { useSession } from '../session/SessionProvider';
+import type { RootStackParamList } from '../navigation';
+import { money } from '../format';
+import { useTheme } from '../../theme';
+import { Button, Card, EmptyState, SkeletonCard, Text, fireHaptic } from '../../components/ui';
+
+/**
+ * Home — the service grid (PRD §7A). A 2-up grid of the org's service categories, driven ENTIRELY by the
+ * live catalog (`getDrycleanCatalog`): each card is a category's icon → title → description → feature tags →
+ * a "from" price. Nothing here is hard-coded — `description`/`features`/`icon`/`priceFrom` all come from the
+ * server (founder-editable in the console). The card degrades gracefully when a field is unset (missing copy
+ * is simply omitted; a missing icon falls back). Tapping a card opens the existing Book flow.
+ */
+export function HomeScreen(): React.ReactElement {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const { client, me } = useSession();
+  const { colors, space } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const [catalog, setCatalog] = useState<DrycleanCatalogView | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    setError(null);
+    try {
+      setCatalog(await client.getDrycleanCatalog());
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not load our services.');
+    } finally {
+      setLoading(false);
+    }
+  }, [client]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const firstName = me?.user.name ? me.user.name.split(' ')[0] : null;
+  const categories = catalog?.categories ?? [];
+  const currency = catalog?.currency ?? 'CAD';
+
+  const header = (
+    <View style={[styles.headerWrap, { paddingTop: insets.top + 12 }]}>
+      <Text variant="display" weight="700">
+        Our services
+      </Text>
+      <Text variant="subhead" color="secondary" style={{ marginTop: 4 }}>
+        {firstName ? `Hi ${firstName} — pick a service to get started.` : 'Pick a service to get started.'}
+      </Text>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.canvas }]} testID="home-loading">
+        {header}
+        <View style={styles.grid}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={styles.cell}>
+              <SkeletonCard />
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
+        {header}
+        <Card style={styles.stateCard}>
+          <Feather name="wifi-off" size={26} color={colors.textTertiary} />
+          <Text variant="headline" weight="600" center style={{ marginTop: 10 }}>
+            Couldn’t load our services
+          </Text>
+          <Text variant="subhead" color="secondary" center style={{ marginTop: 4 }}>
+            {error}
+          </Text>
+          <Button testID="home-retry" label="Try again" icon="refresh-cw" variant="outline" onPress={() => void load()} fullWidth={false} style={{ marginTop: 16 }} />
+        </Card>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      testID="home-scroll"
+      style={{ backgroundColor: colors.canvas }}
+      contentContainerStyle={{ paddingBottom: space.huge }}
+      showsVerticalScrollIndicator={false}
+    >
+      {header}
+      {categories.length === 0 ? (
+        <View style={{ paddingHorizontal: space.xl }}>
+          <EmptyState
+            icon="tag"
+            title="No services yet"
+            body="Our catalog is being set up. Check back soon, or start a booking."
+            actionLabel="Book a pickup"
+            actionIcon="plus"
+            onAction={() => navigation.navigate('Book')}
+          />
+        </View>
+      ) : (
+        <View style={styles.grid}>
+          {categories.map((cat) => (
+            <ServiceCard key={cat.id} category={cat} currency={currency} onPress={() => navigation.navigate('Book')} />
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+/** A semantic icon key → a Feather icon + a theme tint. Pure presentation; the founder sets the key in the
+ *  console. Unknown keys fall back to a neutral tile so a new service never renders broken. */
+type Tint = 'azure' | 'honey' | 'success';
+const CATEGORY_ICONS: Record<string, { icon: React.ComponentProps<typeof Feather>['name']; tint: Tint }> = {
+  shirts: { icon: 'shopping-bag', tint: 'azure' },
+  outerwear: { icon: 'cloud-snow', tint: 'success' },
+  formalwear: { icon: 'award', tint: 'honey' },
+  'wash-fold': { icon: 'droplet', tint: 'azure' },
+  'wash-iron': { icon: 'feather', tint: 'honey' },
+  'dry-clean': { icon: 'wind', tint: 'success' },
+  iron: { icon: 'feather', tint: 'honey' },
+  delicates: { icon: 'feather', tint: 'azure' },
+};
+
+function ServiceCard({
+  category,
+  currency,
+  onPress,
+}: {
+  category: DrycleanCategoryView;
+  currency: string;
+  onPress: () => void;
+}): React.ReactElement {
+  const { colors, radius, elevation } = useTheme();
+  const look = (category.icon && CATEGORY_ICONS[category.icon]) || { icon: 'grid' as const, tint: 'azure' as const };
+  const tint = {
+    azure: { bg: colors.azureTint, fg: colors.azure },
+    honey: { bg: colors.honeyTint, fg: colors.honey },
+    success: { bg: colors.successTint, fg: colors.success },
+  }[look.tint];
+  const features = category.features.slice(0, 4);
+
+  return (
+    <View style={styles.cell}>
+      <Pressable
+        testID={`home-service-${category.id}`}
+        onPress={() => {
+          fireHaptic('selection');
+          onPress();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`${category.name} — book`}
+      >
+        <View
+          style={[
+            styles.card,
+            elevation.e1,
+            { backgroundColor: colors.surface, borderColor: colors.hairline, borderRadius: radius.card },
+          ]}
+        >
+          <View style={styles.cardBody}>
+            <View style={[styles.iconCircle, { backgroundColor: tint.bg }]}>
+              <Feather name={look.icon} size={24} color={tint.fg} />
+            </View>
+            <Text variant="headline" weight="700" center numberOfLines={1} style={styles.title}>
+              {category.name}
+            </Text>
+            {category.description ? (
+              <Text variant="footnote" color="secondary" center numberOfLines={2} style={styles.desc}>
+                {category.description}
+              </Text>
+            ) : null}
+            {features.length > 0 ? (
+              <View style={styles.tags}>
+                {features.map((f) => (
+                  <View key={f} style={[styles.tag, { backgroundColor: colors.subtle }]}>
+                    <Text variant="caption" weight="600" color="secondary">
+                      {f}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+          <View style={[styles.footer, { borderTopColor: colors.hairline, backgroundColor: colors.subtle }]}>
+            <View style={{ flex: 1 }}>
+              <Text variant="caption" color="tertiary">
+                Price per item
+              </Text>
+              {category.priceFrom ? (
+                <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="azure" tabular>
+                  from {money(category.priceFrom, currency)}
+                </Text>
+              ) : (
+                <Text variant="subhead" weight="600" color="secondary">
+                  View
+                </Text>
+              )}
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  headerWrap: { paddingHorizontal: 20, paddingBottom: 12 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 14 },
+  cell: { width: '50%', paddingHorizontal: 6, marginBottom: 12 },
+  card: { borderWidth: 1, overflow: 'hidden' },
+  cardBody: { padding: 14, alignItems: 'center' },
+  iconCircle: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  title: { marginBottom: 2 },
+  desc: { minHeight: 36 },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 10 },
+  tag: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  footer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  stateCard: { marginHorizontal: 20, alignItems: 'center', paddingVertical: 28 },
+});

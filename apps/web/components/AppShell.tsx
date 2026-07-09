@@ -107,7 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.Rea
         { href: '/accounts', label: 'Accounts', show: can.accounts(me), icon: Building2 },
         { href: '/corporate', label: 'Corporate', show: can.corporate(me), icon: Landmark },
         { href: '/service-zones', label: 'Service zones', show: can.zones(me), icon: MapIcon },
-        { href: '/catalog', label: 'Dry-clean catalog', show: can.catalog(me), icon: Tag },
+        { href: '/catalog', label: 'Catalog & pricing', show: can.catalog(me), icon: Tag },
         { href: '/finance', label: 'Finance', show: can.finance(me), icon: Wallet },
         { href: '/analytics', label: 'Analytics', show: can.analytics(me), icon: BarChart3 },
       ],

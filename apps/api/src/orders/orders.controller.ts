@@ -151,7 +151,19 @@ export class OrdersController {
   }
 
   @Get(':id/weight')
-  @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP, RoleType.DRIVER, RoleType.DISPATCHER, RoleType.FINANCE)
+  // Staff + the OWNING customer (Inc-23 P4 — "Weighed X kg → $Y" live line). getOrderForRead's scoped
+  // client enforces ownership, so a customer only ever reads their OWN order's weight.
+  @Roles(
+    RoleType.OWNER,
+    RoleType.CSR,
+    RoleType.PLANT_OP,
+    RoleType.DRIVER,
+    RoleType.DISPATCHER,
+    RoleType.FINANCE,
+    RoleType.RESIDENTIAL_CUSTOMER,
+    RoleType.ACCOUNT_ADMIN,
+    RoleType.ACCOUNT_STAFF,
+  )
   @ApiOperation({ summary: 'The order authoritative weight (most recent capture) + the full append-only capture history.' })
   orderWeight(@CurrentUser() p: RequestPrincipal, @Param('id') id: string) {
     return this.weigh.getOrderWeight(p, id);

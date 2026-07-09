@@ -1,10 +1,12 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { PhotoKind } from '@blue-bee/shared';
+import { io } from 'socket.io-client';
+import { PhotoKind, WS_EVENTS, WS_NAMESPACES, type LiveWeightEvent, type OrderWeightView } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useFocusEffect, type NavigationProp, type RouteProp } from '@react-navigation/native';
 import { useSession } from '../session/SessionProvider';
+import { API_BASE_URL } from '../config';
 import type { OrderDetail, ItemView } from '../api/types';
 import type { RootStackParamList } from '../navigation';
 import { StatusTimeline } from '../components/StatusTimeline';
@@ -29,6 +31,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
   const { client } = useSession();
   const { colors, space } = useTheme();
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [weight, setWeight] = useState<OrderWeightView | null>(null);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +57,11 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
         .getUnreadCount(orderId)
         .then((r) => setUnread(r.unreadCount))
         .catch(() => undefined);
+      // [Inc-23 P4] Best-effort authoritative weight for the "Weighed X kg → $Y" line; never blocks.
+      void client
+        .getOrderWeight(orderId)
+        .then(setWeight)
+        .catch(() => undefined);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load this order.');
     } finally {
@@ -66,6 +74,32 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       void load();
     }, [load]),
   );
+
+  // [Inc-23 P4] Live weight over the §12.2 token-scoped customer channel: when a driver approves a weigh at
+  // an ACTIVE stop (→ a short-lived channel token), the order room pushes a `weight` event and we re-read so
+  // "Weighed X kg → $Y" updates without a manual refresh. No token (e.g. a plant weigh with no active stop)
+  // → the focus refetch stays the source of truth. The socket only listens; it never emits.
+  useEffect(() => {
+    let socket: ReturnType<typeof io> | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        // The ORDER-ROOM channel (same token the chat uses) — the gateway joins the order room for it, and
+        // `weight` is emitted to the order room. The tracking token only joins vehicle/stop rooms, so it
+        // would NOT receive order-level weight pushes.
+        const channel = await client.getMessagesChannel(orderId);
+        if (cancelled || !channel.channelToken) return;
+        socket = io(`${API_BASE_URL}${WS_NAMESPACES.VEHICLE}`, { transports: ['websocket'], auth: { token: channel.channelToken }, reconnection: true, forceNew: true });
+        socket.on(WS_EVENTS.WEIGHT, () => void load());
+      } catch {
+        // no active channel — the focus refetch covers it
+      }
+    })();
+    return () => {
+      cancelled = true;
+      socket?.disconnect();
+    };
+  }, [client, orderId, load]);
 
   const onApprove = useCallback(async () => {
     setActing(true);
@@ -216,6 +250,37 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       <Card title="Progress">
         <StatusTimeline status={order.status} heldFrom={order.heldFrom} />
       </Card>
+
+      {/* [Inc-23 P4] The live "Weighed X kg → $Y" line for weight-priced (FIXED) services. No fake numbers:
+          a pending state until a real weight exists; the specialty (FROM_MEASURED) quote card below handles
+          approve/decline. Updates live off the §12.2 channel when a driver approves at an active stop. */}
+      {weight && (weight.authoritativeWeightKg || weight.customerEstimate != null) ? (
+        <Card title="Weight">
+          {weight.authoritativeWeightKg ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text testID="order-weighed" variant="title3" weight="700" tabular>
+                  Weighed {weight.authoritativeWeightKg} kg
+                </Text>
+                {weight.authoritativeWeighPoint ? <Badge label={weight.authoritativeWeighPoint} tone="azure" /> : null}
+              </View>
+              {order.totals?.total ? (
+                <Text testID="order-weighed-price" variant="subhead" color="secondary" style={{ marginTop: 4 }}>
+                  → {money(order.totals.total, order.totals?.currency)}
+                </Text>
+              ) : (
+                <Text variant="footnote" color="tertiary" style={{ marginTop: 4 }}>
+                  Pricing your order…
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text testID="order-weight-pending" variant="subhead" color="secondary">
+              Weighing pending{weight.customerEstimate != null ? ` — you estimated ~${weight.customerEstimate} kg` : ''}.
+            </Text>
+          )}
+        </Card>
+      ) : null}
 
       {qa.quote ? (
         <Card title="Quote" titleAccessory={qa.approved ? <Badge label="Approved" tone="success" /> : qa.declined ? <Badge label="Declined" tone="danger" /> : qa.actionable ? <Badge label="Action needed" tone="honey" /> : undefined}>

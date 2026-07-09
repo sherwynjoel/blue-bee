@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import { OrderStatus, QuoteStatus } from '@blue-bee/shared';
+import { OrderStatus, QuoteStatus, WeighPoint, type OrderWeightView } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import type { OrderDetail } from '../api/types';
 
@@ -17,6 +17,9 @@ const mockClient = {
   approveQuote: jest.fn(),
   declineQuote: jest.fn(),
   getUnreadCount: jest.fn(),
+  // [Inc-23 P4] best-effort weight line + live order-room channel (default: no weight, no active channel).
+  getOrderWeight: jest.fn(async (): Promise<OrderWeightView> => ({ orderId: 'order-aaaa1111', authoritativeWeightKg: null, authoritativeWeighPoint: null, captures: [], customerEstimate: null })),
+  getMessagesChannel: jest.fn(async () => ({ channelToken: null, stopId: null, vehicleId: null })),
 };
 jest.mock('../session/SessionProvider', () => ({ useSession: () => ({ client: mockClient }) }));
 
@@ -80,6 +83,27 @@ describe('OrderDetailScreen', () => {
     expect(getByTestId('damage-notice')).toBeTruthy();
     expect(getAllByTestId('photo-p1').length).toBeGreaterThan(0); // signed downloadUrl rendered
     expect(getByTestId('approve-quote')).toBeTruthy();
+  });
+
+  it('[Inc-23 P4] shows the "Weighed X kg → $Y" line when the order has an authoritative weight', async () => {
+    mockClient.getOrder.mockResolvedValue(quotedOrder({ status: OrderStatus.QUOTE_APPROVED, totals: { currency: 'CAD', total: '23.73' } }));
+    mockClient.getOrderWeight.mockResolvedValue({
+      orderId: 'order-aaaa1111',
+      authoritativeWeightKg: '6.00',
+      authoritativeWeighPoint: WeighPoint.PLANT,
+      captures: [{ id: 'c1', orderId: 'order-aaaa1111', itemId: null, weightKg: '6.00', weighPoint: WeighPoint.PLANT, capturedByUserId: 'u', capturedAt: '2026-07-10T00:00:00.000Z', source: 'driver', note: null }],
+      customerEstimate: 5,
+    });
+    const { findByTestId, getByTestId } = render(<OrderDetailScreen navigation={navigation} route={route} />);
+    expect(await findByTestId('order-weighed')).toBeTruthy();
+    expect(getByTestId('order-weighed-price')).toBeTruthy(); // → $23.73 (no fabricated number; the server total)
+  });
+
+  it('[Inc-23 P4] shows a pending state (no fake number) until a real weight exists', async () => {
+    mockClient.getOrder.mockResolvedValue(quotedOrder());
+    mockClient.getOrderWeight.mockResolvedValue({ orderId: 'order-aaaa1111', authoritativeWeightKg: null, authoritativeWeighPoint: null, captures: [], customerEstimate: 5 });
+    const { findByTestId } = render(<OrderDetailScreen navigation={navigation} route={route} />);
+    expect(await findByTestId('order-weight-pending')).toBeTruthy();
   });
 
   it('shows the corporate-pricing indicator when the order is priced on a corporate account (server truth)', async () => {

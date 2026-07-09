@@ -16,6 +16,7 @@ import type {
   MessageListResult,
   MessagesQuery,
   OrderTrackingResult,
+  OrderWeightView,
   PaymentIntentResponse,
   PaymentView,
   PresignMediaDto,
@@ -73,6 +74,11 @@ export class CustomerApiClient extends ApiClient {
 
   getOrder(orderId: string): Promise<OrderDetail> {
     return this.request('GET', `/orders/${orderId}`);
+  }
+
+  /** [Inc-23 P4] The order's authoritative weight + append-only history + the booking estimate (own order). */
+  getOrderWeight(orderId: string): Promise<OrderWeightView> {
+    return this.request('GET', `/orders/${orderId}/weight`);
   }
 
   /** Book a specialty job. Pass a stable `idempotencyKey` so a timeout/retry never double-books. */

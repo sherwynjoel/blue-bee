@@ -14,7 +14,10 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-production-d45a.up.railway.app"
+      }
     },
     "production": {
       "channel": "production",

@@ -17,6 +17,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
+    "postinstall": "node -e \"const fs=require('fs');if(!fs.existsSync('packages/shared/src')){console.log('[postinstall] workspace source absent (e.g. API Docker deps stage) -- skipping shared/api-client prebuild');process.exit(0)}require('child_process').execSync('npm run build --workspace @blue-bee/shared && npm run build --workspace @blue-bee/api-client',{stdio:'inherit'})\"",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down"
   },
@@ -25,6 +26,7 @@
   },
   "overrides": {
     "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "react-dom": "18.2.0",
+    "expo-font": "12.0.10"
   }
 }

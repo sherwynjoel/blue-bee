@@ -8,12 +8,26 @@
     "noImplicitOverride": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": ["jest", "node"],
+    "types": [
+      "jest",
+      "node"
+    ],
     "paths": {
-      "@blue-bee/shared": ["../../packages/shared/src/index.ts"],
-      "@blue-bee/api-client": ["../../packages/api-client/src/index.ts"]
+      "@blue-bee/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@blue-bee/api-client": [
+        "../../packages/api-client/src/index.ts"
+      ]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"],
-  "exclude": ["node_modules", "dist", ".expo"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".expo"
+  ]
 }

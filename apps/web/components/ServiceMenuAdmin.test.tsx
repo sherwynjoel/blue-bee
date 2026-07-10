@@ -44,6 +44,44 @@ beforeEach(() => {
   mockClient.reorderCatalog.mockReset().mockResolvedValue({ scope: CatalogReorderScope.SERVICE_CARDS, ids: [] });
 });
 
+describe('[Inc-25] ServiceMenuAdmin — the seed CTA never appears before a confirmed response', () => {
+  it('shows the loading skeleton, NOT "No service cards", while the request is in flight (Railway cold start)', async () => {
+    // a request that never settles — the console must not claim the catalogue is empty
+    mockClient.serviceMenu.mockReturnValue(new Promise(() => {}));
+    render(<ServiceMenuAdmin />);
+
+    expect(await screen.findByTestId('service-menu-loading')).toBeTruthy();
+    expect(screen.queryByText('No service cards')).toBeNull();
+    expect(screen.queryByText(/Run the catalog seed/)).toBeNull();
+  });
+
+  it('shows the error box (with retry), NOT the seed CTA, when the request fails', async () => {
+    mockClient.serviceMenu.mockRejectedValue(new Error('boom'));
+    render(<ServiceMenuAdmin />);
+
+    await waitFor(() => expect(screen.queryByTestId('service-menu-loading')).toBeNull());
+    expect(screen.queryByText('No service cards')).toBeNull();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeTruthy();
+  });
+
+  // The load finished but no payload arrived (empty/aborted body). The OLD code fell through to
+  // `cards.length === 0` and screamed "Run the catalog seed"; the guard must keep showing the skeleton.
+  it('does NOT show the seed CTA when the request settles with no payload at all', async () => {
+    mockClient.serviceMenu.mockResolvedValue(undefined as never);
+    render(<ServiceMenuAdmin />);
+
+    await waitFor(() => expect(screen.getByTestId('service-menu-loading')).toBeTruthy());
+    expect(screen.queryByText('No service cards')).toBeNull();
+    expect(screen.queryByText(/Run the catalog seed/)).toBeNull();
+  });
+
+  it('shows the seed CTA only on a CONFIRMED empty 200', async () => {
+    mockClient.serviceMenu.mockResolvedValue({ currency: 'CAD', cards: [] });
+    render(<ServiceMenuAdmin />);
+    expect(await screen.findByText('No service cards')).toBeTruthy();
+  });
+});
+
 describe('[Inc-24] ServiceMenuAdmin — PER_LB unit', () => {
   it('offers "Per pound (lb)" and labels the rate field "/ lb" once selected', async () => {
     mockClient.serviceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({})] });

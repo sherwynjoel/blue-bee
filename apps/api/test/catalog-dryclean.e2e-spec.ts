@@ -210,6 +210,41 @@ describe('Dry-clean visual catalog e2e (Increment 17)', () => {
     });
   });
 
+  // ───────────── [Inc-25] the dry-clean admin shows GARMENT categories only, never the service cards ─────────────
+
+  describe('[Inc-25] dry-clean admin separation', () => {
+    const WASH_AND_FOLD = '5e000000-0000-4000-8000-000000000001'; // a seeded TOP-LEVEL service card
+
+    it('renders only child (garment) categories — no top-level service card leaks in', async () => {
+      const view = (await get('/v1/catalog/admin', 'owner').expect(200)).body;
+      const names: string[] = view.categories.map((c: { name: string }) => c.name);
+
+      // the 8 service cards are edited in the service-menu editor, not here
+      for (const card of ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Ironing only', 'Rug Cleaning', 'Carpet Cleaning', 'Upholstery', 'Blinds']) {
+        expect(names).not.toContain(card);
+      }
+      // …and the garment sub-catalog IS present
+      expect(names).toEqual(expect.arrayContaining(['Shirts', 'Outerwear', 'Formalwear']));
+
+      // every rendered category is a drill-in child of a card
+      const ids: string[] = view.categories.map((c: { id: string }) => c.id);
+      const rows = await prisma.serviceCategory.findMany({ where: { id: { in: ids } }, select: { parentId: true } });
+      expect(rows.every((r) => r.parentId !== null)).toBe(true);
+    });
+
+    it('an ITEM attached to a top-level card is surfaced in `uncategorized`, never silently dropped', async () => {
+      const orphan = (await post('/v1/catalog/items', 'finance', { name: 'CAT E2E Orphan', price: 4, categoryId: WASH_AND_FOLD }).expect(201)).body;
+
+      const view = (await get('/v1/catalog/admin', 'owner').expect(200)).body;
+      const uncategorizedIds: string[] = view.uncategorized.map((i: { id: string }) => i.id);
+      expect(uncategorizedIds).toContain(orphan.id);
+
+      // it must not have vanished into a category that is no longer rendered
+      const inSomeCategory = view.categories.some((c: { items: Array<{ id: string }> }) => c.items.some((i) => i.id === orphan.id));
+      expect(inSomeCategory).toBe(false);
+    });
+  });
+
   // ─────────────────────────── [Inc-24] reorder: the console order IS the app order ───────────────────────────
 
   describe('[Inc-24] reorder', () => {

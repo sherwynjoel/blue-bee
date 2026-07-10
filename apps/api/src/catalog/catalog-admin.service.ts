@@ -355,18 +355,36 @@ export class CatalogAdminService {
 
   // ─────────────────────────── admin view ───────────────────────────
 
+  /**
+   * The console's DRY-CLEAN catalog view.
+   *
+   * [Inc-25] Only the GARMENT sub-catalog belongs here — i.e. drill-in CHILD categories (`parentId` non-null).
+   * This previously listed EVERY category, so the top-level service cards (Wash & Fold, Rug Cleaning, …) leaked
+   * into the dry-clean section and prompted the founder for per-item garment prices on a per-kg/measured card.
+   * The cards are edited in the service-menu editor; they are not garment categories.
+   *
+   * An ITEM service attached to a top-level card (or to a category outside this view) is therefore no longer
+   * grouped under a visible category. It is surfaced in `uncategorized` rather than silently dropped — losing
+   * a real item off-screen would be worse than showing it in the catch-all bucket.
+   */
   async adminCatalog(principal: RequestPrincipal): Promise<AdminCatalogView> {
     const db = scopedPrisma(this.prisma, principal);
     const [categories, items] = await Promise.all([
-      db.serviceCategory.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], include: { _count: { select: { services: true } } } }),
+      db.serviceCategory.findMany({
+        where: { parentId: { not: null } },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        include: { _count: { select: { services: true } } },
+      }),
       // The dry-clean catalog = every per-item (ITEM) service; grouped by category + an uncategorized bucket.
       db.service.findMany({ where: { unit: ServiceUnit.ITEM }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], include: { category: { select: { name: true } } } }),
     ]);
+    const visible = new Set(categories.map((c) => c.id));
     const itemViews = await Promise.all(items.map((s) => this.toItemView(s)));
     const byCategory = new Map<string, CatalogItemView[]>();
     const uncategorized: CatalogItemView[] = [];
     for (const iv of itemViews) {
-      if (iv.categoryId) {
+      // `categoryId` null, or attached to a category this view does not render (e.g. a top-level card).
+      if (iv.categoryId && visible.has(iv.categoryId)) {
         const arr = byCategory.get(iv.categoryId) ?? [];
         arr.push(iv);
         byCategory.set(iv.categoryId, arr);

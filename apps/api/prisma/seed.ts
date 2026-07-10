@@ -1539,7 +1539,9 @@ async function main(): Promise<void> {
   await seedResidentialSpecialty();
   await seedCorporatePricing();
   await seedServiceZones();
-  await seedDrycleanCatalog(prisma);
+  // [Inc-25] Target the DEMO org EXPLICITLY (never inferred) and opt IN to the dev-only sample garment items.
+  // Prod runs `npm run db:seed:catalog` instead — structure only, org resolved. See seed-catalog-structure.ts.
+  await seedDrycleanCatalog(prisma, { orgId: ID.org, ownerId: ID.owner, sampleItems: true });
   await seedCareHomeEastWing();
   await seedMapleGroveFacilityLinen();
   await seedLiveFleet();

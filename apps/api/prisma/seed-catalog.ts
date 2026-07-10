@@ -1,24 +1,79 @@
 /**
- * Inc-17 — dry-clean visual catalog seed. Seeds ~3 categories + ~7 SAMPLE items (Service, unit ITEM),
- * each with a REAL image pushed into local MinIO through the SAME AWS-SDK S3 path the media provider uses
- * (no hard-coded URLs, no placeholder strings). The image bytes are genuine PNGs generated here (a small
- * solid-colour tile per item), PUT into the `S3_BUCKET`, recorded as a CONFIRMED MediaUpload, and
- * referenced by `Service.imageKey` (signed on read like any other media).
+ * Inc-17 — dry-clean visual catalog seed. Seeds the 8 top-level service cards + 3 garment categories, and
+ * (DEV ONLY) ~7 SAMPLE items (Service, unit ITEM) each with a REAL image pushed into local MinIO through the
+ * SAME AWS-SDK S3 path the media provider uses (no hard-coded URLs, no placeholder strings).
  *
- * SAMPLE DATA: the prices + placeholder-tile images are obviously-sample values — the founder overwrites
- * them for real via the `/catalog` admin screen (upload a real photo + set the real price) after this ships.
+ * [Inc-25] TARGETING. This seed used to HARDCODE the demo org (`11111111-…`). That meant every "seed the live
+ * catalog" run silently wrote the 8 cards into the demo org, which the real (bootstrap-provisioned) login
+ * never reads — the cards appeared to vanish. The org + owner are now RESOLVED, never assumed:
+ *   1. an explicit `orgId`/`ownerId` passed by the caller (seed.ts does this for the demo org), else
+ *   2. `SEED_ORG_ID` / `SEED_OWNER_ID` from the environment, else
+ *   3. the single `Organization` in the database — and if there is more than one, this REFUSES to guess.
+ * It is now structurally impossible to seed the wrong org.
  *
- * Idempotent: deterministic ids; a re-run upserts the same rows + re-PUTs the same keys.
+ * [Inc-25] HONESTY FIREWALL. The SAMPLE garment items + their placeholder tiles are DEV-ONLY and are gated
+ * behind `sampleItems` (caller) / `SEED_SAMPLE_ITEMS=1` (env). They default to OFF, so a production run seeds
+ * STRUCTURE ONLY: 8 cards with `priceFrom = NULL` and no backing rate, plus 3 empty garment categories.
+ * No sample price, no sample image, no S3 write ever reaches prod. The founder enters real prices in /catalog.
+ *
+ * Idempotent: deterministic ids; a re-run upserts the same rows (and re-PUTs the same keys in dev).
  */
 import { deflateSync } from 'node:zlib';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { PrismaClient, type PricingModel, type PricingUnit } from '@prisma/client';
+import { PrismaClient, RoleType, type PricingModel, type PricingUnit } from '@prisma/client';
 
-const ORG = '11111111-1111-4111-8111-111111111111'; // ID.org (matches seed.ts)
-const OWNER = '22222222-2222-4222-8222-222222222222'; // ID.owner
 const uuidIn = (prefix: string) => (n: number): string => `${prefix}-0000-4000-8000-${n.toString().padStart(12, '0')}`;
 const cat = uuidIn('ca000000');
 const svc = uuidIn('5e000000'); // [Inc-21] the 8 top-level service-menu cards
+
+/** [Inc-25] Where this seed writes, and who is recorded as `createdBy`. Resolved, never hardcoded. */
+export interface SeedCatalogTarget {
+  orgId: string;
+  ownerId: string;
+}
+
+/** [Inc-25] Options for a seed run. `sampleItems` ships the DEV-ONLY garment items + placeholder tiles. */
+export interface SeedCatalogOptions extends Partial<SeedCatalogTarget> {
+  sampleItems?: boolean;
+}
+
+/**
+ * [Inc-25] Resolve the target org + owner. Explicit args win, then env, then "the one org in the database".
+ * With more than one org and no explicit target it THROWS rather than picking — that ambiguity is exactly
+ * what silently seeded the demo org before.
+ */
+export async function resolveSeedTarget(prisma: PrismaClient, opts: SeedCatalogOptions = {}): Promise<SeedCatalogTarget> {
+  const orgId = opts.orgId ?? process.env.SEED_ORG_ID ?? (await resolveSoleOrgId(prisma));
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { id: true, name: true } });
+  if (!org) throw new Error(`[seed-catalog] target org ${orgId} does not exist`);
+
+  const ownerId = opts.ownerId ?? process.env.SEED_OWNER_ID ?? (await resolveOrgOwnerId(prisma, org.id));
+  const owner = await prisma.user.findFirst({ where: { id: ownerId, orgId: org.id }, select: { id: true } });
+  if (!owner) throw new Error(`[seed-catalog] owner ${ownerId} is not a user of org ${org.id} ("${org.name}")`);
+
+  console.log(`[seed] target org ${org.id} ("${org.name}"), createdBy ${ownerId}`);
+  return { orgId: org.id, ownerId };
+}
+
+async function resolveSoleOrgId(prisma: PrismaClient): Promise<string> {
+  const orgs = await prisma.organization.findMany({ select: { id: true, name: true }, orderBy: { createdAt: 'asc' } });
+  if (orgs.length === 1) return orgs[0].id;
+  const listed = orgs.map((o) => `${o.id} ("${o.name}")`).join(', ') || '<none>';
+  throw new Error(
+    `[seed-catalog] refusing to guess the target org: found ${orgs.length} organizations (${listed}). ` +
+      `Pass SEED_ORG_ID=<uuid> (and optionally SEED_OWNER_ID=<uuid>).`,
+  );
+}
+
+async function resolveOrgOwnerId(prisma: PrismaClient, orgId: string): Promise<string> {
+  const grant = await prisma.userRole.findFirst({
+    where: { orgId, role: RoleType.OWNER },
+    orderBy: { createdAt: 'asc' },
+    select: { userId: true },
+  });
+  if (!grant) throw new Error(`[seed-catalog] org ${orgId} has no OWNER user; pass SEED_OWNER_ID=<uuid>`);
+  return grant.userId;
+}
 
 // [Inc-21] The 8 top-level customer Home service cards (ServiceCategory, parentId = NULL). STRUCTURE + COPY
 // only — NO price. `priceFrom` is seeded NULL and NO backing rate Service is created (honesty firewall: no
@@ -144,8 +199,11 @@ const CATEGORIES: SeedCategory[] = [
   },
 ];
 
-export async function seedDrycleanCatalog(prisma: PrismaClient): Promise<void> {
-  const { client, bucket } = s3();
+export async function seedDrycleanCatalog(prisma: PrismaClient, opts: SeedCatalogOptions = {}): Promise<void> {
+  const { orgId: ORG, ownerId: OWNER } = await resolveSeedTarget(prisma, opts);
+  // [Inc-25] Sample garment items + their placeholder tiles are DEV-ONLY and default to OFF, so a production
+  // run cannot ship a fake price or touch S3 (the client is not even constructed).
+  const withSamples = opts.sampleItems ?? process.env.SEED_SAMPLE_ITEMS === '1';
   let images = 0;
 
   // [Inc-21] The 8 top-level service-menu cards FIRST (Dry Cleaning must exist before the garment categories
@@ -153,6 +211,9 @@ export async function seedDrycleanCatalog(prisma: PrismaClient): Promise<void> {
   // copy and NEVER touches `priceFrom`, `unit`, `pricingModel`, or a backing rate Service: those are money +
   // pricing structure the FOUNDER owns via the console, so re-seeding never clobbers real rates the owner
   // entered. `create` ships priceFrom = NULL and NO backing Service (honesty firewall — no invented price).
+  //
+  // NOTE (Inc-25): `update` DOES re-assert `sortOrder`, so re-running this seed resets a console reorder.
+  // Reorder after seeding, not before.
   for (const s of SERVICE_CARDS) {
     await prisma.serviceCategory.upsert({
       where: { id: s.id },
@@ -172,6 +233,9 @@ export async function seedDrycleanCatalog(prisma: PrismaClient): Promise<void> {
       update: { name: c.name, sortOrder: c.sortOrder, description: c.description, features: c.features, icon: c.icon, parentId: DRY_CLEANING_ID },
       create: { id: c.id, orgId: ORG, name: c.name, sortOrder: c.sortOrder, description: c.description, features: c.features, icon: c.icon, parentId: DRY_CLEANING_ID, active: true, createdBy: OWNER },
     });
+    if (!withSamples) continue; // prod: structure only — the founder adds real items + real prices in /catalog
+
+    const { client, bucket } = s3();
     for (let i = 0; i < c.items.length; i += 1) {
       const it = c.items[i];
       // Deterministic catalog media key (mirrors MediaService.newKey's org/{org}/catalog/… layout).
@@ -196,9 +260,12 @@ export async function seedDrycleanCatalog(prisma: PrismaClient): Promise<void> {
       });
     }
   }
+  const sampleCount = withSamples ? CATEGORIES.reduce((n, c) => n + c.items.length, 0) : 0;
   console.log(
-    `[seed] Inc-21 service menu: ${SERVICE_CARDS.length} top-level Home cards (priceFrom NULL, NO rate — founder sets real CAD prices via /catalog) ` +
-      `+ Inc-17 dry-clean sub-catalog: ${CATEGORIES.length} garment categories (nested under Dry Cleaning) + ` +
-      `${CATEGORIES.reduce((n, c) => n + c.items.length, 0)} sample items; ${images} real PNGs uploaded to MinIO bucket '${bucket}'.`,
+    `[seed] org ${ORG}: ${SERVICE_CARDS.length} top-level Home cards (priceFrom NULL, NO rate — founder sets real CAD prices via /catalog) ` +
+      `+ ${CATEGORIES.length} garment categories nested under Dry Cleaning; ` +
+      (withSamples
+        ? `${sampleCount} DEV sample items, ${images} real PNGs uploaded to S3/MinIO.`
+        : `STRUCTURE ONLY — 0 sample items, 0 sample prices, 0 S3 writes (honesty firewall).`),
   );
 }

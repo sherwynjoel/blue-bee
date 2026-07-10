@@ -61,12 +61,19 @@ function ServiceMenuInner(): React.ReactElement {
         subtitle="The customer Home service cards, in the order the app shows them. Set the real CAD rate + 'from' price here — until you do, a card shows “Get a quote.” No placeholder prices are ever shipped."
       />
       {reorderErr && <ErrorBox message={reorderErr} />}
-      {state.loading ? (
-        <Card padded={false} className="p-5">
-          <TableSkeleton rows={4} cols={3} />
-        </Card>
-      ) : state.error ? (
+      {/*
+        [Inc-25] The "Run the catalog seed" CTA is alarming — it reads as "the catalogue is gone". It must ONLY
+        appear after a CONFIRMED empty response. So: errors first, then a skeleton while loading OR while we
+        have no payload at all (a cold Railway start, an aborted fetch), and only then the empty state.
+      */}
+      {state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
+      ) : state.loading || !state.data ? (
+        <Card padded={false} className="p-5">
+          <div data-testid="service-menu-loading">
+            <TableSkeleton rows={4} cols={3} />
+          </div>
+        </Card>
       ) : cards.length === 0 ? (
         <Card>
           <EmptyState icon={<Tag className="h-5 w-5" strokeWidth={1.75} />} title="No service cards" message="Run the catalog seed to create the service menu." />

@@ -91,11 +91,12 @@ function CatalogAdminInner(): React.ReactElement {
         {err && <p className="mt-2 text-sm text-danger" role="alert">{err}</p>}
       </Card>
 
-      {state.loading ? (
-        <Card padded={false} className="p-5"><TableSkeleton rows={4} cols={3} /></Card>
-      ) : state.error ? (
+      {/* [Inc-25] Same rule as the service menu: never show an "empty" state until a CONFIRMED response. */}
+      {state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
-      ) : !state.data || (categories.length === 0 && state.data.uncategorized.length === 0) ? (
+      ) : state.loading || !state.data ? (
+        <Card padded={false} className="p-5"><div data-testid="catalog-admin-loading"><TableSkeleton rows={4} cols={3} /></div></Card>
+      ) : categories.length === 0 && state.data.uncategorized.length === 0 ? (
         <Card>
           <EmptyState icon={<Tag className="h-5 w-5" strokeWidth={1.75} />} title="No catalog yet" message="Create a category above, then add items with a photo + price." />
         </Card>

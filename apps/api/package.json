@@ -2,7 +2,7 @@
   "name": "@blue-bee/api",
   "version": "0.0.0",
   "private": true,
-  "description": "Blue Bee API — NestJS modular monolith (PRD §10). Phase-1 specialty slice.",
+  "description": "Blue Bee API \u2014 NestJS modular monolith (PRD \u00a710). Phase-1 specialty slice.",
   "main": "dist/main.js",
   "scripts": {
     "prisma:generate": "prisma generate",
@@ -13,6 +13,7 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "db:seed:catalog": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' prisma/seed-catalog-structure.ts",
     "db:bootstrap": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' prisma/bootstrap.ts",
     "s3-proof": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/s3-golive-proof.ts",
     "db:studio": "prisma studio",

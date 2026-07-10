@@ -82,6 +82,9 @@ enum PricingModel {
 enum PricingUnit {
   PER_ITEM
   PER_KG
+  // [Inc-24] per-pound wash&fold. Weight is CAPTURED in kg (WeightCapture.weightKg); the kg→lb conversion
+  // happens once, at pricing time (shared `kgToLb`), so the capture stays canonical.
+  PER_LB
   PER_MEASURE
 }
 

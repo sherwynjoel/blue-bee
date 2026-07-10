@@ -5,12 +5,14 @@ import {
   createCatalogItemSchema,
   createCategorySchema,
   presignCatalogImageSchema,
+  reorderCatalogSchema,
   updateCatalogItemSchema,
   updateCategorySchema,
   updateServiceMenuCardSchema,
   type CreateCatalogItemDto,
   type CreateCategoryDto,
   type PresignCatalogImageDto,
+  type ReorderCatalogDto,
   type UpdateCatalogItemDto,
   type UpdateCategoryDto,
   type UpdateServiceMenuCardDto,
@@ -91,6 +93,16 @@ export class CatalogAdminController {
   @ApiOperation({ summary: 'Edit a catalog item (name / price / category / photo / active / order). Non-ITEM service → 400. Audited.' })
   updateItem(@CurrentUser() p: RequestPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodBody(updateCatalogItemSchema)) dto: UpdateCatalogItemDto) {
     return this.catalog.updateItem(p, id, dto);
+  }
+
+  // ── reorder (Inc-24 — the console's arranged order IS the customer app's order) ──
+
+  @Patch('reorder')
+  @ApiOperation({
+    summary: 'Reorder a list (service cards / categories / items): send the ids in the desired order; sortOrder is renumbered 0..n-1 atomically. Audited.',
+  })
+  reorder(@CurrentUser() p: RequestPrincipal, @Body(new ZodBody(reorderCatalogSchema)) dto: ReorderCatalogDto) {
+    return this.catalog.reorder(p, dto);
   }
 
   // ── image upload (the existing presigned media seam) ──

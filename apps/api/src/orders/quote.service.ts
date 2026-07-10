@@ -11,6 +11,7 @@ import {
   ORDER_ERRORS,
   QuoteStatus,
   ServiceUnit,
+  kgToLb,
   type ApproveQuoteDto,
   type DeclineQuoteDto,
   type QuoteBuildDto,
@@ -48,8 +49,17 @@ export function deriveMeasure(unit: string, measurements: Record<string, unknown
     case ServiceUnit.PIECE:
     case ServiceUnit.ITEM:
       return num(measurements.pieces) ?? num(measurements.count) ?? num(measurements.qty);
-    case ServiceUnit.LB:
-      return num(measurements.weightLb) ?? num(measurements.lb) ?? num(measurements.weight);
+    // [Inc-24] per-pound. An explicit pound measurement wins; otherwise fall back to the CANONICAL kilogram
+    // capture (WeightCapture.weightKg, denormalized onto the item by WeighService) and convert kg → lb here.
+    // This is the ONLY conversion site — the factor lives in shared `kgToLb`. Checked before the ambiguous
+    // `weight` key so a kg capture is never mistaken for pounds.
+    case ServiceUnit.LB: {
+      const lb = num(measurements.weightLb) ?? num(measurements.lb);
+      if (lb) return lb;
+      const kg = num(measurements.weightKg) ?? num(measurements.kg);
+      if (kg) return kgToLb(kg);
+      return num(measurements.weight);
+    }
     // [Inc-22] per-kilogram (consumer Wash & Fold) — the measure is the approved weigh capture (kg),
     // denormalized onto Item.measurements.weightKg by the WeighService.
     case ServiceUnit.KG:

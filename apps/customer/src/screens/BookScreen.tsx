@@ -467,11 +467,17 @@ function titleCase(s: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase();
 }
 
-/** [Inc-23] Size input label for a focused card booking, by the card's pricing unit. */
+/**
+ * [Inc-23] Size input label for a focused card booking, by the card's pricing unit. The value becomes the
+ * line's `estimatedMeasure`, which is always expressed in the BACKING SERVICE's own unit — so a PER_LB card
+ * asks for pounds [Inc-24] even though the plant/driver scale captures kilograms.
+ */
 function cardSizeLabel(unit: PricingUnit | undefined): string {
   switch (unit) {
     case PricingUnit.PER_KG:
       return 'Approx. weight (kg) — optional';
+    case PricingUnit.PER_LB:
+      return 'Approx. weight (lb) — optional';
     case PricingUnit.PER_ITEM:
       return 'How many items?';
     case PricingUnit.PER_MEASURE:
@@ -483,6 +489,7 @@ function cardSizeLabel(unit: PricingUnit | undefined): string {
 function cardSizeHelp(unit: PricingUnit | undefined): string {
   switch (unit) {
     case PricingUnit.PER_KG:
+    case PricingUnit.PER_LB:
       return 'We weigh your load at pickup — an estimate here is optional.';
     case PricingUnit.PER_ITEM:
       return 'Add how many items you’re sending; we confirm at intake.';

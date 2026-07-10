@@ -164,6 +164,8 @@ export class CatalogService {
           imageUrl: s.imageKey ? await this.signer.signedGet({ storageKey: s.imageKey, url: null }) : null,
           price: resolved.rate.toFixed(2),
           priceSource: resolved.source,
+          // [Inc-24] surfaced so the picker renders in the console-arranged order (already ordered above).
+          sortOrder: s.sortOrder,
         });
       }
       if (items.length > 0) {

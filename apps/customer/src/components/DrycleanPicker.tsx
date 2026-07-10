@@ -33,6 +33,13 @@ export function DrycleanPicker({
   const { colors } = useTheme();
   if (catalog.categories.length === 0) return null;
 
+  // [Inc-24] Render categories — and each category's items — in the order the founder arranged in the
+  // console. The server already sorts by sortOrder; sorting here too makes the rendered order a pure
+  // function of sortOrder rather than of response order.
+  const categories = [...catalog.categories]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((cat) => ({ ...cat, items: [...cat.items].sort((a, b) => a.sortOrder - b.sortOrder) }));
+
   return (
     <Card title="Dry cleaning">
       {catalog.pricingAccountName ? (
@@ -44,7 +51,7 @@ export function DrycleanPicker({
         </View>
       ) : null}
 
-      {catalog.categories.map((cat) => (
+      {categories.map((cat) => (
         <View key={cat.id} testID={`dryclean-category-${cat.id}`} style={styles.category}>
           <Text variant="subhead" weight="700" style={styles.categoryHead}>
             {cat.name}

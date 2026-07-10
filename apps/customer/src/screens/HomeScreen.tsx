@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@blue-bee/api-client';
-import { ItemKind, PricingModel, PricingUnit, type HomeServiceMenuView, type HomeServiceCardView } from '@blue-bee/shared';
+import { ItemKind, PricingModel, PricingUnit, isCatalogIconKey, type CatalogIconKey, type HomeServiceMenuView, type HomeServiceCardView } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { money } from '../format';
@@ -44,7 +44,9 @@ export function HomeScreen(): React.ReactElement {
   }, [load]);
 
   const firstName = me?.user.name ? me.user.name.split(' ')[0] : null;
-  const categories = catalog?.cards ?? [];
+  // [Inc-24] Render in the order the founder arranged in the console. The server already sorts by sortOrder;
+  // sorting here too makes the grid's order a pure function of sortOrder rather than of response order.
+  const categories = [...(catalog?.cards ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const currency = catalog?.currency ?? 'CAD';
 
   const header = (
@@ -137,7 +139,12 @@ export function HomeScreen(): React.ReactElement {
 /** A semantic icon key → a Feather icon + a theme tint. Pure presentation; the founder sets the key in the
  *  console. Unknown keys fall back to a neutral tile so a new service never renders broken. */
 type Tint = 'azure' | 'honey' | 'success';
-const CATEGORY_ICONS: Record<string, { icon: React.ComponentProps<typeof Feather>['name']; tint: Tint }> = {
+/**
+ * [Inc-24] Keyed by `CatalogIconKey` — the canonical icon keys in packages/shared, which the console's icon
+ * PICKER offers. Typing it as a full `Record<CatalogIconKey, …>` means adding a key in shared fails this
+ * app's typecheck until it is mapped here, so the console can never offer an icon the app cannot render.
+ */
+const CATEGORY_ICONS: Record<CatalogIconKey, { icon: React.ComponentProps<typeof Feather>['name']; tint: Tint }> = {
   shirts: { icon: 'shopping-bag', tint: 'azure' },
   outerwear: { icon: 'cloud-snow', tint: 'success' },
   formalwear: { icon: 'award', tint: 'honey' },
@@ -158,6 +165,7 @@ const CATEGORY_ICONS: Record<string, { icon: React.ComponentProps<typeof Feather
  *   • priceFrom null                       → "Get a quote"  (NEVER a fake number — honesty firewall)
  *   • FROM_MEASURED (rug/carpet/…)         → "from $X" + "measured at pickup"
  *   • FIXED PER_KG (Wash & Fold)           → "from $X" + "per kg"
+ *   • FIXED PER_LB (Wash & Fold, per lb)   → "from $X" + "per lb"   [Inc-24]
  *   • FIXED PER_ITEM / other               → "from $X" + "per item"
  */
 /** [Inc-23] The default ItemKind for a booked line from a card (custody/tag only; pricing uses the service). */
@@ -181,6 +189,7 @@ function priceFooter(category: HomeServiceCardView, currency: string): { quote: 
   const amt = `from ${money(category.priceFrom, currency)}`;
   if (category.pricingModel === PricingModel.FROM_MEASURED) return { quote: false, primary: amt, sub: 'measured at pickup' };
   if (category.unit === PricingUnit.PER_KG) return { quote: false, primary: amt, sub: 'per kg' };
+  if (category.unit === PricingUnit.PER_LB) return { quote: false, primary: amt, sub: 'per lb' };
   if (category.unit === PricingUnit.PER_ITEM) return { quote: false, primary: amt, sub: 'per item' };
   return { quote: false, primary: amt, sub: null };
 }
@@ -195,7 +204,8 @@ function ServiceCard({
   onPress: () => void;
 }): React.ReactElement {
   const { colors, radius, elevation } = useTheme();
-  const look = (category.icon && CATEGORY_ICONS[category.icon]) || { icon: 'grid' as const, tint: 'azure' as const };
+  // A legacy/unknown icon key falls back to the neutral glyph rather than crashing the grid.
+  const look = (category.icon && isCatalogIconKey(category.icon) ? CATEGORY_ICONS[category.icon] : null) ?? { icon: 'grid' as const, tint: 'azure' as const };
   const tint = {
     azure: { bg: colors.azureTint, fg: colors.azure },
     honey: { bg: colors.honeyTint, fg: colors.honey },

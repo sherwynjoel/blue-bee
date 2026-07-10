@@ -2,19 +2,23 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, type Service, type ServiceCategory } from '@prisma/client';
 import {
   CATALOG_ERRORS,
+  CatalogReorderScope,
   ServiceUnit,
   ServiceVertical,
   PricingUnit,
   backingServiceUnit,
+  isWeightPricingUnit,
   type AdminCatalogView,
   type CatalogImagePresignResult,
   type CatalogItemView,
+  type CatalogReorderResult,
   type CategoriesResult,
   type CategoryView,
   type CreateCatalogItemDto,
   type CreateCategoryDto,
   type PresignCatalogImageDto,
   type PricingModel,
+  type ReorderCatalogDto,
   type ServiceMenuCardView,
   type ServiceMenuResult,
   type UpdateCatalogItemDto,
@@ -196,7 +200,8 @@ export class CatalogAdminService {
           rateService = await tx.service.create({
             data: {
               orgId: principal.orgId,
-              vertical: effectiveUnit === PricingUnit.PER_KG ? ServiceVertical.WASHFOLD : ServiceVertical.SPECIALTY,
+              // [Inc-24] Both weight units (PER_KG / PER_LB) back a consumer wash&fold rate service.
+              vertical: isWeightPricingUnit(effectiveUnit) ? ServiceVertical.WASHFOLD : ServiceVertical.SPECIALTY,
               unit: svcUnit,
               name: card.name,
               baseRate: dto.rate.toFixed(4),
@@ -284,6 +289,63 @@ export class CatalogAdminService {
       return svc;
     });
     return this.toItemView(updated);
+  }
+
+  // ─────────────────────────── reorder (Inc-24) ───────────────────────────
+
+  /**
+   * [Inc-24] Persist a console-arranged order: renumber `sortOrder` to the array index (0..n-1) for the ids
+   * sent, in ONE transaction, org-scoped + audited once.
+   *
+   * Renumbering rather than swapping two neighbours is deliberate — console-created categories/items default
+   * to `sortOrder = 0`, so a pairwise swap would be a silent no-op on ties. Every id is verified to exist in
+   * the principal's org AND to belong to the named scope, so a card id can't be smuggled into an ITEMS
+   * reorder. The customer app reads the same `sortOrder` (catalog.service.ts orders by it), so the arranged
+   * order is what the app renders.
+   */
+  async reorder(principal: RequestPrincipal, dto: ReorderCatalogDto): Promise<CatalogReorderResult> {
+    const db = scopedPrisma(this.prisma, principal);
+    const { scope, ids } = dto;
+
+    if (scope === CatalogReorderScope.ITEMS) {
+      const found = await db.service.findMany({ where: { id: { in: ids }, unit: ServiceUnit.ITEM }, select: { id: true } });
+      this.requireAllFound(found, ids, 'catalog item', CATALOG_ERRORS.ITEM_NOT_FOUND);
+      await this.prisma.$transaction(
+        ids.map((id, i) => this.prisma.service.update({ where: { id, orgId: principal.orgId }, data: { sortOrder: i } })),
+      );
+    } else {
+      // SERVICE_CARDS are top-level (parentId NULL); CATEGORIES are the drill-in children.
+      const topLevel = scope === CatalogReorderScope.SERVICE_CARDS;
+      const found = await db.serviceCategory.findMany({
+        where: { id: { in: ids }, ...(topLevel ? { parentId: null } : { parentId: { not: null } }) },
+        select: { id: true },
+      });
+      this.requireAllFound(found, ids, topLevel ? 'service card' : 'category', CATALOG_ERRORS.CATEGORY_NOT_FOUND);
+      await this.prisma.$transaction(
+        ids.map((id, i) => this.prisma.serviceCategory.update({ where: { id, orgId: principal.orgId }, data: { sortOrder: i } })),
+      );
+    }
+
+    await this.audit.record({
+      orgId: principal.orgId,
+      actorId: principal.userId,
+      entity: scope === CatalogReorderScope.ITEMS ? 'Service' : 'ServiceCategory',
+      entityId: ids[0],
+      action: 'CATALOG_REORDERED',
+      after: { scope, ids },
+    });
+    return { scope, ids };
+  }
+
+  /** Every requested id must exist in scope — otherwise the reorder is rejected whole (no partial renumber). */
+  private requireAllFound(found: Array<{ id: string }>, ids: string[], label: string, error: string): void {
+    if (found.length === ids.length) return;
+    const seen = new Set(found.map((r) => r.id));
+    const missing = ids.filter((id) => !seen.has(id));
+    throw new BadRequestException({
+      error,
+      message: `reorder rejected: ${missing.length} id(s) are not a ${label} in scope: ${missing.join(', ')}`,
+    });
   }
 
   /** Presign a catalog image upload (delegates to the media seam). */

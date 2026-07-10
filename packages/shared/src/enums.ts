@@ -83,13 +83,17 @@ export enum PricingModel {
 
 /**
  * [Inc-21] The unit a service card is priced in (customer-facing). The card lives on `ServiceCategory`;
- * the actual per-unit RATE lives on the backing `Service` (`ServiceUnit` KG/ITEM/SQFT/…), which the owner
- * sets in the console. PER_KG → Wash & Fold; PER_ITEM → wash&iron/dry-clean/ironing; PER_MEASURE →
+ * the actual per-unit RATE lives on the backing `Service` (`ServiceUnit` KG/LB/ITEM/SQFT/…), which the owner
+ * sets in the console. PER_KG / PER_LB → Wash & Fold; PER_ITEM → wash&iron/dry-clean/ironing; PER_MEASURE →
  * rug/carpet/upholstery/blinds (measured at pickup). Mirrored 1:1 to the Prisma `PricingUnit` enum.
+ *
+ * [Inc-24] PER_LB is the North-American per-pound wash&fold unit. Weight is still CAPTURED canonically in
+ * kilograms (`WeightCapture.weightKg`); the kg→lb conversion happens once, at pricing time — see `kgToLb`.
  */
 export enum PricingUnit {
   PER_ITEM = 'PER_ITEM',
   PER_KG = 'PER_KG',
+  PER_LB = 'PER_LB',
   PER_MEASURE = 'PER_MEASURE',
 }
 

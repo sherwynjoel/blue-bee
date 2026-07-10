@@ -1,15 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
-import type { AdminCatalogView, CatalogItemView, CategoryView } from '@blue-bee/shared';
+import { CatalogReorderScope, type AdminCatalogView, type CatalogItemView, type CategoryView } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { Plus, Tag, ImagePlus } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
 import { money } from '@/lib/format';
+import { reorderedIds } from '@/lib/reorder';
 import { uploadCatalogImage, MediaError } from '@/lib/media';
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, PageHeader, TableSkeleton } from './ui';
+import { IconPicker } from './catalog/IconPicker';
+import { MoveControls } from './catalog/MoveControls';
 import { RequireCapability } from './AppShell';
 
 const apiErr = (e: unknown, fallback: string): string =>
@@ -55,6 +58,21 @@ function CatalogAdminInner(): React.ReactElement {
     }
   };
 
+  const categories = state.data?.categories ?? [];
+
+  /** [Inc-24] Reorder the garment sub-categories; the customer picker renders in this order. */
+  const moveCategory = async (index: number, delta: number): Promise<void> => {
+    const ids = reorderedIds(categories, index, delta);
+    if (!ids) return;
+    setErr(null);
+    try {
+      await client.reorderCatalog({ scope: CatalogReorderScope.CATEGORIES, ids });
+      reload();
+    } catch (e2) {
+      setErr(apiErr(e2, 'Could not save the new category order.'));
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Dry-clean catalog" subtitle="Categories + per-item dry-clean items (photo + base price). Per-account prices are set on the Corporate rate card." />
@@ -77,14 +95,20 @@ function CatalogAdminInner(): React.ReactElement {
         <Card padded={false} className="p-5"><TableSkeleton rows={4} cols={3} /></Card>
       ) : state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
-      ) : !state.data || (state.data.categories.length === 0 && state.data.uncategorized.length === 0) ? (
+      ) : !state.data || (categories.length === 0 && state.data.uncategorized.length === 0) ? (
         <Card>
           <EmptyState icon={<Tag className="h-5 w-5" strokeWidth={1.75} />} title="No catalog yet" message="Create a category above, then add items with a photo + price." />
         </Card>
       ) : (
         <>
-          {state.data.categories.map((c) => (
-            <CategorySection key={c.id} category={c} onChanged={reload} />
+          {categories.map((c, i) => (
+            <CategorySection
+              key={c.id}
+              category={c}
+              onChanged={reload}
+              onMoveUp={i > 0 ? () => void moveCategory(i, -1) : undefined}
+              onMoveDown={i < categories.length - 1 ? () => void moveCategory(i, 1) : undefined}
+            />
           ))}
           {state.data.uncategorized.length > 0 && (
             <Card title="Uncategorized" subtitle="Items with no category (assign one by editing the item).">
@@ -97,7 +121,17 @@ function CatalogAdminInner(): React.ReactElement {
   );
 }
 
-function CategorySection({ category, onChanged }: { category: CategoryView & { items: CatalogItemView[] }; onChanged: () => void }): React.ReactElement {
+function CategorySection({
+  category,
+  onChanged,
+  onMoveUp,
+  onMoveDown,
+}: {
+  category: CategoryView & { items: CatalogItemView[] };
+  onChanged: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+}): React.ReactElement {
   const { client } = useSession();
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(category.name);
@@ -150,9 +184,23 @@ function CategorySection({ category, onChanged }: { category: CategoryView & { i
     }
   };
 
+  /** [Inc-24] Reorder the items inside this category; the customer picker renders them in this order. */
+  const moveItem = async (index: number, delta: number): Promise<void> => {
+    const ids = reorderedIds(category.items, index, delta);
+    if (!ids) return;
+    setErr(null);
+    try {
+      await client.reorderCatalog({ scope: CatalogReorderScope.ITEMS, ids });
+      onChanged();
+    } catch (e) {
+      setErr(apiErr(e, 'Could not save the new item order.'));
+    }
+  };
+
   const actions = (
     <div className="flex items-center gap-2">
       {!category.active && <Badge tone="neutral">Hidden</Badge>}
+      <MoveControls onUp={onMoveUp} onDown={onMoveDown} label={category.name} testIdPrefix={`catalog-category-${category.id}`} />
       <Button size="sm" variant="secondary" onClick={() => setRenaming((r) => !r)}>Rename</Button>
       <Button size="sm" variant="secondary" onClick={() => setEditingCard((c) => !c)}>Card</Button>
       <Button size="sm" variant="secondary" onClick={() => void toggleActive()}>{category.active ? 'Deactivate' : 'Activate'}</Button>
@@ -173,12 +221,12 @@ function CategorySection({ category, onChanged }: { category: CategoryView & { i
           <p className="text-footnote text-secondary">How this service appears on the customer Home grid.</p>
           <Field label="Description"><Input value={draftDesc} onChange={(e) => setDraftDesc(e.target.value)} placeholder="Crisp, hand-finished shirts and blouses." aria-label={`${category.name} description`} /></Field>
           <Field label="Feature tags (comma-separated)"><Input value={draftFeatures} onChange={(e) => setDraftFeatures(e.target.value)} placeholder="DRY CLEAN, PRESS, ON HANGERS" aria-label={`${category.name} features`} /></Field>
-          <Field label="Icon key"><Input value={draftIcon} onChange={(e) => setDraftIcon(e.target.value)} placeholder="shirts" aria-label={`${category.name} icon`} /></Field>
+          <IconPicker value={draftIcon} onChange={setDraftIcon} ariaLabel={`${category.name} icon`} testId={`catalog-category-icon-${category.id}`} />
           <Button size="sm" loading={savingCard} onClick={() => void saveCard()}>Save card</Button>
         </div>
       )}
       {err && <p className="mb-2 text-sm text-danger" role="alert">{err}</p>}
-      <ItemList items={category.items} onChanged={onChanged} />
+      <ItemList items={category.items} onChanged={onChanged} onMove={moveItem} />
       <div className="mt-4 border-t border-hairline pt-4">
         <AddItemForm categoryId={category.id} onAdded={onChanged} />
       </div>
@@ -187,18 +235,35 @@ function CategorySection({ category, onChanged }: { category: CategoryView & { i
   );
 }
 
-function ItemList({ items, onChanged }: { items: CatalogItemView[]; onChanged: () => void }): React.ReactElement {
+/** `onMove` is omitted for the uncategorized bucket — those items have no category order to arrange. */
+function ItemList({ items, onChanged, onMove }: { items: CatalogItemView[]; onChanged: () => void; onMove?: (index: number, delta: number) => void }): React.ReactElement {
   if (items.length === 0) return <p className="text-sm text-tertiary">No items yet.</p>;
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((it) => (
-        <ItemCard key={it.id} item={it} onChanged={onChanged} />
+      {items.map((it, i) => (
+        <ItemCard
+          key={it.id}
+          item={it}
+          onChanged={onChanged}
+          onMoveUp={onMove && i > 0 ? () => onMove(i, -1) : undefined}
+          onMoveDown={onMove && i < items.length - 1 ? () => onMove(i, 1) : undefined}
+        />
       ))}
     </div>
   );
 }
 
-function ItemCard({ item, onChanged }: { item: CatalogItemView; onChanged: () => void }): React.ReactElement {
+function ItemCard({
+  item,
+  onChanged,
+  onMoveUp,
+  onMoveDown,
+}: {
+  item: CatalogItemView;
+  onChanged: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+}): React.ReactElement {
   const { client } = useSession();
   const [price, setPrice] = useState(String(Number(item.baseRate)));
   const [busy, setBusy] = useState(false);
@@ -248,6 +313,7 @@ function ItemCard({ item, onChanged }: { item: CatalogItemView; onChanged: () =>
             <Input value={price} onChange={(e) => setPrice(e.target.value)} type="number" step="0.01" min="0" className="w-24" aria-label={`${item.name} price`} />
             <Button size="sm" variant="secondary" loading={busy} disabled={!dirty} onClick={() => void savePrice()}>Save</Button>
             <Button size="sm" variant="ghost" onClick={() => void toggleActive()}>{item.active ? 'Deactivate' : 'Activate'}</Button>
+            <MoveControls onUp={onMoveUp} onDown={onMoveDown} label={item.name} testIdPrefix={`catalog-item-${item.id}`} />
           </div>
           {err && <p className="mt-1 text-xs text-danger" role="alert">{err}</p>}
         </div>

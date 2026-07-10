@@ -1,13 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PricingModel, PricingUnit, type ServiceMenuCardView, type UpdateServiceMenuCardDto } from '@blue-bee/shared';
+import { CatalogReorderScope, PricingModel, PricingUnit, type ServiceMenuCardView, type UpdateServiceMenuCardDto } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { Tag } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
+import { reorderedIds } from '@/lib/reorder';
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, PageHeader, Select, TableSkeleton, Textarea } from './ui';
+import { IconPicker } from './catalog/IconPicker';
+import { MoveControls } from './catalog/MoveControls';
 import { RequireCapability } from './AppShell';
 
 /**
@@ -31,25 +34,53 @@ function ServiceMenuInner(): React.ReactElement {
   const [nonce, setNonce] = useState(0);
   const reload = (): void => setNonce((n) => n + 1);
   const state = useAsync<Awaited<ReturnType<typeof client.serviceMenu>>>(() => client.serviceMenu(), [nonce]);
+  const [reorderErr, setReorderErr] = useState<string | null>(null);
+
+  const cards = state.data?.cards ?? [];
+
+  /**
+   * [Inc-24] Move a card one slot and persist the WHOLE list's new order (sortOrder renumbered 0..n-1
+   * server-side). The customer Home grid reads the same sortOrder, so this is what the app renders.
+   */
+  const move = async (index: number, delta: number): Promise<void> => {
+    const ids = reorderedIds(cards, index, delta);
+    if (!ids) return;
+    setReorderErr(null);
+    try {
+      await client.reorderCatalog({ scope: CatalogReorderScope.SERVICE_CARDS, ids });
+      reload();
+    } catch (e) {
+      setReorderErr(e instanceof ApiError ? e.message : 'Could not save the new order.');
+    }
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
       <PageHeader
         title="Service menu"
-        subtitle="The customer Home service cards. Set the real CAD rate + 'from' price here — until you do, a card shows “Get a quote.” No placeholder prices are ever shipped."
+        subtitle="The customer Home service cards, in the order the app shows them. Set the real CAD rate + 'from' price here — until you do, a card shows “Get a quote.” No placeholder prices are ever shipped."
       />
+      {reorderErr && <ErrorBox message={reorderErr} />}
       {state.loading ? (
         <Card padded={false} className="p-5">
           <TableSkeleton rows={4} cols={3} />
         </Card>
       ) : state.error ? (
         <ErrorBox message={state.error} onRetry={state.reload} />
-      ) : !state.data || state.data.cards.length === 0 ? (
+      ) : cards.length === 0 ? (
         <Card>
           <EmptyState icon={<Tag className="h-5 w-5" strokeWidth={1.75} />} title="No service cards" message="Run the catalog seed to create the service menu." />
         </Card>
       ) : (
-        state.data.cards.map((c) => <ServiceCardEditor key={c.id} card={c} onChanged={reload} />)
+        cards.map((c, i) => (
+          <ServiceCardEditor
+            key={c.id}
+            card={c}
+            onChanged={reload}
+            onMoveUp={i > 0 ? () => void move(i, -1) : undefined}
+            onMoveDown={i < cards.length - 1 ? () => void move(i, 1) : undefined}
+          />
+        ))
       )}
     </div>
   );
@@ -58,15 +89,33 @@ function ServiceMenuInner(): React.ReactElement {
 const UNIT_OPTS: Array<{ value: PricingUnit; label: string }> = [
   { value: PricingUnit.PER_ITEM, label: 'Per item' },
   { value: PricingUnit.PER_KG, label: 'Per kilogram' },
+  // [Inc-24] Weight is always CAPTURED in kg; a per-lb card converts kg→lb at pricing time.
+  { value: PricingUnit.PER_LB, label: 'Per pound (lb)' },
   { value: PricingUnit.PER_MEASURE, label: 'Per measure (sq ft)' },
 ];
 const MODEL_OPTS: Array<{ value: PricingModel; label: string }> = [
   { value: PricingModel.FIXED, label: 'Fixed rate — auto-priced' },
   { value: PricingModel.FROM_MEASURED, label: 'From measured — quote sent' },
 ];
-const rateSuffix = (u: PricingUnit): string => (u === PricingUnit.PER_KG ? '/ kg' : u === PricingUnit.PER_MEASURE ? '/ sq ft' : '/ item');
+const RATE_SUFFIX: Record<PricingUnit, string> = {
+  [PricingUnit.PER_KG]: '/ kg',
+  [PricingUnit.PER_LB]: '/ lb',
+  [PricingUnit.PER_MEASURE]: '/ sq ft',
+  [PricingUnit.PER_ITEM]: '/ item',
+};
+const rateSuffix = (u: PricingUnit): string => RATE_SUFFIX[u] ?? '/ item';
 
-function ServiceCardEditor({ card, onChanged }: { card: ServiceMenuCardView; onChanged: () => void }): React.ReactElement {
+function ServiceCardEditor({
+  card,
+  onChanged,
+  onMoveUp,
+  onMoveDown,
+}: {
+  card: ServiceMenuCardView;
+  onChanged: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+}): React.ReactElement {
   const { client } = useSession();
   const [rate, setRate] = useState(card.rate ?? '');
   const [priceFrom, setPriceFrom] = useState(card.priceFrom ?? '');
@@ -128,6 +177,8 @@ function ServiceCardEditor({ card, onChanged }: { card: ServiceMenuCardView; onC
       {!card.active && <Badge tone="neutral">Hidden</Badge>}
       {card.childCount > 0 && <Badge tone="blue">{card.childCount} sub-categories</Badge>}
       {card.priceFrom == null && <Badge tone="amber">No price — “Get a quote”</Badge>}
+      {/* [Inc-24] Reorder — the saved order is exactly what the customer Home grid renders. */}
+      <MoveControls onUp={onMoveUp} onDown={onMoveDown} label={card.name} testIdPrefix={`service-card-${card.id}`} />
       <Button size="sm" variant="secondary" onClick={() => void toggleActive()}>{card.active ? 'Deactivate' : 'Activate'}</Button>
     </div>
   );
@@ -161,9 +212,7 @@ function ServiceCardEditor({ card, onChanged }: { card: ServiceMenuCardView; onC
         <Field label="Feature tags (comma-separated)" className="sm:col-span-2">
           <Input value={features} onChange={(e) => setFeatures(e.target.value)} placeholder="WASH, TUMBLE-DRY, FOLDED, IN A BAG" aria-label={`${card.name} features`} />
         </Field>
-        <Field label="Icon key">
-          <Input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="wash-fold" aria-label={`${card.name} icon`} />
-        </Field>
+        <IconPicker value={icon} onChange={setIcon} ariaLabel={`${card.name} icon`} testId={`service-card-icon-${card.id}`} />
         <Field label="Sort order">
           <Input value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} type="number" min="0" aria-label={`${card.name} sort order`} />
         </Field>

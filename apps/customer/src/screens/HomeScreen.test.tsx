@@ -80,6 +80,33 @@ describe('HomeScreen service grid (Inc-21)', () => {
     expect(mockNavigate).toHaveBeenCalledWith('Book', { serviceId: 'svc-wf-1', serviceName: 'Wash & Fold', unit: PricingUnit.PER_KG, kind: ItemKind.GARMENT });
   });
 
+  it('[Inc-24] a priced PER_LB card shows "from $X" + "per lb"', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({
+      currency: 'CAD',
+      cards: [card({ id: 'wflb', name: 'Wash & Fold (lb)', unit: PricingUnit.PER_LB, priceFrom: '1.50' })],
+    });
+    const { findByTestId, getByText } = render(<HomeScreen />);
+    expect(String((await findByTestId('home-price-wflb')).props.children)).toMatch(/^from /);
+    expect(getByText('per lb')).toBeTruthy();
+  });
+
+  // [Inc-24] The console's reorder persists sortOrder; the Home grid must render in THAT order. The mocked
+  // response is deliberately scrambled so this proves ordering-by-sortOrder, not order-of-arrival.
+  it('[Inc-24] renders the service cards in sortOrder (the console-arranged order)', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({
+      currency: 'CAD',
+      cards: [
+        card({ id: 'third', name: 'Third', sortOrder: 3 }),
+        card({ id: 'first', name: 'First', sortOrder: 1 }),
+        card({ id: 'second', name: 'Second', sortOrder: 2 }),
+      ],
+    });
+    const { findByTestId, getAllByTestId } = render(<HomeScreen />);
+    await findByTestId('home-service-first');
+    const rendered = getAllByTestId(/^home-service-/).map((n) => n.props.testID);
+    expect(rendered).toEqual(['home-service-first', 'home-service-second', 'home-service-third']);
+  });
+
   it('shows the empty state when the catalog has no cards', async () => {
     mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [] });
     const { findByText } = render(<HomeScreen />);

@@ -180,6 +180,8 @@ export interface DrycleanCatalogItemView {
   /** The per-item price RESOLVED for the caller's effective pricing account (corporate override or base). */
   price: string;
   priceSource: CatalogPriceSource;
+  /** [Inc-24] The console-arranged position within its category (server orders by it; the app renders by it). */
+  sortOrder: number;
 }
 
 export interface DrycleanCategoryView {
@@ -304,19 +306,107 @@ export type UpdateServiceMenuCardDto = z.infer<typeof updateServiceMenuCardSchem
 
 /**
  * [Inc-21] The backing `Service.unit` (ServiceUnit) for a card's customer-facing `PricingUnit`. PER_KG → KG
- * (consumer wash&fold), PER_ITEM → ITEM, PER_MEASURE → SQFT (rug/carpet/upholstery/blinds are measured). The
- * rate lives on that Service; Inc-22 weight/measure pricing reads the card's `unit` to pick the measure.
+ * (consumer wash&fold), PER_LB → LB [Inc-24], PER_ITEM → ITEM, PER_MEASURE → SQFT (rug/carpet/upholstery/
+ * blinds are measured). The rate lives on that Service; Inc-22 weight/measure pricing reads the card's `unit`
+ * to pick the measure.
  */
 export function backingServiceUnit(unit: PricingUnit): ServiceUnit {
   switch (unit) {
     case PricingUnit.PER_KG:
       return ServiceUnit.KG;
+    case PricingUnit.PER_LB:
+      return ServiceUnit.LB;
     case PricingUnit.PER_MEASURE:
       return ServiceUnit.SQFT;
     case PricingUnit.PER_ITEM:
     default:
       return ServiceUnit.ITEM;
   }
+}
+
+/**
+ * [Inc-24] Pounds per kilogram — the ONE place this factor lives. Weight is captured canonically in
+ * kilograms (`WeightCapture.weightKg`, denormalized onto `Item.measurements.weightKg` by the WeighService);
+ * a PER_LB service prices per POUND, so the conversion happens once, at pricing time (`deriveMeasure`).
+ * Never inline this number — import `kgToLb`.
+ */
+export const LB_PER_KG = 2.2046226218;
+
+/** [Inc-24] Convert a canonical kilogram weight to pounds for per-pound pricing. */
+export function kgToLb(kg: number): number {
+  return kg * LB_PER_KG;
+}
+
+/** [Inc-24] Is this card priced by weight (kg or lb)? Weight-priced cards back a WASHFOLD `Service`. */
+export function isWeightPricingUnit(unit: PricingUnit): boolean {
+  return unit === PricingUnit.PER_KG || unit === PricingUnit.PER_LB;
+}
+
+// ───────────────────────────── icon keys (single source of truth) ─────────────────────────────
+
+/**
+ * [Inc-24] The canonical semantic icon keys a catalog card / category may carry. THE single source of
+ * truth: the customer app maps each key → a Feather glyph + tint (HomeScreen `CATEGORY_ICONS`) and the
+ * console maps each key → a preview glyph (`apps/web/lib/catalog-icons.ts`). BOTH are typed as
+ * `Record<CatalogIconKey, …>`, so adding a key here fails typecheck until both surfaces map it — console
+ * and app cannot drift. Persistence is unchanged: `icon` is still a plain string column (legacy/unknown
+ * values still load; the console offers them back rather than silently wiping them).
+ */
+export const CATALOG_ICON_KEYS = [
+  // the top-level service cards
+  'wash-fold',
+  'wash-iron',
+  'dry-clean',
+  'iron',
+  'delicates',
+  'rug',
+  'carpet',
+  'sofa',
+  'blinds',
+  // the dry-clean garment sub-catalog
+  'shirts',
+  'outerwear',
+  'formalwear',
+] as const;
+
+export type CatalogIconKey = (typeof CATALOG_ICON_KEYS)[number];
+
+/** Narrow an arbitrary persisted `icon` string to a known key (legacy rows may hold anything). */
+export function isCatalogIconKey(value: string): value is CatalogIconKey {
+  return (CATALOG_ICON_KEYS as readonly string[]).includes(value);
+}
+
+// ───────────────────────────── reorder (Inc-24) ─────────────────────────────
+
+/**
+ * [Inc-24] What list a reorder applies to. SERVICE_CARDS = the top-level Home cards (parentId NULL);
+ * CATEGORIES = drill-in child categories (the dry-clean garment sub-catalog); ITEMS = per-item catalog
+ * `Service` rows within a category.
+ */
+export enum CatalogReorderScope {
+  SERVICE_CARDS = 'SERVICE_CARDS',
+  CATEGORIES = 'CATEGORIES',
+  ITEMS = 'ITEMS',
+}
+
+/**
+ * [Inc-24] Reorder a list by sending its ids in the desired order; the server renumbers `sortOrder` to the
+ * array index (0..n-1) in ONE transaction. Renumbering (not swapping) is deliberate: console-created rows
+ * default to `sortOrder = 0`, so a pairwise swap would be a no-op on ties. Send the COMPLETE ordered list
+ * for the scope (a category's full item list / the full card list) — ids not sent keep their old value.
+ */
+export const reorderCatalogSchema = z
+  .object({
+    scope: z.nativeEnum(CatalogReorderScope),
+    ids: z.array(z.string().uuid()).min(1).max(200),
+  })
+  .refine((d) => new Set(d.ids).size === d.ids.length, { message: 'ids must be unique' });
+export type ReorderCatalogDto = z.infer<typeof reorderCatalogSchema>;
+
+/** The applied order, echoed back (ids in their new 0..n-1 `sortOrder`). */
+export interface CatalogReorderResult {
+  scope: CatalogReorderScope;
+  ids: string[];
 }
 
 // ───────────────────────────── error codes (problem+json `error`) ─────────────────────────────

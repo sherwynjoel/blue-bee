@@ -29,8 +29,12 @@ const CAT_WF = 'e2e00000-0000-4000-8000-000000000f01';
 const SVC_WF = 'e2e00000-0000-4000-8000-000000000f02'; // FIXED, unit KG, 3.50/kg
 const CAT_RUG = 'e2e00000-0000-4000-8000-000000000f03';
 const SVC_RUG = 'e2e00000-0000-4000-8000-000000000f04'; // FROM_MEASURED, unit SQFT, 6.00/sqft
+// [Inc-24] per-POUND wash&fold — the load is still weighed in KG; pricing converts kg → lb.
+const CAT_WF_LB = 'e2e00000-0000-4000-8000-000000000f05';
+const SVC_WF_LB = 'e2e00000-0000-4000-8000-000000000f06'; // FIXED, unit LB, 1.50/lb
 const WF_RATE = '3.5000';
 const RUG_RATE = '6.0000';
+const WF_LB_RATE = '1.5000';
 
 const PHONES = {
   owner: '+14165550001', // OWNER
@@ -102,6 +106,17 @@ describe('Weigh e2e — Increment 22 (weight → hybrid pricing)', () => {
       update: { baseRate: RUG_RATE, unit: 'SQFT', categoryId: CAT_RUG, active: true },
       create: { id: SVC_RUG, orgId: ORG1, vertical: 'SPECIALTY', unit: 'SQFT', name: 'TEST Rug rate (e2e)', baseRate: RUG_RATE, categoryId: CAT_RUG, active: true, createdBy: OWNER },
     });
+    // [Inc-24] per-pound TEST fixture (same hiding rules: child of Dry Cleaning, inactive, non-ITEM unit).
+    await prisma.serviceCategory.upsert({
+      where: { id: CAT_WF_LB },
+      update: { pricingModel: 'FIXED', unit: 'PER_LB', parentId: DRY_CLEANING, active: false },
+      create: { id: CAT_WF_LB, orgId: ORG1, name: 'TEST — Wash & Fold per-lb (e2e)', pricingModel: 'FIXED', unit: 'PER_LB', parentId: DRY_CLEANING, active: false, createdBy: OWNER },
+    });
+    await prisma.service.upsert({
+      where: { id: SVC_WF_LB },
+      update: { baseRate: WF_LB_RATE, unit: 'LB', categoryId: CAT_WF_LB, active: true },
+      create: { id: SVC_WF_LB, orgId: ORG1, vertical: 'WASHFOLD', unit: 'LB', name: 'TEST Wash & Fold per-lb rate (e2e)', baseRate: WF_LB_RATE, categoryId: CAT_WF_LB, active: true, createdBy: OWNER },
+    });
   }, 60000);
 
   afterAll(async () => {
@@ -136,6 +151,32 @@ describe('Weigh e2e — Increment 22 (weight → hybrid pricing)', () => {
     const weight = (await get(`/v1/orders/${orderId}/weight`, 'plant').expect(200)).body;
     expect(weight.authoritativeWeightKg).toBe('6.00');
     expect(weight.captures).toHaveLength(1);
+  });
+
+  it('[Inc-24] FIXED PER_LB: the load is weighed in KG but priced per POUND — 6.00 kg → 13.2277… lb × $1.50/lb = $19.84', async () => {
+    const { orderId } = await bookToInspected([{ kind: 'GARMENT', serviceId: SVC_WF_LB, measurements: { pieces: 1 } }]);
+
+    const res = (await post(`/v1/orders/${orderId}/weigh`, 'plant', { weightKg: 6, weighPoint: 'PLANT', source: 'plant' }, `weigh-lb-${orderId}`).expect(201)).body;
+
+    // the CAPTURE stays canonical kilograms — the conversion happens only at pricing time
+    expect(res.capture.weightKg).toBe('6.00');
+    expect(res.authoritativeWeightKg).toBe('6.00');
+    expect(res.pricing.status).toBe('auto_approved');
+    expect(res.pricing.orderStatus).toBe('QUOTE_APPROVED');
+
+    // 6 kg × 2.2046226218 = 13.2277357308 lb; × $1.50/lb = $19.8416… → $19.84 (NOT 6 × 1.50 = $9.00)
+    const order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(order.status).toBe('QUOTE_APPROVED');
+    expect(order.totals.subtotal).toBe('19.84');
+
+    // a re-weigh re-prices per pound too: 9.00 kg → 19.8416… lb × $1.50 = $29.7624 → $29.76
+    await post(`/v1/orders/${orderId}/weigh`, 'plant', { weightKg: 9, weighPoint: 'PLANT', source: 'plant' }, `weigh-lb-2-${orderId}`).expect(201);
+    const reweighed = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    expect(reweighed.totals.subtotal).toBe('29.76');
+
+    const weight = (await get(`/v1/orders/${orderId}/weight`, 'plant').expect(200)).body;
+    expect(weight.authoritativeWeightKg).toBe('9.00');
+    expect(weight.captures).toHaveLength(2); // append-only: both kg captures retained
   });
 
   it('MIXED order (wash + rug): weigh the wash → FROM_MEASURED specialty makes the quote SENT (awaits customer), then the customer approves', async () => {

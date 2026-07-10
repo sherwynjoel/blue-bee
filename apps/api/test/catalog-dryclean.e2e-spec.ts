@@ -209,4 +209,68 @@ describe('Dry-clean visual catalog e2e (Increment 17)', () => {
       await prisma.order.deleteMany({ where: { id: order.id } });
     });
   });
+
+  // ─────────────────────────── [Inc-24] reorder: the console order IS the app order ───────────────────────────
+
+  describe('[Inc-24] reorder', () => {
+    const cardIds = async (): Promise<string[]> => (await get('/v1/catalog/service-menu', 'owner').expect(200)).body.cards.map((c: { id: string }) => c.id);
+    const homeCardIds = async (): Promise<string[]> => (await get('/v1/catalog/home', 'rita').expect(200)).body.cards.map((c: { id: string }) => c.id);
+
+    let originalIds: string[] = [];
+    beforeAll(async () => {
+      originalIds = await cardIds();
+    });
+    // Restore the founder's original arrangement — this spec must not leave the live catalog reshuffled.
+    afterAll(async () => {
+      if (originalIds.length > 1) await patch('/v1/catalog/reorder', 'owner', { scope: 'SERVICE_CARDS', ids: originalIds }).expect(200);
+    });
+
+    it('reversing the service cards renumbers sortOrder 0..n-1 AND flips the customer Home order', async () => {
+      expect(originalIds.length).toBeGreaterThan(1);
+      const homeBefore = await homeCardIds();
+      const reversed = [...originalIds].reverse();
+
+      const res = await patch('/v1/catalog/reorder', 'owner', { scope: 'SERVICE_CARDS', ids: reversed }).expect(200);
+      expect(res.body.ids).toEqual(reversed);
+
+      // sortOrder really is the array index, in the DB
+      const rows = await prisma.serviceCategory.findMany({ where: { id: { in: reversed } }, select: { id: true, sortOrder: true } });
+      const orderById = new Map(rows.map((r) => [r.id, r.sortOrder]));
+      reversed.forEach((id, i) => expect(orderById.get(id)).toBe(i));
+
+      // …and the CUSTOMER Home menu now returns the cards in that new order (Home shows ACTIVE cards only)
+      const homeAfter = await homeCardIds();
+      expect(homeAfter).toEqual(reversed.filter((id) => homeBefore.includes(id)));
+      expect(homeAfter).not.toEqual(homeBefore);
+    });
+
+    it('reordering ITEMS renumbers them within the category (ties at sortOrder 0 are why we renumber, not swap)', async () => {
+      const cat = (await post('/v1/catalog/categories', 'finance', { name: 'CAT E2E Reorder' }).expect(201)).body;
+      const alpha = (await post('/v1/catalog/items', 'finance', { name: 'CAT E2E Alpha', price: 5, categoryId: cat.id }).expect(201)).body;
+      const beta = (await post('/v1/catalog/items', 'finance', { name: 'CAT E2E Beta', price: 7, categoryId: cat.id }).expect(201)).body;
+      // both were created with the default sortOrder 0 — a pairwise swap would be a silent no-op
+      expect(alpha.sortOrder).toBe(0);
+      expect(beta.sortOrder).toBe(0);
+
+      await patch('/v1/catalog/reorder', 'owner', { scope: 'ITEMS', ids: [beta.id, alpha.id] }).expect(200);
+
+      const rows = await prisma.service.findMany({ where: { id: { in: [alpha.id, beta.id] } }, select: { id: true, sortOrder: true } });
+      expect(rows.find((r) => r.id === beta.id)?.sortOrder).toBe(0);
+      expect(rows.find((r) => r.id === alpha.id)?.sortOrder).toBe(1);
+    });
+
+    it('rejects an id that is not in the named scope (a top-level card is not a CATEGORY) — 400, nothing renumbered', async () => {
+      const before = await prisma.serviceCategory.findMany({ where: { id: { in: originalIds } }, select: { id: true, sortOrder: true }, orderBy: { id: 'asc' } });
+      await patch('/v1/catalog/reorder', 'owner', { scope: 'CATEGORIES', ids: originalIds }).expect(400);
+      const after = await prisma.serviceCategory.findMany({ where: { id: { in: originalIds } }, select: { id: true, sortOrder: true }, orderBy: { id: 'asc' } });
+      expect(after).toEqual(before); // rejected whole — no partial renumber
+    });
+
+    it('rejects duplicate ids (400) and enforces the OWNER/FINANCE gate (dispatcher + driver → 403)', async () => {
+      const first = originalIds[0];
+      await patch('/v1/catalog/reorder', 'owner', { scope: 'SERVICE_CARDS', ids: [first, first] }).expect(400);
+      await patch('/v1/catalog/reorder', 'dispatcher', { scope: 'SERVICE_CARDS', ids: originalIds }).expect(403);
+      await patch('/v1/catalog/reorder', 'driver', { scope: 'SERVICE_CARDS', ids: originalIds }).expect(403);
+    });
+  });
 });

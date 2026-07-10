@@ -109,6 +109,9 @@ import type {
   ServiceMenuResult,
   ServiceMenuCardView,
   UpdateServiceMenuCardDto,
+  // Reorder (Inc-24).
+  ReorderCatalogDto,
+  CatalogReorderResult,
   CreateResidentDto,
   CreateStandingOrderDto,
   DropToLostFoundDto,
@@ -709,6 +712,12 @@ export class ConsoleApiClient extends ApiClient {
   }
   updateServiceMenuCard(id: string, dto: UpdateServiceMenuCardDto): Promise<ServiceMenuCardView> {
     return this.request('PATCH', `/catalog/service-menu/${id}`, { body: dto });
+  }
+
+  // ─────────────── reorder (Inc-24) — send the ids in the desired order; sortOrder is renumbered 0..n-1 ───────────────
+
+  reorderCatalog(dto: ReorderCatalogDto): Promise<CatalogReorderResult> {
+    return this.request('PATCH', '/catalog/reorder', { body: dto });
   }
 }
 

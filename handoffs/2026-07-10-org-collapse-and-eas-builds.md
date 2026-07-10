@@ -121,18 +121,82 @@ top-level `newArchEnabled` (SDK 51 rejects it). Needs `eas init` + the same app.
 
 ---
 
-## Phone-demo script (once the APKs land)
-Download each APK from its build page → allow unknown sources → install → login by phone OTP `000000`:
-- **Customer:** `+14165550111` (Grace) — Home 8-card catalog, Book, Orders, Track, live "Weighed X kg → $Y".
-- **Driver:** **`+14165550006`** (Demo Driver) — *not* `+14165550101`. Route/Stop/POD/**Weigh**, chat.
+## APKs — BUILT ✅ (both FINISHED, from `be14265`, i.e. **with** Inc-21…24)
+| App | Build | APK |
+|---|---|---|
+| driver | `16c5ba0f` | https://expo.dev/artifacts/eas/lZQa5g6cgt0p9lNnvUUF25r1lbsL3AyyfMGCYa5Sdvs.apk |
+| customer | `5206924b` | https://expo.dev/artifacts/eas/p6oslVFzq45eGteC8kwjpis4goXnjbD5U-v-yeNHmcc.apk |
 
-Expected, non-blocking: **maps blank** until a Google Maps Android key
-(`app.json → android.config.googleMaps.apiKey`); **Stripe** inert until a `pk_test_` key.
-The fleet has **zero Driver rows**, so the driver's route list may be empty until routes are seeded.
+**Do not install the older Expo APKs** — they were built from `27e9f0f` (pre-Inc-21): no catalog Home grid,
+no driver Weigh screen, no customer live-weight line.
+
+---
+
+## Part 5 — demo route, seeded through the REAL API (no raw SQL)
+
+### Corrections found by auditing first
+1. The org already had **2 Routes + 7 RouteStops** — but both routes are **COMPLETED**, June-dated, with
+   `driverId`/`vehicleId` NULL. Only `Driver` and `Vehicle` were genuinely empty.
+2. **No order was tied to a priced FIXED card.** Every active `Service` has `categoryId = NONE`, and the 8
+   cards have no backing rate by design. Reading the gate settled it:
+   `hasSpecialty() = services.some(s => s.category?.pricingModel === FROM_MEASURED)` — a **null category is
+   treated as all-FIXED**, so a wash order **auto-prices on weigh**; and the specialty quote→approve path runs
+   through `QuoteService`, independent of that gate. **No catalog surgery was needed and none was done** —
+   re-verified after seeding: 8 cards, 0 non-null `priceFrom`, 0 non-null `rate`.
+
+### What was created (all org `11111111`, all notes-tagged `DEMO —`)
+| Step | Endpoint | Result |
+|---|---|---|
+| Vehicle | `POST /v1/vehicles` | `Demo Van 1` / `DEMO-001` / ACTIVE — `16fc4f5c` |
+| Driver (fleet) | `POST /v1/drivers` | linked to Demo Driver user `e1000000-…-005` (`+14165550006`) — `56bb9dbf` |
+| Wash order | `POST /v1/orders` | Grace's account/site; `Wash & fold — per pound` (LB, $2.50/lb) → auto-prices on weigh (Inc-24 converts the kg capture → lb at pricing time) |
+| Specialty order | `POST /v1/orders` | Grace's account/site; `Area rug hand-wash (wool)` (SQFT, $6.50) → measure at intake → quote → approve |
+| Pickup-ready | `POST /v1/orders/:id/schedule-pickup` ×2 | both **SCHEDULED_PICKUP** |
+| Route | `POST /v1/routes` | today-dated, driver + vehicle assigned — `bf3536ad` |
+| Stops | `POST /v1/routes/:id/stops` ×3 | seq1 PICKUP wash · seq2 PICKUP rug · seq3 **DELIVERY of Grace's existing `DELIVERY_EN_ROUTE` order `…106`** |
+| Publish | `POST /v1/routes/:id/publish` | **PUBLISHED** |
+
+### Verified as the real principals (not as owner)
+- **Driver `+14165550006`** → `GET /v1/driver/assignment` → route `bf3536ad`, **PUBLISHED**, dated today,
+  **3 stops PENDING**. That is exactly what the driver app opens to.
+- **Grace `+14165550111`** → sees **6 orders**, including both new demo pickups;
+  `GET /v1/orders/…106/tracking` → **200** with `stop` + a **`channelToken`** (what her app uses to open the
+  `/live/vehicle` socket).
+- **Owner** → `/v1/fleet/live` 200 · `/v1/routes/:id` PUBLISHED w/ driver + vehicle + 3 stops ·
+  `/v1/vehicles` → `Demo Van 1`.
+
+### `vehicle: null` in tracking is CORRECT, not a bug
+`tracking-read.service.ts`: *"when no stop is active or no vehicle is assigned/positioned, `vehicle` is null
+(never a leak)."* The stops are `PENDING` and no GPS row exists. **The truck appears once the driver starts a
+shift with location permission and departs a stop** (PRD §12.2). Grant location on the demo phone.
+
+---
+
+## Phone-demo script
+Download each APK → allow unknown sources → install → login by phone OTP `000000`:
+- **Customer `+14165550111`** (Grace): Home 8-card catalog · Orders (2 new DEMO pickups) · Track (order `…106`)
+  · live "Weighed X kg → $Y" once the driver weighs.
+- **Driver `+14165550006`** (Demo Driver) — **not `+14165550101`, which does not exist**: opens to today's
+  published route with 3 stops → start shift (grant location) → depart/arrive/start → **Weigh** the wash order
+  → it auto-prices at $2.50/lb → complete → POD on the delivery stop.
+- **Owner** console `+14165550001`: fleet/dispatch shows Demo Van 1 + the route; the order detail shows the
+  live weight panel.
+
+Expected, non-blocking: **map tiles blank** (no Google Maps key — see below); **Stripe** inert until a
+`pk_test_` key. Tracking *data* (stop status, ETA, live weight) flows regardless.
+
+---
+
+## ⚠ Google Maps key — founder decision, on the critical path for the visual map
+Both APKs were built **without** `android.config.googleMaps.apiKey`. Tracking data works; the map renders
+blank. To show the truck on a map: add the key to `apps/customer/app.json` + `apps/driver/app.json` and
+**rebuild** (another ~1 hr free-tier queue). Otherwise demo tracking via status/ETA/live-weight today.
 
 ## Next
-1. Founder: enter **real CAD rates** on `/catalog` (all 8 cards are `priceFrom: NULL` by design) so the demo
-   is priced rather than "Get a quote"; add real Dry Cleaning garment items.
-2. Optional: deploy **Inc-25** (`df14f50` — seed-targeting fix, dry-clean separation, empty-state guard).
+1. Founder: enter **real CAD rates** on `/catalog` (all 8 cards are `priceFrom: NULL` by design); add real
+   Dry Cleaning garment items.
+2. Founder: supply the **Google Maps Android key** (and optionally a Stripe `pk_test_`) → CC rebuilds both APKs.
+3. Optional: deploy **Inc-25** (`df14f50` — seed-targeting fix, dry-clean separation, empty-state guard).
    `railway up` is now safe on a clean tree. Not required for the phone demo.
-3. Owner app EAS enablement.
+4. Owner app EAS enablement (`eas init` — it will prompt about `gautam1337` vs `gautam1337s-team`; also strip
+   its invalid top-level `newArchEnabled` and add the splash plugin).

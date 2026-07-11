@@ -318,6 +318,89 @@ export class NotificationService {
       this.logger.warn(`payment notification dispatch failed (${input.eventType} ${input.sourceId}): ${reason}`);
     }
   }
+
+  // ─────────────────────────── rate-request (Increment 32) ───────────────────────────
+
+  /**
+   * Enqueue a RATE_REQUEST for the owning customer of a just-DELIVERED order — same outbox engine as the
+   * geofence/payment alerts (matrix → preference/quiet-hours → render → ONE idempotent row per
+   * source × event × recipient × channel). The durable source is the Order itself (`sourceId = orderId`),
+   * so a re-completed / replayed delivery appends zero duplicates. Fully isolated (never throws) so a
+   * notification failure can never fail or slow the delivery transition that just committed.
+   */
+  async dispatchRateRequest(orgId: string, orderId: string): Promise<void> {
+    try {
+      const eventType = NOTIFICATION_EVENTS.RATE_REQUEST;
+      const channels = this.config.matrix[eventType] ?? [];
+      if (channels.length === 0) return;
+
+      const recipients = await this.recipients.resolveOrderRecipients(orgId, orderId);
+      if (recipients.length === 0) return;
+
+      const orderRef = shortOrderRef(orderId);
+      const urgent = this.config.urgentEventTypes.has(eventType);
+      const now = new Date();
+      let anyDue = false;
+
+      for (const r of recipients) {
+        const pref = await this.preferences.load(orgId, r.userId);
+        for (const channel of channels) {
+          const decision = decideChannel(
+            pref,
+            channel,
+            urgent,
+            now,
+            this.config.quietHours.policy,
+            this.config.quietHours.defaultTimezone,
+          );
+          const rendered = renderTemplate(eventType, channel, { appName: this.config.appName, orderRef });
+          const addresses = await this.addressesFor(orgId, channel, r);
+
+          let status: NotificationStatus = NotificationStatus.PENDING;
+          let scheduledFor: Date | null = null;
+          let lastError: string | null = null;
+          let dueNow = false;
+          if (decision.action === 'suppress') {
+            status = NotificationStatus.SUPPRESSED;
+            lastError = decision.reason;
+          } else if (addresses.length === 0) {
+            status = NotificationStatus.SUPPRESSED;
+            lastError = 'no destination address for channel';
+          } else if (decision.action === 'defer') {
+            scheduledFor = decision.scheduledFor;
+          } else {
+            dueNow = true;
+          }
+
+          const insertedId = await this.insertOnce({
+            orgId,
+            userId: r.userId,
+            eventType,
+            channel,
+            status,
+            urgent,
+            sourceType: 'Order',
+            sourceId: orderId,
+            dedupeKey: `${orderId}:${eventType}:${r.userId}:${channel}`,
+            scheduledFor,
+            lastError,
+            payload: { recipients: addresses, subject: rendered.subject, title: rendered.title, body: rendered.body, eventType, orderId },
+          });
+          if (insertedId && dueNow) anyDue = true;
+        }
+      }
+
+      if (anyDue && this.config.retry.kickOnDispatch) {
+        void this.processor.drainDue().catch((err) => {
+          const reason = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`rate-request notification drain kick failed: ${reason}`);
+        });
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`rate-request notification dispatch failed (order ${orderId}): ${reason}`);
+    }
+  }
 }
 
 /** A short, customer-facing order reference derived from the order id (no order-number column yet). */

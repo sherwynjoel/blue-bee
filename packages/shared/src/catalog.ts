@@ -29,6 +29,7 @@ export interface ServiceCatalogResult {
 export interface CustomerSite {
   id: string;
   accountId: string;
+  /** The customer-facing label — "Home" / "Work" / free text (the `Site.name` column). */
   name: string;
   address: string | null;
   /** Account this site belongs to (so the app can group when a customer spans accounts). */
@@ -41,6 +42,14 @@ export interface CustomerSite {
    * never decides serviceability; the server is authoritative.
    */
   geo: GeoPoint | null;
+  /** [Inc-26] Apartment / suite / unit number. */
+  unit: string | null;
+  /** [Inc-26] Buzzer or entry code. */
+  buzzer: string | null;
+  /** [Inc-26] Free-form driver access notes for the pickup/delivery. */
+  notes: string | null;
+  /** [Inc-26] The account's default pickup/delivery address (at most one ACTIVE default per account). */
+  isDefault: boolean;
 }
 
 /** GET /v1/sites result — the caller's own sites, row-scoped to their account(s). */

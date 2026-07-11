@@ -15,10 +15,13 @@ import {
   type AuditLogResult,
   type CreateDeviceDto,
   type NotificationConfigView,
+  type OrgScheduleView,
+  type UpdateOrgScheduleDto,
 } from '@blue-bee/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { scopedPrisma } from '../prisma/scoped-prisma';
 import { AuditService } from '../orders/audit.service';
+import { resolveOrgSchedule, withSchedule } from '../common/org-schedule';
 import { loadNotificationsConfig } from '../config/notifications.config';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AdminInputError, clampLimit, maskPushToken, normalizeGrantScope, parseOptionalDate } from './admin-policy';
@@ -406,5 +409,62 @@ export class AdminService {
       after: r.after ?? null,
     }));
     return { entries, nextCursor: hasMore ? page[page.length - 1].id : null };
+  }
+
+  // ─────────────────── pickup schedule (Inc-28 Part C — the founder's operating hours) ───────────────────
+
+  /**
+   * The org's effective pickup schedule + the timezone its `HH:MM` windows are read in.
+   *
+   * `source: 'default'` means nothing has been saved yet and the documented default is what
+   * `GET /v1/availability/pickup-slots` is currently serving to customers. The console says so on screen:
+   * an unsaved default is not the business's hours.
+   */
+  async getSchedule(principal: RequestPrincipal): Promise<OrgScheduleView> {
+    const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: principal.orgId } });
+    const { schedule, timezone, source } = resolveOrgSchedule(org);
+    return { schedule, timezone, source };
+  }
+
+  /**
+   * Replace the org's pickup schedule (audited). The body is a FULL schedule — `updateOrgScheduleSchema`
+   * has already rejected overlapping windows, an inverted window, a zero cap, and a week with every day
+   * closed — so what lands here is servable as-is by the availability endpoint.
+   *
+   * The write MERGES into `Organization.settings`, preserving the `region`/`currency`/`tz` keys bootstrap
+   * put there. It is the first writer this column has ever had: until Inc-28, `settings` was written once at
+   * provisioning and read nowhere.
+   *
+   * `before` on the audit row carries the schedule that was actually in effect AND its `source`, so the log
+   * distinguishes "the founder changed their hours" from "the founder set hours for the first time,
+   * replacing the default they never chose".
+   */
+  async updateSchedule(principal: RequestPrincipal, dto: UpdateOrgScheduleDto): Promise<OrgScheduleView> {
+    const before = await this.prisma.organization.findUniqueOrThrow({ where: { id: principal.orgId } });
+    const prior = resolveOrgSchedule(before);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // tx is UNSCOPED → the id filter IS the org boundary here (the principal's own org row).
+      const row = await tx.organization.update({
+        where: { id: principal.orgId },
+        data: { settings: withSchedule(before.settings, dto) as Prisma.InputJsonValue },
+      });
+      await this.audit.record(
+        {
+          orgId: principal.orgId,
+          actorId: principal.userId,
+          entity: 'Organization',
+          entityId: principal.orgId,
+          action: 'PICKUP_SCHEDULE_UPDATED',
+          before: { schedule: prior.schedule, source: prior.source } as unknown as Prisma.InputJsonValue,
+          after: { schedule: dto, source: 'org' } as unknown as Prisma.InputJsonValue,
+        },
+        tx,
+      );
+      return row;
+    });
+
+    const { schedule, timezone, source } = resolveOrgSchedule(updated);
+    return { schedule, timezone, source };
   }
 }

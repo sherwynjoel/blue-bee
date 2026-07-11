@@ -20,6 +20,7 @@ import {
   Settings,
   Shirt,
   Sun,
+  Users,
   Wallet,
   X,
 } from 'lucide-react';
@@ -104,6 +105,9 @@ export function AppShell({ children }: { children: React.ReactNode }): React.Rea
     {
       heading: 'Commercial',
       items: [
+        // [Inc-27] Consumer customers. Sits beside Accounts: `AccountDetail` is the B2B 360, this is the
+        // residential one. OWNER/CSR only — it reads PII.
+        { href: '/customers', label: 'Customers', show: can.customers(me), icon: Users },
         { href: '/accounts', label: 'Accounts', show: can.accounts(me), icon: Building2 },
         { href: '/corporate', label: 'Corporate', show: can.corporate(me), icon: Landmark },
         { href: '/service-zones', label: 'Service zones', show: can.zones(me), icon: MapIcon },

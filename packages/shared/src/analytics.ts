@@ -158,6 +158,8 @@ export interface AccountScorecard {
     onTimePercent: Metric<number>;
     /** Monthly spend: Σ captured payments for the account in range + per-month. */
     monthlySpend: Metric<AccountMonthlySpend>;
+    /** [Inc-32] Average post-delivery rating (1–5) over this account's ratings in range. Null when none. */
+    avgRatingScore: Metric<number>;
     /** DEFERRED (Phase 2 — cost centres / wing-floor splits). Never faked. */
     costCenterSplit: Metric<Record<string, string>>;
   };

@@ -26,6 +26,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { isOrgWide } from '../auth/rbac/policy';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from './audit.service';
+import { ITEM_ORDER_BY } from './item-order';
 import { MediaSigner } from '../media/storage/media-signer';
 import { OrderAccessService } from './order-access.service';
 import { PricingService } from './pricing.service';
@@ -52,8 +53,15 @@ const FULL_INCLUDE = {
   // `pricingAccountId` already flows; this only adds the name. NULL ⇒ priced on the payer's own account.
   // No pricing logic — display only; the order's owner reads their OWN order (scope already enforced).
   pricingAccount: { select: { name: true } },
-  lines: { orderBy: { createdAt: 'asc' as const } },
+  // [Inc-29] `createdAt` alone is not a total order: Prisma stamps it per statement, so lines written inside
+  // one booking transaction can share a millisecond. The `id` tiebreak makes the sequence deterministic —
+  // the same order on every read — rather than leaving the tail to heap order.
+  lines: { orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }] },
+  // [Inc-29] THE fix. Without an `orderBy`, Postgres returned an order's items in heap order, and an UPDATE
+  // (an intake inspection, a plant weigh) relocates a row — so two reads of the same order listed its items
+  // differently, on the customer app, the console and the driver's manifest alike. See `ITEM_ORDER_BY`.
   items: {
+    orderBy: ITEM_ORDER_BY,
     include: {
       tag: true,
       inspections: { orderBy: { createdAt: 'asc' as const } },
@@ -65,6 +73,9 @@ const FULL_INCLUDE = {
   // Increment 4: the order's route stops (status/eta) — the "track my truck" data, surfaced
   // here so a customer reading their own order sees its pickup stop's progress (row-scoped).
   routeStops: { orderBy: { createdAt: 'asc' as const }, select: { id: true, kind: true, seq: true, status: true, eta: true, arrivedAt: true, completedAt: true, routeId: true } },
+  // [Inc-32] The order's post-delivery rating (or null) — so the customer app's OrderDetail can show the
+  // "Rate this order" CTA (delivered-and-unrated) or the submitted score read-only in one round-trip.
+  rating: true,
 } satisfies Prisma.OrderInclude;
 
 @Injectable()
@@ -100,11 +111,16 @@ export class OrdersService {
       throw new NotFoundException({ error: ORDER_ERRORS.INVALID_BOOKING, message: 'Account not found in your organization' });
     }
 
-    // Site (optional) must belong to that account + org. Kept in scope so a geo-blocked booking can snapshot
-    // the site's address onto the CoverageRequest (the honest demand signal).
+    // Site (optional) must belong to that account + org, and still be ACTIVE. Kept in scope so a geo-blocked
+    // booking can snapshot the site's address onto the CoverageRequest (the honest demand signal).
+    // [Inc-26] `active: true` — a saved address the customer removed is soft-deleted, not gone (past orders
+    // reference it). Without this filter a stale client could keep booking pickups at a deleted address.
     let site: { address: string | null } | null = null;
     if (dto.siteId) {
-      site = await this.prisma.site.findFirst({ where: { id: dto.siteId, orgId, accountId: dto.accountId }, select: { address: true } });
+      site = await this.prisma.site.findFirst({
+        where: { id: dto.siteId, orgId, accountId: dto.accountId, active: true },
+        select: { address: true },
+      });
       if (!site) {
         throw new BadRequestException({ error: ORDER_ERRORS.INVALID_BOOKING, message: 'Site does not belong to the account' });
       }
@@ -210,7 +226,10 @@ export class OrdersService {
           },
         });
 
-        for (const item of dto.items) {
+        // [Inc-29] `sortOrder` is the item's index in the SUBMITTED array — the sequence the customer composed
+        // them in, which is the only ordering anyone ever intended. It is written once, here; an item's
+        // `orderId` is never reassigned afterwards, so the value stays correct for the life of the row.
+        for (const [sortOrder, item] of dto.items.entries()) {
           const tag = await tx.tag.create({
             data: {
               orgId,
@@ -228,6 +247,7 @@ export class OrdersService {
               tagId: tag.id,
               kind: item.kind,
               status: ItemStatus.RECEIVED,
+              sortOrder,
               measurements: (item.measurements ?? {}) as Prisma.InputJsonValue,
               createdBy: principal.userId,
             },
@@ -333,7 +353,9 @@ export class OrdersService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      include: { quotes: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      // [Inc-32] `rating` so the customer Orders list can show a delivered order's score (or the Rate CTA)
+      // without a per-row fetch. Additive; other consumers (console list) simply ignore the extra field.
+      include: { quotes: { orderBy: { createdAt: 'desc' }, take: 1 }, rating: true },
     });
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;

@@ -63,6 +63,17 @@ describe('HomeScreen service grid (Inc-21)', () => {
     expect(getByText('measured at pickup')).toBeTruthy();
   });
 
+  it('[Inc-33] the Service tab exposes a Book primary action (reachable in every state) that opens Book', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold' })] });
+    const { getByTestId, findByTestId } = render(<HomeScreen />);
+    // It lives in the shared header, so it is present immediately (during the loading state)…
+    expect(getByTestId('service-book')).toBeTruthy();
+    // …and still present with data; tapping it opens the general Book composer (absorbed the old FAB).
+    await findByTestId('home-service-wf');
+    fireEvent.press(getByTestId('service-book'));
+    expect(mockNavigate).toHaveBeenCalledWith('Book');
+  });
+
   it('tapping an unpriced card (no backing service) opens the general Book composer', async () => {
     mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold', serviceId: null })] });
     const { findByTestId } = render(<HomeScreen />);

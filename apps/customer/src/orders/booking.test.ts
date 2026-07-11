@@ -1,5 +1,5 @@
 import { ItemKind } from '@blue-bee/shared';
-import { buildBookDto, newIdempotencyKey, tomorrowMorningWindow } from './booking';
+import { buildBookDto, newIdempotencyKey, slotToWindow } from './booking';
 
 describe('booking helpers', () => {
   it('maps the form to a BookOrderDto, dropping empty optionals', () => {
@@ -43,13 +43,29 @@ describe('booking helpers', () => {
     expect(k1.startsWith('book-')).toBe(true);
   });
 
-  it('tomorrowMorningWindow is the next day 09:00–12:00 local', () => {
-    const base = new Date('2026-06-25T20:00:00.000Z').getTime();
-    const w = tomorrowMorningWindow(() => base);
-    const start = new Date(w.start);
-    const end = new Date(w.end);
-    expect(start.getHours()).toBe(9);
-    expect(end.getHours()).toBe(12);
-    expect(end.getTime()).toBeGreaterThan(start.getTime());
+  /**
+   * [Inc-28] `tomorrowMorningWindow()` is gone. It invented a window from the DEVICE's clock — tomorrow
+   * 09:00–12:00 wherever the phone happened to be — with no reference to the org's hours, timezone, lead
+   * time or capacity. A window may now only come from a slot the server offered, and `slotToWindow` does
+   * nothing but hand those exact instants back.
+   */
+  it('slotToWindow passes the server instants through untouched (no client-side date math)', () => {
+    const slot = {
+      label: 'Morning',
+      start: '2026-07-11T13:00:00.000Z',
+      end: '2026-07-11T16:00:00.000Z',
+      startLocal: '09:00',
+      endLocal: '12:00',
+      available: true,
+      remaining: null,
+      reason: null,
+    };
+    expect(slotToWindow(slot)).toEqual({ start: '2026-07-11T13:00:00.000Z', end: '2026-07-11T16:00:00.000Z' });
+  });
+
+  it('slotToWindow carries only start/end into the booking DTO', () => {
+    const window = slotToWindow({ start: '2026-07-11T13:00:00.000Z', end: '2026-07-11T16:00:00.000Z' });
+    const dto = buildBookDto({ accountId: 'acc-1', items: [{ kind: ItemKind.RUG, serviceId: 'svc-1' }], pickupWindow: window });
+    expect(dto.pickupWindow).toEqual({ start: '2026-07-11T13:00:00.000Z', end: '2026-07-11T16:00:00.000Z' });
   });
 });

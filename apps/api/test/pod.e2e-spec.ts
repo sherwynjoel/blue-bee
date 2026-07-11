@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import type Redis from 'ioredis';
-import { POD_ERRORS, RouteStopKind, RouteStopStatus } from '@blue-bee/shared';
+import { CustodyStage, NOTIFICATION_EVENTS, POD_ERRORS, RouteStopKind, RouteStopStatus } from '@blue-bee/shared';
 import { RouteStatus as PrismaRouteStatus, ShiftStatus as PrismaShiftStatus } from '@prisma/client';
 import { createRealtimeTestApp } from './app.factory';
 import { TokenService } from '../src/auth/token.service';
@@ -89,6 +89,41 @@ describe('Driver POD e2e — Increment 17 (/v1/driver/stops/:id/{pod/presign,pro
     expect(await putBytes(pre.uploadUrl, bytes, contentType)).toBe(200);
     return pre.storageKey;
   }
+
+  /**
+   * [Inc-31] Book a MULTI-item order and drive it the whole real §5.1 spine to READY (the state a delivery
+   * is scheduled from) — pickup → intake → quote → approve → cleaning → QC → ready. All steps are OWNER-legal,
+   * so one token drives it. Returns the order id (its items are already ordered by the Inc-29 sortOrder).
+   */
+  async function deliverableReadyOrder(): Promise<string> {
+    const orderId = (
+      await post('/v1/orders', 'owner', {
+        accountId: ACCOUNT_A,
+        siteId: SITE_NORTH,
+        pickupWindow: window(),
+        items: [
+          { kind: 'RUG', serviceId: SERVICE, estimatedMeasure: 40 },
+          { kind: 'RUG', serviceId: SERVICE, estimatedMeasure: 25 },
+        ],
+      }).expect(201)
+    ).body.id;
+    await post(`/v1/orders/${orderId}/schedule-pickup`, 'owner', { pickupWindow: window() }).expect(200);
+    await post(`/v1/orders/${orderId}/received-at-plant`, 'owner', {}).expect(200);
+    const order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
+    for (const item of order.items) {
+      await post(`/v1/orders/${orderId}/items/${item.id}/inspection`, 'owner', { conditionCodes: ['MINOR_FRINGE_WEAR'], measurements: { sqft: 40 } }).expect(201);
+    }
+    await post(`/v1/orders/${orderId}/quote`, 'owner', {}).expect(201);
+    await post(`/v1/orders/${orderId}/quote:approve`, 'owner', {}).expect(200);
+    await post(`/v1/orders/${orderId}/start-cleaning`, 'owner', {}).expect(200);
+    await post(`/v1/orders/${orderId}/send-to-qc`, 'owner', {}).expect(200);
+    await post(`/v1/orders/${orderId}/qc`, 'owner', { result: 'pass' }).expect(200);
+    const ready = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    expect(ready.status).toBe('READY');
+    return orderId;
+  }
+
+  const orderStatus = async (orderId: string): Promise<string> => (await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status;
 
   beforeAll(async () => {
     const live = await fetch('http://localhost:9000/minio/health/live').then((r) => r.status).catch(() => 0);
@@ -199,6 +234,76 @@ describe('Driver POD e2e — Increment 17 (/v1/driver/stops/:id/{pod/presign,pro
     // and a PICKUP stop still completes WITHOUT a POD (pickup behavior unchanged).
     await post(`/v1/driver/stops/${sc.stopId}/complete`, 'driver1').expect(200);
     expect((await prisma.routeStop.findUniqueOrThrow({ where: { id: sc.stopId } })).status).toBe(RouteStopStatus.COMPLETED);
+  });
+
+  // ─────────────────────────── Inc-31 — delivery legs (READY → … → DELIVERED, POD-gated both paths) ───────────────────────────
+
+  it('a published DELIVERY stop advances the order READY → SCHEDULED_DELIVERY → DELIVERY_EN_ROUTE → DELIVERED, POD-gated on BOTH the driver AND the dispatch path, writing the DELIVERED custody chain', async () => {
+    const orderId = await deliverableReadyOrder();
+
+    // Route the READY order as a DELIVERY stop, assigned to driver1, and publish.
+    seq += 1;
+    const vehicleId = (await post('/v1/vehicles', 'dispatcher', { label: `Del Van ${seq}`, plate: `DEL-${seq}` }).expect(201)).body.id;
+    const shift = (await post('/v1/shifts', 'dispatcher', { driverId: driver1Id, vehicleId }).expect(201)).body;
+    const routeId = (await post('/v1/routes', 'dispatcher', { date: '2026-07-21' }).expect(201)).body.id;
+    const stop = (await post(`/v1/routes/${routeId}/stops`, 'dispatcher', { orderId, kind: RouteStopKind.DELIVERY }).expect(201)).body;
+    await post(`/v1/routes/${routeId}/assign`, 'dispatcher', { driverId: driver1Id, vehicleId }).expect(200);
+
+    // publish → the delivery leg is scheduled (READY → SCHEDULED_DELIVERY).
+    await post(`/v1/routes/${routeId}/publish`, 'dispatcher').expect(200);
+    expect(await orderStatus(orderId)).toBe('SCHEDULED_DELIVERY');
+
+    // driver starts the shift, departs → SCHEDULED_DELIVERY → DELIVERY_EN_ROUTE.
+    await post(`/v1/driver/shifts/${shift.id}/start`, 'driver1').expect(200);
+    await post(`/v1/driver/stops/${stop.id}/depart`, 'driver1').expect(200);
+    expect(await orderStatus(orderId)).toBe('DELIVERY_EN_ROUTE');
+    await post(`/v1/driver/stops/${stop.id}/arrive`, 'driver1').expect(200);
+    await post(`/v1/driver/stops/${stop.id}/start`, 'driver1').expect(200);
+
+    // POD gate — a delivery stop cannot COMPLETE without a captured POD, on EITHER entry point:
+    //   • the driver duty-loop  /v1/driver/stops/:id/complete
+    //   • the ops/dispatch      /v1/route-stops/:id:complete   (previously ungated → the Inc-31 fix)
+    const blockedDriver = await post(`/v1/driver/stops/${stop.id}/complete`, 'driver1').expect(400);
+    expect(blockedDriver.body.error ?? blockedDriver.body.title).toBe(POD_ERRORS.POD_REQUIRED);
+    const blockedOps = await post(`/v1/route-stops/${stop.id}:complete`, 'owner').expect(400);
+    expect(blockedOps.body.error ?? blockedOps.body.title).toBe(POD_ERRORS.POD_REQUIRED);
+    // Neither blocked call touched the machine: stop still IN_PROGRESS, order still DELIVERY_EN_ROUTE.
+    expect((await prisma.routeStop.findUniqueOrThrow({ where: { id: stop.id } })).status).toBe(RouteStopStatus.IN_PROGRESS);
+    expect(await orderStatus(orderId)).toBe('DELIVERY_EN_ROUTE');
+
+    // Capture the real POD (photo + signature to MinIO), then complete.
+    const photoKey = await uploadPod(stop.id, 'image/jpeg', Buffer.from('deliver-photo-' + 'x'.repeat(400)));
+    const sigKey = await uploadPod(stop.id, 'image/png', Buffer.from('deliver-sig-' + 'y'.repeat(200)));
+    await post(`/v1/driver/stops/${stop.id}/proof-of-delivery`, 'driver1', {
+      signatureStorageKey: sigKey,
+      photoStorageKeys: [photoKey],
+      geo: { lng: -79.4111, lat: 43.7615 },
+    }).expect(201);
+
+    await post(`/v1/driver/stops/${stop.id}/complete`, 'driver1').expect(200);
+
+    // Stop COMPLETED, order DELIVERED.
+    expect((await prisma.routeStop.findUniqueOrThrow({ where: { id: stop.id } })).status).toBe(RouteStopStatus.COMPLETED);
+    expect(await orderStatus(orderId)).toBe('DELIVERED');
+
+    // A DELIVERED CustodyEvent for EVERY item, walked in the Inc-29 ITEM_ORDER_BY sequence, and every
+    // Item.status = DELIVERED. (Append-only inserts — exactly one DELIVERED event per item.)
+    const items = await prisma.item.findMany({ where: { orderId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+    expect(items.length).toBe(2);
+    for (const it of items) {
+      const events = await prisma.custodyEvent.findMany({ where: { itemId: it.id, stage: CustodyStage.DELIVERED } });
+      expect(events).toHaveLength(1);
+      expect(events[0].deviceId).toBe('route-stop-delivery');
+      expect(it.status).toBe('DELIVERED');
+    }
+    const delivered = await prisma.custodyEvent.count({ where: { itemId: { in: items.map((i) => i.id) }, stage: CustodyStage.DELIVERED } });
+    expect(delivered).toBe(items.length); // one-to-one, no extras
+
+    // [Inc-32] The DELIVERED transition enqueued a RATE_REQUEST for the order's owning customer(s) — the
+    // "how did we do?" push, through the same outbox engine (source = the Order; deduped per recipient×channel).
+    const rateNotifs = await prisma.notification.findMany({ where: { sourceId: orderId, eventType: NOTIFICATION_EVENTS.RATE_REQUEST } });
+    expect(rateNotifs.length).toBeGreaterThan(0);
+    expect(rateNotifs.every((n) => (n.payload as { orderId?: string }).orderId === orderId)).toBe(true);
   });
 
   it('rejects an unsupported content-type and a cross-stop storage key (no raw-URL trust)', async () => {

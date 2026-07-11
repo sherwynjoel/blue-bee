@@ -424,9 +424,21 @@ export class AnalyticsService {
         activeContracts: this.deferred<number>(
           'Deferred to Phase 2 — contracts / standing orders are not modelled in Phase 1.',
         ),
-        csat: this.deferred<number>('Deferred to Phase 2 — no CSAT / satisfaction survey capture exists in Phase 1.'),
+        // [Inc-32] Real now — average post-delivery rating (1–5) over ratings created in range. `metric()`
+        // degrades to status:'error' on failure (never a 500); no ratings yet ⇒ value null / rowCount 0.
+        csat: await this.metric<number>(
+          'Average CSAT (1–5): mean post-delivery rating score over ratings created in range.',
+          () => this.avgRating(db, from, to),
+        ),
       },
     };
+  }
+
+  /** Mean 1–5 rating score over ratings CREATED in the window (org-scoped). Null when there are none. */
+  private async avgRating(db: ScopedPrisma, from: Date, to: Date): Promise<{ value: number | null; rowCount: number | null }> {
+    const agg = await db.rating.aggregate({ where: { createdAt: { gte: from, lt: to } }, _avg: { score: true }, _count: { _all: true } });
+    const rowCount = agg._count._all;
+    return { value: rowCount > 0 && agg._avg.score != null ? Math.round(agg._avg.score * 100) / 100 : null, rowCount };
   }
 
   private async trackedGmv(
@@ -615,7 +627,7 @@ export class AnalyticsService {
     const account = await db.account.findFirst({ where: { id: accountId }, select: { id: true, name: true } });
     if (!account) throw new NotFoundException(`account ${accountId} not found in scope`);
 
-    const [lossRatePercent, onTimeP, monthlySpend] = await Promise.all([
+    const [lossRatePercent, onTimeP, monthlySpend, avgRatingScore] = await Promise.all([
       this.metric<number>(
         'Loss rate %: distinct items with a LOSS Claim ÷ Items, for this account in range.',
         () => this.accountLossRate(db, accountId, from, to),
@@ -626,6 +638,11 @@ export class AnalyticsService {
       ),
       this.metric('Monthly spend: Σ captured payments for this account in range ÷ months.', () =>
         this.accountMonthlySpend(db, accountId, from, to),
+      ),
+      // [Inc-32] Average post-delivery rating (1–5) for THIS account's orders in range.
+      this.metric<number>(
+        'Average rating (1–5): mean post-delivery rating over this account’s ratings in range.',
+        () => this.accountAvgRating(db, accountId, from, to),
       ),
     ]);
 
@@ -639,11 +656,19 @@ export class AnalyticsService {
         lossRatePercent,
         onTimePercent: onTimeP,
         monthlySpend,
+        avgRatingScore,
         costCenterSplit: this.deferred<Record<string, string>>(
           'Deferred to Phase 2 — cost centres (wing/floor splits) are not modelled in Phase 1.',
         ),
       },
     };
+  }
+
+  /** Mean 1–5 rating over THIS account's ratings created in the window. Null when there are none. */
+  private async accountAvgRating(db: ScopedPrisma, accountId: string, from: Date, to: Date): Promise<{ value: number | null; rowCount: number | null }> {
+    const agg = await db.rating.aggregate({ where: { order: { accountId }, createdAt: { gte: from, lt: to } }, _avg: { score: true }, _count: { _all: true } });
+    const rowCount = agg._count._all;
+    return { value: rowCount > 0 && agg._avg.score != null ? Math.round(agg._avg.score * 100) / 100 : null, rowCount };
   }
 
   private async accountLossRate(

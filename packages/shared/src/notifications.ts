@@ -26,6 +26,9 @@ export const NOTIFICATION_EVENTS = {
   PAYMENT_RECEIPT: 'payment.receipt',
   PAYMENT_FAILED: 'payment.failed',
   PAYMENT_DISPUTE: 'payment.dispute',
+  // Ratings / CSAT (Increment 32). Fired once when an order reaches DELIVERED — invites the owning
+  // customer to rate the completed order (deep-links to the Rate screen). Recipient = owning customer.
+  RATE_REQUEST: 'rating.request',
 } as const;
 export type NotificationEventType = (typeof NOTIFICATION_EVENTS)[keyof typeof NOTIFICATION_EVENTS];
 

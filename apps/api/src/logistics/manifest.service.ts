@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from '../orders/audit.service';
+import { ITEM_ORDER_BY } from '../orders/item-order';
 import { LogisticsAccessService } from './logistics-access.service';
 
 /**
@@ -25,7 +26,9 @@ export class ManifestService {
     const order = stop.orderId
       ? await this.prisma.order.findFirst({
           where: { id: stop.orderId, orgId: principal.orgId },
-          include: { items: { include: { tag: true } }, account: { select: { id: true, name: true } }, site: { select: { id: true, name: true, address: true } } },
+          // [Inc-29] The driver checks this list off against the physical load. It must not reorder itself
+          // between the manifest they generated and the one they re-open at the door.
+          include: { items: { orderBy: ITEM_ORDER_BY, include: { tag: true } }, account: { select: { id: true, name: true } }, site: { select: { id: true, name: true, address: true } } },
         })
       : null;
 
@@ -56,7 +59,7 @@ export class ManifestService {
     const stops = await this.prisma.routeStop.findMany({
       where: { routeId, orgId: principal.orgId },
       orderBy: { seq: 'asc' },
-      include: { order: { include: { items: { include: { tag: true } } } } },
+      include: { order: { include: { items: { orderBy: ITEM_ORDER_BY, include: { tag: true } } } } },
     });
     const lines = stops.map((s) => ({
       stopId: s.id,

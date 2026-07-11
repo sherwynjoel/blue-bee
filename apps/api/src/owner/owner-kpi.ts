@@ -3,57 +3,25 @@
  * dashboard aggregation (`OwnerService.today`) is server-authoritative; these are the deterministic
  * bits (the business-day window, money summation, on-time math) factored out so they're provable
  * without a DB.
+ *
+ * [Inc-28] The wall-clock↔UTC conversion this file used to own privately now lives in `common/tz.ts`,
+ * shared with the pickup-availability slot generator. Both must agree on what "9am in Toronto" means,
+ * and a second implementation is how the booked window and the on-time KPI come to disagree.
  */
-
-interface WallParts {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-}
-
-/** The wall-clock calendar/clock parts of `date` rendered in `tz`. */
-function wallParts(date: Date, tz: string): WallParts {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const p = Object.fromEntries(dtf.formatToParts(date).map((x) => [x.type, x.value])) as Record<string, string>;
-  return {
-    year: Number(p.year),
-    month: Number(p.month),
-    day: Number(p.day),
-    hour: Number(p.hour),
-    minute: Number(p.minute),
-    second: Number(p.second),
-  };
-}
-
-/** Milliseconds `tz` is ahead of UTC at `date` (negative for west-of-UTC, e.g. America/Toronto). */
-function tzOffsetMs(date: Date, tz: string): number {
-  const p = wallParts(date, tz);
-  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-  return asUtc - date.getTime();
-}
+import { wallParts, zonedWallTimeToUtc } from '../common/tz';
 
 /**
  * The UTC instant of the start of `now`'s calendar day in `tz` (the GTA business day,
- * `America/Toronto`). DST-safe to the minute except across the ~yearly transition hour (a "today's
- * numbers" KPI tolerates that, and the transition is at 02:00 local, not midnight).
+ * `America/Toronto`).
+ *
+ * [Inc-28] Exact across DST as well: `zonedWallTimeToUtc` re-reads the zone offset at the resolved
+ * instant, where the previous single-pass version read it at `now` and drifted by an hour when `now`
+ * sat on the far side of a transition from local midnight. Behaviour is unchanged on every other day
+ * (the specs below are untouched).
  */
 export function businessDayStart(now: Date, tz: string): Date {
   const p = wallParts(now, tz);
-  const offsetMs = tzOffsetMs(now, tz);
-  const localMidnightAsUtc = Date.UTC(p.year, p.month - 1, p.day, 0, 0, 0, 0);
-  return new Date(localMidnightAsUtc - offsetMs);
+  return zonedWallTimeToUtc(p.year, p.month, p.day, 0, 0, tz);
 }
 
 /** Parse a fixed-2 (or any) dollar string to integer cents (round-half-up). NaN-safe → 0. */

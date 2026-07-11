@@ -135,6 +135,43 @@ export type HoldOrderDto = z.infer<typeof holdOrderSchema>;
 export const resumeOrderSchema = z.object({ note: z.string().max(500).optional() }).default({});
 export type ResumeOrderDto = z.infer<typeof resumeOrderSchema>;
 
+// ───────────────────── production / plant transitions (Inc-30 — §5.1 back-half) ─────────────────────
+
+/**
+ * [Inc-30] The plant half of the §5.1 spine that was never wired: QUOTE_APPROVED → IN_CLEANING → QC →
+ * READY, plus the REWASH branch the lifecycle already permits (IN_CLEANING⇄REWASH, QC→REWASH). Every step
+ * is a human-triggered, atomic, audited OrderStateMachine transition (no timers, no auto-advance) — these
+ * are the wire shapes the console posts. All target states already exist in `OrderStatus`; nothing new is
+ * invented, only the transitions that were dead code are now driven.
+ */
+
+/** Start (QUOTE_APPROVED) or restart (REWASH) cleaning → IN_CLEANING. */
+export const startCleaningSchema = z.object({ note: z.string().max(500).optional() }).default({});
+export type StartCleaningDto = z.infer<typeof startCleaningSchema>;
+
+/** Move a cleaned order to quality control → IN_CLEANING → QC. */
+export const sendToQcSchema = z.object({ note: z.string().max(500).optional() }).default({});
+export type SendToQcDto = z.infer<typeof sendToQcSchema>;
+
+/**
+ * Record the QC decision — QC → READY (pass) or QC → REWASH (fail). A failure must carry a reason so the
+ * rewash is accountable (audited), never a silent bounce; a pass may carry an optional note.
+ */
+export const recordQcSchema = z
+  .object({
+    result: z.enum(['pass', 'fail']),
+    reason: z.string().min(3).max(500).optional(),
+  })
+  .refine((d) => d.result === 'pass' || (d.reason !== undefined && d.reason.trim().length >= 3), {
+    message: 'a QC failure requires a reason (why the order is sent back for rewash)',
+    path: ['reason'],
+  });
+export type RecordQcDto = z.infer<typeof recordQcSchema>;
+
+/** Pull a load back for a rewash cycle mid-cleaning → IN_CLEANING → REWASH (the QC-fail path is `recordQc`). */
+export const rewashSchema = z.object({ reason: z.string().min(3).max(500) });
+export type RewashDto = z.infer<typeof rewashSchema>;
+
 // ───────────────────── weight capture (POST …/weigh) — Increment 22 ─────────────────────
 
 /**

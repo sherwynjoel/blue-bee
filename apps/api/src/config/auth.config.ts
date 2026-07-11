@@ -41,6 +41,30 @@ export interface AuthConfig {
     transport: 'console' | 'twilio';
     twilio: { accountSid?: string; authToken?: string; from?: string };
   };
+  // [Inc-35] Email+password credential + rate-limit/lockout + email-delivered token TTLs.
+  credential: {
+    bcryptRounds: number;
+    loginMaxAttempts: number; // wrong-password attempts per window before lockout
+    loginWindowSeconds: number;
+    lockoutSeconds: number;
+    verifyTokenTtlSeconds: number;
+    resetTokenTtlSeconds: number;
+  };
+  // [Inc-35] OAuth (Apple + Google). `clientIds` are the accepted `aud` values (founder-supplied, CSV);
+  // empty ⇒ the real verifier rejects every token for that provider (fail-closed until configured).
+  oauth: {
+    google: { clientIds: string[] };
+    apple: { clientIds: string[] };
+  };
+  // [Inc-35] Transactional email (verify + reset). Console (dev, logs + echoes) or SendGrid (prod).
+  email: {
+    transport: 'console' | 'sendgrid';
+    from: string;
+    sendgridApiKey?: string;
+  };
+  // [Inc-35] The org a NEW self-service signup (email/OAuth) lands in. Single-tenant MVP ⇒ the demo org;
+  // prod sets DEFAULT_SIGNUP_ORG_ID. OTP is unaffected (it resolves the existing user's org).
+  signupOrgId: string;
 }
 
 /** Parse a short duration like "15m", "30d", "900s", or a bare number of seconds. */
@@ -142,5 +166,32 @@ export function loadAuthConfig(): AuthConfig {
         from: process.env.TWILIO_FROM_NUMBER,
       },
     },
+    credential: {
+      bcryptRounds: int('BCRYPT_ROUNDS', 12),
+      loginMaxAttempts: int('LOGIN_MAX_ATTEMPTS', 10),
+      loginWindowSeconds: int('LOGIN_WINDOW_SECONDS', 900),
+      lockoutSeconds: int('LOGIN_LOCKOUT_SECONDS', 900),
+      verifyTokenTtlSeconds: int('EMAIL_VERIFY_TTL_SECONDS', 86400),
+      resetTokenTtlSeconds: int('PASSWORD_RESET_TTL_SECONDS', 3600),
+    },
+    oauth: {
+      google: { clientIds: csv(process.env.OAUTH_GOOGLE_CLIENT_IDS) },
+      apple: { clientIds: csv(process.env.OAUTH_APPLE_CLIENT_IDS) },
+    },
+    email: {
+      transport: (process.env.EMAIL_TRANSPORT ?? 'console').toLowerCase() === 'sendgrid' ? 'sendgrid' : 'console',
+      from: process.env.EMAIL_FROM ?? 'no-reply@bluebee.example',
+      sendgridApiKey: process.env.SENDGRID_API_KEY,
+    },
+    signupOrgId: process.env.DEFAULT_SIGNUP_ORG_ID ?? '11111111-1111-4111-8111-111111111111',
   };
+}
+
+/** Parse a comma-separated env var into a trimmed, non-empty list (empty when unset). */
+function csv(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }

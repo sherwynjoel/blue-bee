@@ -141,6 +141,12 @@ export function loadNotificationsConfig(): NotificationsConfig {
       nullableStr('NOTIF_MATRIX_PAYMENT_DISPUTE'),
       [CommsChannel.EMAIL, CommsChannel.PUSH],
     ),
+    // [Inc-32] Rate-request — fired once on DELIVERED, inviting the owning customer to rate. PUSH deep-links
+    // to the Rate screen; EMAIL is a durable "how did we do?". Not urgent (never bypasses quiet-hours).
+    [NOTIFICATION_EVENTS.RATE_REQUEST]: parseChannels(
+      nullableStr('NOTIF_MATRIX_RATE_REQUEST'),
+      [CommsChannel.PUSH, CommsChannel.EMAIL],
+    ),
   };
 
   return {

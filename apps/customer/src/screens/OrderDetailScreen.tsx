@@ -11,7 +11,9 @@ import type { OrderDetail, ItemView } from '../api/types';
 import type { RootStackParamList } from '../navigation';
 import { StatusTimeline } from '../components/StatusTimeline';
 import { CorporatePricingNote } from '../components/CorporatePricing';
+import { StarRating } from '../components/StarRating';
 import { hasActiveStop, preexistingDamageItems, quoteActionability } from '../orders/quote';
+import { isRateable } from '../orders/rating';
 import { capturePhotoToOrder, MediaCaptureError, type CaptureSource } from '../media/capture';
 import { money, orderRef, rangeText, shortDate } from '../format';
 import { useTheme } from '../../theme';
@@ -250,6 +252,55 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       <Card title="Progress">
         <StatusTimeline status={order.status} heldFrom={order.heldFrom} />
       </Card>
+
+      {/* [Inc-32] Post-delivery rating. Once the order is delivered-or-later: the submitted score read-only,
+          or a "Rate this order" CTA into the Rate screen (server stays the authority on eligibility). */}
+      {isRateable(order) ? (
+        order.rating ? (
+          <Card title="Your rating">
+            <View style={styles.ratingRow}>
+              <StarRating value={order.rating.score} size={22} testID="order-rating-stars" />
+              <Text testID="order-rating-score" variant="subhead" weight="700" tabular>
+                {order.rating.score}/5
+              </Text>
+            </View>
+            {order.rating.comment ? (
+              <Text testID="order-rating-comment" variant="footnote" color="secondary" style={{ marginTop: 6 }}>
+                “{order.rating.comment}”
+              </Text>
+            ) : null}
+            {order.rating.editable ? (
+              <Button
+                testID="edit-rating"
+                label="Edit rating"
+                icon="edit-2"
+                variant="outline"
+                size="sm"
+                fullWidth={false}
+                onPress={() => navigation.navigate('Rate', { orderId })}
+                style={{ marginTop: 10 }}
+              />
+            ) : null}
+          </Card>
+        ) : (
+          <Pressable testID="rate-cta" onPress={() => navigation.navigate('Rate', { orderId })} accessibilityRole="button" accessibilityLabel="Rate this order">
+            <Card style={styles.chatCta}>
+              <View style={[styles.chatIcon, { backgroundColor: colors.subtle }]}>
+                <Feather name="star" size={20} color={colors.honey} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="headline" weight="700">
+                  Rate this order
+                </Text>
+                <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
+                  Your order was delivered — how did we do?
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={22} color={colors.textTertiary} />
+            </Card>
+          </Pressable>
+        )
+      ) : null}
 
       {/* [Inc-23 P4] The live "Weighed X kg → $Y" line for weight-priced (FIXED) services. No fake numbers:
           a pending state until a real weight exists; the specialty (FROM_MEASURED) quote card below handles
@@ -510,6 +561,7 @@ const styles = StyleSheet.create({
   trackIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   chatCta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   chatIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   approvedRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   paidRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginTop: 10 },
   damageNotice: { borderRadius: 12, padding: 12 },

@@ -11,8 +11,12 @@ import {
   listOrdersQuerySchema,
   quoteBuildSchema,
   receivedAtPlantSchema,
+  recordQcSchema,
   resumeOrderSchema,
+  rewashSchema,
   schedulePickupSchema,
+  sendToQcSchema,
+  startCleaningSchema,
   type ApproveQuoteDto,
   type BookOrderDto,
   type CaptureWeightDto,
@@ -22,8 +26,12 @@ import {
   type ListOrdersQuery,
   type QuoteBuildDto,
   type ReceivedAtPlantDto,
+  type RecordQcDto,
   type ResumeOrderDto,
+  type RewashDto,
   type SchedulePickupDto,
+  type SendToQcDto,
+  type StartCleaningDto,
 } from '@blue-bee/shared';
 import { ZodBody } from '../common/zod-validation.pipe';
 import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
@@ -31,6 +39,7 @@ import { CurrentUser, Roles } from '../auth/rbac/decorators';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { IntakeService } from './intake.service';
 import { OrdersService } from './orders.service';
+import { ProductionService } from './production.service';
 import { QuoteService } from './quote.service';
 import { WeighService } from './weigh.service';
 
@@ -48,6 +57,7 @@ export class OrdersController {
   constructor(
     private readonly orders: OrdersService,
     private readonly intake: IntakeService,
+    private readonly production: ProductionService,
     private readonly quote: QuoteService,
     private readonly weigh: WeighService,
   ) {}
@@ -117,6 +127,40 @@ export class OrdersController {
   @ApiOperation({ summary: 'Build the quote (auto-calc service×measure×rate + upcharges, per-account override, HST; manual adjust audited) → QUOTED.' })
   buildQuote(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(quoteBuildSchema)) dto: QuoteBuildDto) {
     return this.quote.build(p, id, dto);
+  }
+
+  // ─────────────────────────── production / plant (Inc-30 — QUOTE_APPROVED → IN_CLEANING → QC → READY) ───────────────────────────
+
+  @Post(':id/start-cleaning')
+  @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start (QUOTE_APPROVED) or restart (REWASH) cleaning → IN_CLEANING (§5.1). Audited; illegal state → 409.' })
+  startCleaning(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(startCleaningSchema)) dto: StartCleaningDto) {
+    return this.production.startCleaning(p, id, dto);
+  }
+
+  @Post(':id/send-to-qc')
+  @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send a cleaned order to quality control → IN_CLEANING → QC (§5.1).' })
+  sendToQc(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(sendToQcSchema)) dto: SendToQcDto) {
+    return this.production.sendToQc(p, id, dto);
+  }
+
+  @Post(':id/qc')
+  @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Record the QC decision → QC → READY (pass) or QC → REWASH (fail, reason required, audited).' })
+  recordQc(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(recordQcSchema)) dto: RecordQcDto) {
+    return this.production.recordQc(p, id, dto);
+  }
+
+  @Post(':id/rewash')
+  @Roles(RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pull a load back for a rewash cycle mid-cleaning → IN_CLEANING → REWASH (§5.1 branch).' })
+  rewash(@CurrentUser() p: RequestPrincipal, @Param('id') id: string, @Body(new ZodBody(rewashSchema)) dto: RewashDto) {
+    return this.production.rewash(p, id, dto);
   }
 
   // ─────────────────────────── approve / decline (owning customer + OWNER) ───────────────────────────

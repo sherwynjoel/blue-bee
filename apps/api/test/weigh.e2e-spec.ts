@@ -60,13 +60,30 @@ describe('Weigh e2e — Increment 22 (weight → hybrid pricing)', () => {
   const get = (path: string, who: string) => request(app.getHttpServer()).get(path).set('Authorization', `Bearer ${token[who]}`);
 
   /** Book a specialty order, drive it to INTAKE_INSPECTED, inspecting each item with the given measurements. */
+  /**
+   * Book → schedule → receive → inspect each item with its intended measurements, returning the item ids in
+   * the order they were REQUESTED (so `itemIds[0]` is the first item passed in).
+   *
+   * [Inc-29] This maps `order.items[i]` to `items[i]` BY INDEX again — and that is now correct, not luck.
+   *
+   * The history: in Inc-28 this mapping (on the comment "Book preserves item order") started applying the
+   * rug's `{ sqft: 40 }` to the wash-and-fold garment, because `Item` had no ordinal and the `items` include
+   * had no `orderBy`, so an inspection could move a row and the order came back rug-first. It was rewritten
+   * to map by `kind` as a stopgap, and the missing order was flagged. Inc-29 fixed the root cause:
+   * `Item.sortOrder` + `ITEM_ORDER_BY`, so `GET /v1/orders/:id` returns items in the submitted order on
+   * every read. The index mapping is restored deliberately, so that **this spec passing is itself a proof of
+   * the guarantee** — an inspection here mutates an item (which moves its heap tuple), yet a later index read
+   * still binds the right measurement to the right line. Its dedicated proof is `item-ordering.e2e-spec.ts`.
+   */
   async function bookToInspected(items: Array<{ kind: string; serviceId: string; measurements: Record<string, unknown> }>): Promise<{ orderId: string; itemIds: string[] }> {
     const booked = (await post('/v1/orders', 'owner', { accountId: ACCOUNT_A, pickupWindow: futureWindow(), items: items.map((i) => ({ kind: i.kind, serviceId: i.serviceId, estimatedMeasure: 1 })) }).expect(201)).body;
     const orderId: string = booked.id;
     await post(`/v1/orders/${orderId}/schedule-pickup`, 'owner', { pickupWindow: futureWindow() }).expect(200);
     await post(`/v1/orders/${orderId}/received-at-plant`, 'owner', {}).expect(200);
     const order = (await get(`/v1/orders/${orderId}`, 'owner').expect(200)).body;
-    // Book preserves item order; map each order item to its intended measurements by index.
+    // The submitted order is the returned order (Inc-29). Assert it here rather than assume it.
+    expect((order.items as Array<{ kind: string }>).map((it) => it.kind)).toEqual(items.map((i) => i.kind));
+
     const itemIds: string[] = order.items.map((it: { id: string }) => it.id);
     for (let i = 0; i < order.items.length; i += 1) {
       await post(`/v1/orders/${orderId}/items/${itemIds[i]}/inspection`, 'csr', { conditionCodes: [], measurements: items[i].measurements }).expect(201);

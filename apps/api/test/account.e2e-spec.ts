@@ -213,3 +213,181 @@ describe('Account self-deletion e2e — DELETE /v1/account (launch-scaffolding)'
     expect(prior.every((row) => row.actorId === USER_A)).toBe(true);
   });
 });
+
+/**
+ * Account profile edit e2e — PATCH /v1/account/profile (Inc-33). Proves the ONE new backend piece of the
+ * nav-shell increment is REAL, self-only, org-scoped, and connected to the console:
+ *   • Auth required — no bearer token → 401.
+ *   • Self-only — C's token with a body targeting user D → 403 (forbidden_self_only); nothing is written.
+ *   • Org-scope (defense-in-depth) — a token whose `org_id` claim ≠ the user's real org → 404
+ *     (account_not_found): the endpoint never edits a row outside the caller's tenant.
+ *   • Validation — a malformed email → 400 (validation_failed), no write.
+ *   • Email uniqueness — C setting an email already held by D in the same org → 409 (email_taken); the
+ *     `@@unique([orgId, email])` guarantee, surfaced as a friendly conflict, not a 500.
+ *   • Real update — C edits name + email; the response + the live DB row carry the new values, email is
+ *     normalized (trimmed + lower-cased), and a single immutable PROFILE_UPDATED AuditLog attributes the
+ *     change to C with before/after.
+ *   • Connected — reading C's console customer-360 (`GET /v1/admin/customers/:id`, OWNER) returns the
+ *     SAME updated name/email (Inc-27 reads the very row this endpoint wrote — one source of truth).
+ *   • Clear — C can remove the email (→ null), proving the nullable path + that multiple null emails are
+ *     fine under the composite unique index.
+ *
+ * Cleanup: once C is edited it becomes an audit actor (PROFILE_UPDATED), so — exactly like USER_A above —
+ * it can never be hard-deleted (the append-only AuditLog + ON DELETE SET NULL FK abort it). afterAll
+ * therefore NEUTRALIZES C (drop role, suspend, null its contact fields) so it is re-runnable and never
+ * lingers as a live customer; D (never an audit actor) is hard-deleted.
+ */
+describe('Account profile edit e2e — PATCH /v1/account/profile (Inc-33)', () => {
+  let app: INestApplication;
+  const prisma = new PrismaClient();
+
+  const ORG2 = 'e0000000-0000-4000-8000-000000000002'; // a DIFFERENT org (need not exist) — org-scope probe
+  const USER_C = 'ac330000-0000-4000-8000-0000000000c1'; // the self-editing customer
+  const USER_D = 'ac330000-0000-4000-8000-0000000000d2'; // holds the email C will collide with
+  const ACCT_C = 'ac330000-0000-4000-8000-0000000000a1'; // C's residential account (so the 360 read resolves)
+  const ROLE_C = 'ac330000-0000-4000-8000-0000000000e1';
+  const ROLE_D = 'ac330000-0000-4000-8000-0000000000e2';
+
+  const C_NAME = 'Inc33 C Original';
+  const C_EMAIL = 'inc33-c@bluebee.example';
+  const C_PHONE = '+14165558801';
+  const D_EMAIL = 'inc33-d@bluebee.example';
+  const D_PHONE = '+14165558802';
+  const NEW_NAME = 'Inc33 C Renamed';
+  const NEW_EMAIL_MIXED = 'Inc33.C.New@BlueBee.Example';
+  const NEW_EMAIL_NORM = 'inc33.c.new@bluebee.example';
+  const OWNER_PHONE = '+14165550001'; // seeded ORG1 owner (reads the console customer-360)
+
+  let tokenC = '';
+  let tokenCWrongOrg = '';
+  let ownerToken = '';
+
+  const patch = (who: string | undefined, body: unknown) => {
+    const req = request(app.getHttpServer()).patch('/v1/account/profile');
+    if (who) req.set('Authorization', `Bearer ${who}`);
+    return req.send(body as object);
+  };
+
+  async function upsertUser(id: string, name: string, email: string, phone: string): Promise<void> {
+    const data = { orgId: ORG1, name, email, phone, status: 'ACTIVE' as const, authProviders: ['otp'] };
+    await prisma.user.upsert({ where: { id }, update: data, create: { id, ...data } });
+  }
+
+  beforeAll(async () => {
+    app = await createTestApp();
+    const tokens = app.get(TokenService);
+    const principals = app.get(PrincipalService);
+
+    // Clean any residue from a prior run, then seed C, D + C's account & customer roles.
+    await prisma.userRole.deleteMany({ where: { userId: { in: [USER_C, USER_D] } } });
+    await prisma.refreshToken.deleteMany({ where: { userId: { in: [USER_C, USER_D] } } });
+    await prisma.account.upsert({
+      where: { id: ACCT_C },
+      update: {},
+      create: { id: ACCT_C, orgId: ORG1, type: 'RESIDENTIAL', name: 'Inc33 profile e2e account' },
+    });
+    await upsertUser(USER_C, C_NAME, C_EMAIL, C_PHONE);
+    await upsertUser(USER_D, 'Inc33 D Person', D_EMAIL, D_PHONE);
+    await prisma.userRole.create({ data: { id: ROLE_C, orgId: ORG1, userId: USER_C, role: 'RESIDENTIAL_CUSTOMER', scope: 'ACCOUNT', scopeId: ACCT_C } });
+    await prisma.userRole.create({ data: { id: ROLE_D, orgId: ORG1, userId: USER_D, role: 'RESIDENTIAL_CUSTOMER', scope: 'ACCOUNT', scopeId: ACCT_C } });
+
+    const cUser = await prisma.user.findUniqueOrThrow({ where: { id: USER_C } });
+    const cRoles = await principals.loadGrants(USER_C);
+    const cScope = await principals.deriveScope(cRoles);
+    tokenC = tokens.signAccess(cUser, cRoles, cScope);
+    // Same subject, but the token claims a DIFFERENT org — the service must not find C's row there → 404.
+    tokenCWrongOrg = tokens.signAccess({ ...cUser, orgId: ORG2 }, cRoles, cScope);
+
+    const owner = await prisma.user.findFirstOrThrow({ where: { phone: OWNER_PHONE } });
+    const ownerRoles = await principals.loadGrants(owner.id);
+    ownerToken = tokens.signAccess(owner, ownerRoles, await principals.deriveScope(ownerRoles));
+  }, 60000);
+
+  afterAll(async () => {
+    await prisma.userRole.deleteMany({ where: { userId: { in: [USER_C, USER_D] } } });
+    await prisma.refreshToken.deleteMany({ where: { userId: { in: [USER_C, USER_D] } } });
+    // D never acted → hard-delete. C is an audit actor (PROFILE_UPDATED) → neutralize in place.
+    await prisma.user.deleteMany({ where: { id: USER_D } });
+    await prisma.user
+      .update({ where: { id: USER_C }, data: { status: 'SUSPENDED', email: null, phone: null, name: 'Inc33 profile e2e (retired)' } })
+      .catch(() => undefined);
+    await prisma.account.deleteMany({ where: { id: ACCT_C } });
+    await prisma.$disconnect();
+    await app.close();
+  });
+
+  it('requires auth — no bearer token → 401', async () => {
+    await patch(undefined, { name: 'Nope' }).expect(401);
+  });
+
+  it('is self-only — C targeting D → 403, and neither C nor D is touched', async () => {
+    await patch(tokenC, { userId: USER_D, name: 'Hijacked', email: 'attacker@bluebee.example' }).expect(403);
+
+    const c = await prisma.user.findUniqueOrThrow({ where: { id: USER_C } });
+    const d = await prisma.user.findUniqueOrThrow({ where: { id: USER_D } });
+    expect(c.name).toBe(C_NAME);
+    expect(c.email).toBe(C_EMAIL);
+    expect(d.name).toBe('Inc33 D Person');
+    expect(d.email).toBe(D_EMAIL);
+  });
+
+  it('is org-scoped — a token claiming another org → 404, C untouched', async () => {
+    const res = await patch(tokenCWrongOrg, { name: 'From Nowhere' }).expect(404);
+    expect(res.body.title).toBe('account_not_found');
+    const c = await prisma.user.findUniqueOrThrow({ where: { id: USER_C } });
+    expect(c.name).toBe(C_NAME);
+  });
+
+  it('validates the email — a malformed address → 400, nothing written', async () => {
+    await patch(tokenC, { email: 'not-an-email' }).expect(400);
+    const c = await prisma.user.findUniqueOrThrow({ where: { id: USER_C } });
+    expect(c.email).toBe(C_EMAIL);
+  });
+
+  it('enforces per-org email uniqueness — C taking D’s email → 409 email_taken, C untouched', async () => {
+    const res = await patch(tokenC, { email: D_EMAIL }).expect(409);
+    expect(res.body.title).toBe('email_taken');
+    const c = await prisma.user.findUniqueOrThrow({ where: { id: USER_C } });
+    expect(c.email).toBe(C_EMAIL);
+  });
+
+  it('updates name + email — normalized, persisted, and audited (PROFILE_UPDATED)', async () => {
+    const res = await patch(tokenC, { name: `  ${NEW_NAME}  `, email: NEW_EMAIL_MIXED }).expect(200);
+
+    // Response is the profile view with the SERVER-normalized values (name trimmed, email lower-cased).
+    expect(res.body).toMatchObject({ id: USER_C, name: NEW_NAME, email: NEW_EMAIL_NORM, phone: C_PHONE });
+
+    // Live DB row reflects it.
+    const c = await prisma.user.findUniqueOrThrow({ where: { id: USER_C } });
+    expect(c.name).toBe(NEW_NAME);
+    expect(c.email).toBe(NEW_EMAIL_NORM);
+    expect(c.phone).toBe(C_PHONE); // phone untouched (login identity)
+
+    // Exactly one immutable audit entry, attributed to C, carrying before/after.
+    const audit = await prisma.auditLog.findFirst({
+      where: { entity: 'User', entityId: USER_C, action: 'PROFILE_UPDATED' },
+      orderBy: { at: 'desc' },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit!.actorId).toBe(USER_C);
+    expect(audit!.before).toMatchObject({ name: C_NAME, email: C_EMAIL });
+    expect(audit!.after).toMatchObject({ name: NEW_NAME, email: NEW_EMAIL_NORM });
+  });
+
+  it('connects to the console customer-360 — OWNER read reflects the new name/email (Inc-27)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/v1/admin/customers/${USER_C}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(res.body.customer.name).toBe(NEW_NAME);
+    expect(res.body.customer.email).toBe(NEW_EMAIL_NORM);
+  });
+
+  it('clears the email — an empty value sets it to null (removable, nullable-unique safe)', async () => {
+    const res = await patch(tokenC, { email: '' }).expect(200);
+    expect(res.body.email).toBeNull();
+    const c = await prisma.user.findUniqueOrThrow({ where: { id: USER_C } });
+    expect(c.email).toBeNull();
+    expect(c.name).toBe(NEW_NAME); // name unchanged by an email-only patch
+  });
+});

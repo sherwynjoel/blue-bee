@@ -7,6 +7,9 @@ import { RoleType, type MeResponse } from '@blue-bee/shared';
  */
 export const OPS_ROLES: RoleType[] = [RoleType.OWNER, RoleType.DISPATCHER, RoleType.CSR, RoleType.PLANT_OP, RoleType.FINANCE];
 export const INTAKE_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP];
+// Production/plant advance (Inc-30) — MIRRORS @Roles(OWNER, CSR, PLANT_OP) on the /v1/orders/:id/{start-cleaning,
+// send-to-qc,qc,rewash} routes. Same trio as intake, named separately so the surface reads by intent.
+export const PRODUCTION_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP];
 export const DISPATCH_ROLES: RoleType[] = [RoleType.OWNER, RoleType.DISPATCHER];
 export const FLEET_READ_ROLES: RoleType[] = [RoleType.OWNER, RoleType.DISPATCHER, RoleType.CSR];
 export const FINANCE_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE];
@@ -22,6 +25,10 @@ export const ANALYTICS_COMMERCIAL_ROLES: RoleType[] = [RoleType.OWNER, RoleType.
 export const ANALYTICS_SCORECARD_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE, RoleType.CSR];
 // Admin (Inc 16) — OWNER only (§17.3 admin row), mirrors the server @Roles(OWNER).
 export const ADMIN_ROLES: RoleType[] = [RoleType.OWNER];
+// Customer-360 (Inc 27) — OWNER + CSR, mirroring @Roles(OWNER, CSR) on AdminCustomersController. Customer
+// support is the whole point of the view, so CSR is in; it reads consumer PII, so nobody else is.
+// Deliberately NOT `ADMIN_ROLES` — every other /v1/admin route stays OWNER-only.
+export const CUSTOMER_360_ROLES: RoleType[] = [RoleType.OWNER, RoleType.CSR];
 // Track-A B2B accounts console — MIRRORS the server @Roles on the account/standing-order/billing routes.
 // Account directory reads + the generated feed: org-wide ops + finance staff.
 export const ACCOUNTS_READ_ROLES: RoleType[] = [RoleType.OWNER, RoleType.FINANCE, RoleType.DISPATCHER, RoleType.CSR];
@@ -64,6 +71,8 @@ export function isPortal(me: MeResponse | null): boolean {
 
 export const can = {
   intake: (me: MeResponse | null) => hasAnyRole(me, INTAKE_ROLES),
+  // Production/plant advance (Inc-30) — cleaning → QC → ready (+ rewash). OWNER/CSR/PLANT_OP.
+  production: (me: MeResponse | null) => hasAnyRole(me, PRODUCTION_ROLES),
   dispatch: (me: MeResponse | null) => hasAnyRole(me, DISPATCH_ROLES),
   fleet: (me: MeResponse | null) => hasAnyRole(me, FLEET_READ_ROLES),
   finance: (me: MeResponse | null) => hasAnyRole(me, FINANCE_ROLES),
@@ -73,6 +82,8 @@ export const can = {
   analyticsCommercial: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_COMMERCIAL_ROLES),
   analyticsScorecard: (me: MeResponse | null) => hasAnyRole(me, ANALYTICS_SCORECARD_ROLES),
   admin: (me: MeResponse | null) => hasAnyRole(me, ADMIN_ROLES),
+  // Consumer customer-360 (Inc-27) — OWNER/CSR only; reads PII and is audited server-side.
+  customers: (me: MeResponse | null) => hasAnyRole(me, CUSTOMER_360_ROLES),
   // Track-A B2B accounts console.
   accounts: (me: MeResponse | null) => hasAnyRole(me, ACCOUNTS_READ_ROLES),
   standingOrderWrite: (me: MeResponse | null) => hasAnyRole(me, STANDING_ORDER_WRITE_ROLES),

@@ -1,8 +1,10 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, type User } from '@prisma/client';
+import type { AccountProfileView } from '@blue-bee/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../orders/audit.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
-import type { AccountDeletionResult, DeleteAccountDto } from './account.dto';
+import type { AccountDeletionResult, DeleteAccountDto, UpdateProfileDto } from './account.dto';
 
 /** The value `User.name` is overwritten with when an account is deleted (no PII, not re-identifiable). */
 export const ANONYMIZED_NAME = 'Deleted user';
@@ -111,5 +113,95 @@ export class AccountService {
 
       return { status: 'deleted', userId, anonymized: true, driversScrubbed, removed } satisfies AccountDeletionResult;
     });
+  }
+
+  /**
+   * Self-service profile edit (Inc-33) — update the authenticated user's own `name` / `email`.
+   *
+   * Same self-only + org-scope discipline as {@link deleteAccount}: the target is ALWAYS the token
+   * subject (`principal.userId`) within the caller's tenant (`principal.orgId`); a body naming another
+   * user → 403, and a principal whose own row is not in its org → 404 (defense-in-depth — the JWT
+   * already guarantees the tenant, but we never act on a row outside it).
+   *
+   * `email` is unique per org (`@@unique([orgId, email])`). We do a friendly pre-check (409 `email_taken`
+   * when another user already holds it) AND catch the DB's unique violation (P2002) so a race can never
+   * slip a duplicate through. Only fields that actually CHANGE are written + audited (an unchanged patch
+   * is an idempotent no-op that returns the current profile without an audit row). Phone is never touched
+   * here — it is the login identity (Inc-35).
+   */
+  async updateProfile(principal: RequestPrincipal, dto: UpdateProfileDto): Promise<AccountProfileView> {
+    // Self-only: a body targeting another user is refused, never silently ignored.
+    if (dto.userId && dto.userId !== principal.userId) {
+      throw new ForbiddenException({
+        error: 'forbidden_self_only',
+        message: 'You can only edit your own profile.',
+      });
+    }
+
+    const userId = principal.userId;
+    const orgId = principal.orgId;
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({ where: { id: userId, orgId } });
+      if (!user) {
+        throw new NotFoundException({ error: 'account_not_found', message: 'Account not found.' });
+      }
+
+      // Assemble only the fields that genuinely change (idempotent — no needless write/audit).
+      const data: Prisma.UserUpdateInput = {};
+      if (dto.name !== undefined && dto.name !== user.name) {
+        data.name = dto.name;
+      }
+      if (dto.email !== undefined && dto.email !== user.email) {
+        // Setting (not clearing) an email: it must be free within the org.
+        if (dto.email !== null) {
+          const clash = await tx.user.findFirst({
+            where: { orgId, email: dto.email, id: { not: userId } },
+            select: { id: true },
+          });
+          if (clash) {
+            throw new ConflictException({ error: 'email_taken', message: 'That email is already in use.' });
+          }
+        }
+        data.email = dto.email;
+      }
+
+      if (Object.keys(data).length === 0) {
+        return this.toProfileView(user); // nothing to change — return the current profile.
+      }
+
+      let updated: User;
+      try {
+        updated = await tx.user.update({ where: { id: userId }, data });
+      } catch (e) {
+        // Belt-and-suspenders: a concurrent write could take the email between the pre-check and here.
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          throw new ConflictException({ error: 'email_taken', message: 'That email is already in use.' });
+        }
+        throw e;
+      }
+
+      // Audit the change (attributed to the user; before/after are the user's OWN data — this is the
+      // accountability record for a support "who changed my email?" question, not an erasure).
+      await this.audit.record(
+        {
+          orgId,
+          actorId: userId,
+          entity: 'User',
+          entityId: userId,
+          action: 'PROFILE_UPDATED',
+          before: { name: user.name, email: user.email },
+          after: { name: updated.name, email: updated.email },
+        },
+        tx,
+      );
+
+      return this.toProfileView(updated);
+    });
+  }
+
+  /** The read-only profile lens the app + console share (phone is login-only, never edited here). */
+  private toProfileView(user: User): AccountProfileView {
+    return { id: user.id, name: user.name, email: user.email, phone: user.phone };
   }
 }

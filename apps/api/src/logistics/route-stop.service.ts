@@ -1,10 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Order, RouteStop } from '@prisma/client';
 import {
   CustodyStage,
+  ItemStatus,
   LOGISTICS_ERRORS,
   OrderStatus,
+  POD_ERRORS,
   RouteStatus,
   RouteStopKind,
   RouteStopStatus,
@@ -17,10 +19,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from '../orders/audit.service';
+import { ITEM_ORDER_BY } from '../orders/item-order';
 import { OrderStateMachine } from '../orders/state-machine.service';
 import { RealtimePublisher } from '../realtime/realtime-publisher.service';
+import { NotificationService } from '../notifications/notification.service';
 import { LogisticsAccessService } from './logistics-access.service';
 import { RouteStopStateMachine } from './route-stop-state-machine.service';
+import { DELIVERY_KINDS } from './stop-kinds';
 
 /** Route states in which stops may be worked. */
 const WORKABLE_ROUTE = new Set<RouteStatus>([RouteStatus.PUBLISHED, RouteStatus.IN_PROGRESS]);
@@ -35,6 +40,7 @@ export class RouteStopService {
     private readonly orderStateMachine: OrderStateMachine,
     private readonly stopStateMachine: RouteStopStateMachine,
     private readonly realtime: RealtimePublisher,
+    private readonly notifications: NotificationService,
   ) {}
 
   // ─────────────────────────────── reads ───────────────────────────────
@@ -86,10 +92,32 @@ export class RouteStopService {
       throw new ConflictException({ error: LOGISTICS_ERRORS.INVALID_ROUTE_STATE, message: `Route is ${stop.route.status}; publish it before working its stops` });
     }
 
+    // [Inc-31] POD gate on the SHARED path: a DELIVERY/BOTH stop cannot COMPLETE without a captured
+    // ProofOfDelivery — enforced here so DELIVERED is unreachable without proof from ANY caller (the driver
+    // duty-loop, which also pre-checks in driver.service, AND the ops/dispatch /v1/route-stops:complete
+    // route, which previously reached the completion path ungated). Checked BEFORE the tx so a missing POD
+    // never enters the state machine — a clean 4xx, no half-applied transition. Pickup stops are untouched.
+    if (to === RouteStopStatus.COMPLETED && DELIVERY_KINDS.has(stop.kind as unknown as RouteStopKind)) {
+      const pod = await this.prisma.proofOfDelivery.findFirst({ where: { routeStopId: stop.id, orgId: stop.orgId }, select: { id: true } });
+      if (!pod) {
+        throw new BadRequestException({ error: POD_ERRORS.POD_REQUIRED, message: 'capture proof of delivery before completing this delivery stop' });
+      }
+    }
+
+    // The order id that this call actually drove to DELIVERED (if any) — captured inside the tx, used to
+    // enqueue the RATE_REQUEST push AFTER commit (like the realtime teardown below), never inside the tx.
+    let deliveredOrderId: string | null = null;
+
     await this.prisma.$transaction(async (tx) => {
       await this.stopStateMachine.apply(tx, stop, to, { actorId: principal.userId, reason: opts.reason, note: opts.note });
-      if (opts.leg === 'depart') await this.pickupDepartLeg(tx, stop, principal.userId);
-      if (opts.leg === 'complete') await this.pickupCompleteLeg(tx, stop, principal.userId);
+      if (opts.leg === 'depart') {
+        await this.pickupDepartLeg(tx, stop, principal.userId);
+        await this.deliveryDepartLeg(tx, stop, principal.userId);
+      }
+      if (opts.leg === 'complete') {
+        await this.pickupCompleteLeg(tx, stop, principal.userId);
+        deliveredOrderId = await this.deliveryCompleteLeg(tx, stop, principal.userId);
+      }
       if (to === RouteStopStatus.IN_PROGRESS) await this.maybeStartRoute(tx, stop.routeId, stop.orgId, principal.userId);
       if (TERMINAL_STOP.has(to)) await this.maybeCompleteRoute(tx, stop.routeId, stop.orgId, principal.userId);
     });
@@ -102,6 +130,13 @@ export class RouteStopService {
       const reason: ChannelClosedReason =
         to === RouteStopStatus.COMPLETED ? 'stop_completed' : to === RouteStopStatus.FAILED ? 'stop_failed' : 'stop_skipped';
       await this.realtime.closeStopChannel(stop.orgId, stop.id, stop.route.vehicleId ?? '', reason);
+    }
+
+    // [Inc-32] When this completion drove the order to DELIVERED, invite the owning customer to rate it.
+    // Enqueued AFTER the tx commits (like the teardown above) so a rolled-back delivery never fires a push;
+    // the dispatch is fully isolated (never throws) so a notification hiccup can't fail the stop action.
+    if (deliveredOrderId) {
+      await this.notifications.dispatchRateRequest(stop.orgId, deliveredOrderId);
     }
     return this.getStop(principal, stopId);
   }
@@ -123,11 +158,44 @@ export class RouteStopService {
     const order = await tx.order.findUnique({ where: { id: stop.orderId } });
     if (order && (order.status as unknown as OrderStatus) === OrderStatus.PICKUP_EN_ROUTE) {
       await this.orderStateMachine.apply(tx, order as Order, OrderStatus.PICKED_UP, { actorId, reason: 'picked up at stop', extraAudit: { stopId: stop.id } });
-      const items = await tx.item.findMany({ where: { orderId: order.id, orgId: order.orgId }, select: { id: true } });
+      // [Inc-29] Ordered — the PICKED_UP custody chain is written in the customer's item sequence.
+      const items = await tx.item.findMany({ where: { orderId: order.id, orgId: order.orgId }, orderBy: ITEM_ORDER_BY, select: { id: true } });
       for (const it of items) {
         await tx.custodyEvent.create({ data: { orgId: order.orgId, itemId: it.id, stage: CustodyStage.PICKED_UP, actorId, deviceId: 'route-stop-pickup', createdBy: actorId } });
       }
     }
+  }
+
+  // ── order delivery-leg wiring (Inc-31; mirrors the pickup legs one-for-one, conditional + atomic) ──
+
+  /** Driver departs to a delivery → order SCHEDULED_DELIVERY → DELIVERY_EN_ROUTE (if applicable). */
+  private async deliveryDepartLeg(tx: Prisma.TransactionClient, stop: RouteStop, actorId: string) {
+    if ((stop.kind as unknown as RouteStopKind) === RouteStopKind.PICKUP || !stop.orderId) return;
+    const order = await tx.order.findUnique({ where: { id: stop.orderId } });
+    if (order && (order.status as unknown as OrderStatus) === OrderStatus.SCHEDULED_DELIVERY) {
+      await this.orderStateMachine.apply(tx, order as Order, OrderStatus.DELIVERY_EN_ROUTE, { actorId, reason: 'driver en route to delivery', extraAudit: { stopId: stop.id } });
+    }
+  }
+
+  /**
+   * Delivery completed (POD already enforced in `run()`) → order DELIVERY_EN_ROUTE → DELIVERED, plus a real
+   * DELIVERED CustodyEvent per item (append-only, in the customer's item sequence) and Item.status = DELIVERED.
+   * Item status is set unconditionally: there is no Item state machine, and items sit at INSPECTED/RECEIVED at
+   * delivery time — the delivered order is the authoritative signal that every one of its items is delivered.
+   */
+  private async deliveryCompleteLeg(tx: Prisma.TransactionClient, stop: RouteStop, actorId: string): Promise<string | null> {
+    if ((stop.kind as unknown as RouteStopKind) === RouteStopKind.PICKUP || !stop.orderId) return null;
+    const order = await tx.order.findUnique({ where: { id: stop.orderId } });
+    if (order && (order.status as unknown as OrderStatus) === OrderStatus.DELIVERY_EN_ROUTE) {
+      await this.orderStateMachine.apply(tx, order as Order, OrderStatus.DELIVERED, { actorId, reason: 'delivered at stop', extraAudit: { stopId: stop.id } });
+      const items = await tx.item.findMany({ where: { orderId: order.id, orgId: order.orgId }, orderBy: ITEM_ORDER_BY, select: { id: true } });
+      for (const it of items) {
+        await tx.custodyEvent.create({ data: { orgId: order.orgId, itemId: it.id, stage: CustodyStage.DELIVERED, actorId, deviceId: 'route-stop-delivery', createdBy: actorId } });
+        await tx.item.update({ where: { id: it.id }, data: { status: ItemStatus.DELIVERED } });
+      }
+      return order.id; // signals run() to enqueue the RATE_REQUEST after commit
+    }
+    return null;
   }
 
   private async maybeStartRoute(tx: Prisma.TransactionClient, routeId: string, orgId: string, actorId: string) {

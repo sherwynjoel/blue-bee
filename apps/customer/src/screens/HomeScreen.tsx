@@ -57,6 +57,17 @@ export function HomeScreen(): React.ReactElement {
       <Text variant="subhead" color="secondary" style={{ marginTop: 4 }}>
         {firstName ? `Hi ${firstName} — pick a service to get started.` : 'Pick a service to get started.'}
       </Text>
+      {/* [Inc-33] Book as the Service tab's primary action (it absorbed the old center Book FAB). Lives in
+          the shared header so it is reachable in every state — loading, error, empty, and the grid. Opens
+          the general Book composer; tapping a specific card still pre-selects that service (below). */}
+      <Button
+        testID="service-book"
+        label="Book a pickup"
+        icon="plus"
+        onPress={() => navigation.navigate('Book')}
+        style={{ marginTop: space.lg }}
+        haptic="medium"
+      />
     </View>
   );
 

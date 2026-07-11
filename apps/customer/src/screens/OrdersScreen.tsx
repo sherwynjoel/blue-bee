@@ -7,6 +7,8 @@ import { useSession } from '../session/SessionProvider';
 import type { OrderSummary } from '../api/types';
 import type { RootStackParamList } from '../navigation';
 import { money, orderRef, rangeText, shortDate } from '../format';
+import { isRateable } from '../orders/rating';
+import { StarRating } from '../components/StarRating';
 import { useTheme, usePressScale, useEntrance } from '../../theme';
 import { Button, Card, EmptyState, SkeletonCard, StatusPill, Text } from '../../components/ui';
 
@@ -105,7 +107,12 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
         data={orders}
         keyExtractor={(o) => o.id}
         renderItem={({ item, index }) => (
-          <OrderCard order={item} index={index} onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })} />
+          <OrderCard
+            order={item}
+            index={index}
+            onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
+            onRate={() => navigation.navigate('Rate', { orderId: item.id })}
+          />
         )}
         ListHeaderComponent={header}
         contentContainerStyle={styles.list}
@@ -126,7 +133,7 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
   );
 }
 
-function OrderCard({ order, index, onPress }: { order: OrderSummary; index: number; onPress: () => void }): React.ReactElement {
+function OrderCard({ order, index, onPress, onRate }: { order: OrderSummary; index: number; onPress: () => void; onRate: () => void }): React.ReactElement {
   const { colors } = useTheme();
   const press = usePressScale(true);
   const entrance = useEntrance(index);
@@ -167,6 +174,31 @@ function OrderCard({ order, index, onPress }: { order: OrderSummary; index: numb
                 <Feather name="chevron-right" size={18} color={colors.textTertiary} style={{ marginLeft: 6 }} />
               </View>
             </View>
+            {/* [Inc-32] Rate affordance on delivered orders — the submitted score, or a tap-to-rate chip. */}
+            {isRateable(order) ? (
+              order.rating ? (
+                <View style={[styles.rateFooter, { borderTopColor: colors.hairline }]}>
+                  <StarRating value={order.rating.score} size={14} testID={`card-rating-${order.id}`} />
+                  <Text variant="footnote" color="secondary" style={{ marginLeft: 8 }}>
+                    Your rating
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  testID={`rate-${order.id}`}
+                  onPress={onRate}
+                  accessibilityRole="button"
+                  accessibilityLabel="Rate this order"
+                  style={[styles.rateFooter, { borderTopColor: colors.hairline }]}
+                  hitSlop={6}
+                >
+                  <Feather name="star" size={14} color={colors.honey} />
+                  <Text variant="footnote" weight="600" color="azure" style={{ marginLeft: 8 }}>
+                    Rate this order
+                  </Text>
+                </Pressable>
+              )
+            ) : null}
           </Card>
         </Animated.View>
       </Pressable>
@@ -182,5 +214,6 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
   priceRow: { flexDirection: 'row', alignItems: 'center' },
+  rateFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
   errorCard: { marginHorizontal: 20, alignItems: 'center', paddingVertical: 28 },
 });

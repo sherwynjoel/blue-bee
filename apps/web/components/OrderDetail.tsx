@@ -14,6 +14,7 @@ import { Badge, Card, ErrorBox, KV, Skeleton, SkeletonText, StatusPill } from '.
 import { CostCenterPicker } from './CostCenters';
 import { StatusTimeline } from './StatusTimeline';
 import { OrderActions } from './order/OrderActions';
+import { ProductionActions } from './order/ProductionActions';
 import { QuotePanel } from './order/QuotePanel';
 import { WeightPanel } from './order/WeightPanel';
 import { InspectionForm } from './order/InspectionForm';
@@ -50,7 +51,10 @@ export function OrderDetailView({ orderId }: { orderId: string }): React.ReactEl
           </h1>
           <p className="mt-1 text-subhead text-secondary">Booked {shortDate(order.createdAt)}</p>
         </div>
-        <OrderActions order={order} onChanged={setOrder} />
+        <div className="flex flex-wrap items-center gap-2">
+          <ProductionActions order={order} onChanged={setOrder} />
+          <OrderActions order={order} onChanged={setOrder} />
+        </div>
       </div>
 
       <Card title="Progress">

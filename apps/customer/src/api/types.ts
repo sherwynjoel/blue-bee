@@ -1,4 +1,4 @@
-import type { ItemKind, ItemStatus, OrderStatus, PhotoKind, QuoteStatus } from '@blue-bee/shared';
+import type { ItemKind, ItemStatus, OrderStatus, PhotoKind, QuoteStatus, RatingView } from '@blue-bee/shared';
 
 /**
  * Customer-facing view models for the order reads (GET /v1/orders + GET /v1/orders/:id). The server
@@ -123,6 +123,9 @@ export interface OrderDetail {
   items: ItemView[];
   quotes: QuoteView[];
   routeStops: RouteStopView[];
+  /** [Inc-32] The order's post-delivery rating, or null when unrated. Embedded by the server's FULL_INCLUDE
+   *  so the "Rate this order" CTA (delivered-and-unrated) or the submitted score renders in one round-trip. */
+  rating: RatingView | null;
 }
 
 /** GET /v1/orders — list rows (each carries the latest quote). */
@@ -135,6 +138,8 @@ export interface OrderSummary {
   totals: OrderTotals | null;
   createdAt: string;
   quotes: QuoteView[];
+  /** [Inc-32] The order's rating (or null) — so a delivered card shows its score or the Rate CTA. */
+  rating: RatingView | null;
 }
 
 export interface OrderListResult {

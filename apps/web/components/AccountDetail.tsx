@@ -20,7 +20,7 @@ import { ArrowLeft, CalendarClock, Package, ScrollText, TriangleAlert } from 'lu
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
-import { formatNumber, humanize, money, orderRef, shortDate } from '@/lib/format';
+import { formatNumber, humanize, money, orderRef, orderTone, shortDate } from '@/lib/format';
 import type { OrderListResult, OrderSummary } from '@/lib/types';
 import {
   Badge,
@@ -180,6 +180,8 @@ function ScorecardCard({ accountId }: { accountId: string }): React.ReactElement
             metric={state.data.metrics.monthlySpend}
             render={(v) => `${money(v.total, state.data!.currency)} · ${money(v.perMonth, state.data!.currency)}/mo`}
           />
+          {/* [Inc-32] Real post-delivery CSAT for this account — null (—) until ratings land, never faked. */}
+          <Stat label="Avg rating" metric={state.data.metrics.avgRatingScore} render={(v) => `${v} ★`} />
           <div
             className="rounded-card border border-hairline bg-subtle p-3.5"
             data-testid="stat-Cost-center split"
@@ -692,14 +694,7 @@ function BillingCard({ account, onChanged }: { account: AccountDetailView; onCha
 }
 
 // ───────────────────────────── orders tab ─────────────────────────────
-
-const TERMINAL_GREEN = new Set(['DELIVERED', 'INVOICED', 'CLOSED', 'APPROVED']);
-function orderTone(status: string): 'green' | 'amber' | 'red' | 'blue' {
-  if (TERMINAL_GREEN.has(status)) return 'green';
-  if (status === 'ON_HOLD') return 'amber';
-  if (status === 'CANCELLED' || status === 'DECLINED') return 'red';
-  return 'blue';
-}
+// `orderTone` now lives in lib/format.ts (Inc-27) so the consumer customer-360 tints statuses identically.
 
 /** The account's orders — reads the proven order listing (server delegates), confined to the account. */
 function OrdersTab({ accountId }: { accountId: string }): React.ReactElement {

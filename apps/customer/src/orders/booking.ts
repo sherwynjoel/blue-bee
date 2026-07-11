@@ -1,4 +1,4 @@
-import type { BookItemDto, BookOrderDto, GeoPoint, ItemKind, TimeWindow } from '@blue-bee/shared';
+import type { BookItemDto, BookOrderDto, GeoPoint, ItemKind, PickupSlot, TimeWindow } from '@blue-bee/shared';
 
 /** A line the customer is composing in the Book form before submitting. */
 export interface DraftItem {
@@ -57,12 +57,15 @@ export function newIdempotencyKey(rand: () => number = Math.random, now: () => n
   return `book-${now().toString(36)}-${rand().toString(36).slice(2, 10)}`;
 }
 
-/** A sensible default pickup window: tomorrow 9am–12pm local. */
-export function tomorrowMorningWindow(now: () => number = Date.now): TimeWindow {
-  const start = new Date(now());
-  start.setDate(start.getDate() + 1);
-  start.setHours(9, 0, 0, 0);
-  const end = new Date(start);
-  end.setHours(12, 0, 0, 0);
-  return { start: start.toISOString(), end: end.toISOString() };
+/**
+ * [Inc-28] The `pickupWindow` for a slot the SERVER offered.
+ *
+ * This replaced `tomorrowMorningWindow()`, which fabricated "tomorrow 09:00–12:00, device-local" behind a
+ * Switch. That window ignored the business's real operating hours, its timezone, its lead time, and whether
+ * anything was left in it. A window may now only come from `GET /v1/availability/pickup-slots`, and this
+ * function does nothing but hand the server's own instants back to it — there is no arithmetic left to
+ * get wrong.
+ */
+export function slotToWindow(slot: Pick<PickupSlot, 'start' | 'end'>): TimeWindow {
+  return { start: slot.start, end: slot.end };
 }

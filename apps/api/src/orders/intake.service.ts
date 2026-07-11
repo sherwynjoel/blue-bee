@@ -13,6 +13,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { AuditService } from './audit.service';
+import { ITEM_ORDER_BY } from './item-order';
 import { OrderAccessService } from './order-access.service';
 import { OrderStateMachine } from './state-machine.service';
 import { OrdersService } from './orders.service';
@@ -92,7 +93,9 @@ export class IntakeService {
         cur = next;
       }
       // PICKED_UP: write a custody event per item (chain of custody is the product, §8.2).
-      const items = await tx.item.findMany({ where: { orderId, orgId: order.orgId }, select: { id: true } });
+      // [Inc-29] Ordered, so the events are written in the sequence the customer listed the items rather
+      // than whatever order the heap happened to yield.
+      const items = await tx.item.findMany({ where: { orderId, orgId: order.orgId }, orderBy: ITEM_ORDER_BY, select: { id: true } });
       for (const it of items) {
         await tx.custodyEvent.create({
           data: {

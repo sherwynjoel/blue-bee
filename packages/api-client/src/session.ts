@@ -25,6 +25,12 @@ export interface AuthSession<C extends ApiClient = ApiClient> {
   logout(): Promise<void>;
   /** Re-pull /me (e.g. after a profile/role change); no-op on the signed-out state. */
   reloadMe(): Promise<void>;
+  /**
+   * [Inc-35] Finish sign-in AFTER the client already obtained + stored a session (email/password register
+   * or login, or OAuth) — pulls /me and flips the app to signed-in. The OTP flow uses `login`; the new
+   * methods store their tokens on the client, then call this. Additive — the OTP path is unchanged.
+   */
+  completeSignIn(): Promise<void>;
 }
 
 export interface UseAuthSessionOptions<C extends ApiClient> {
@@ -111,5 +117,11 @@ export function useAuthSession<C extends ApiClient>(opts: UseAuthSessionOptions<
     setMe(profile);
   }, [client]);
 
-  return { status, me, client, requestOtp, login, logout, reloadMe };
+  // [Inc-35] The client has already stored tokens (register/login/oauth) — pull /me + flip to signed-in.
+  const completeSignIn = useCallback(async (): Promise<void> => {
+    const profile = await client.me();
+    await enter(profile);
+  }, [client, enter]);
+
+  return { status, me, client, requestOtp, login, logout, reloadMe, completeSignIn };
 }

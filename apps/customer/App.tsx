@@ -17,28 +17,43 @@ import { OrderDetailScreen } from './src/screens/OrderDetailScreen';
 import { TrackScreen } from './src/screens/TrackScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { PayScreen } from './src/screens/PayScreen';
+import { RateScreen } from './src/screens/RateScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
-import { navigationRef, openOrderTracking, type RootStackParamList } from './src/navigation';
+import { ReferScreen } from './src/screens/ReferScreen';
+import { AddressesScreen } from './src/screens/AddressesScreen';
+import { AddressFormScreen } from './src/screens/AddressFormScreen';
+import { navigationRef, openOrderTracking, type BookParams, type RootStackParamList } from './src/navigation';
 import { usePushDeepLinks } from './src/push/register';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config';
 import { ThemeProvider, useTheme, type Theme } from './theme';
 import { BeeMark, Text, fireHaptic } from './components/ui';
 
 /**
- * The bottom-tab param list (Home · Orders · More→Settings) nested inside the root stack. The tab route
- * NAMES intentionally reuse `RootStackParamList` names ('Orders'/'Settings') so the frozen screens'
- * `navigate('Settings' | 'Book' | 'OrderDetail')` calls resolve unchanged — a tab sibling for 'Settings',
- * a bubble-up to the root stack for 'Book'/'OrderDetail'. Book is NOT a tab (it uses `.replace` on the
- * stack) — the center FAB pushes it onto the root stack instead.
+ * [Inc-33] The bottom-tab param list — the customer nav shell is now **Service · Orders · Profile** (the
+ * Refer tab lands in Inc-34). The tab route NAMES are deliberately UNCHANGED from the previous shell
+ * (`Home` · `Orders` · `Settings`) so the frozen screens' `navigate('Settings' | 'Book' | 'OrderDetail')`
+ * calls resolve exactly as before — 'Settings' is the sibling tab (now rendered as **Profile**), 'Book' /
+ * 'OrderDetail' bubble up to the root stack. Only the tab BAR (labels/icons) and the Book affordance
+ * change: Book is no longer a center FAB — it is the Service tab's primary action (HomeScreen header),
+ * which still pushes 'Book' onto the root stack. Keeping the route names stable is what preserves the
+ * frozen `RootStackParamList` param shapes.
+ *
+ * [Inc-34] A 4th tab, **Refer**, is added (route name 'Refer' — net-new, nothing frozen navigates to it).
  */
-type TabParamList = { Home: undefined; Orders: undefined; Settings: undefined };
+type TabParamList = { Home: undefined; Orders: undefined; Settings: undefined; Refer: undefined };
 type RootNavParamList = {
   Main: undefined;
-  Book: undefined;
+  // [Inc-26] Book now takes params (a preselected site after adding an address). This list is the
+  // NAVIGATOR's generic; `RootStackParamList` in src/navigation.ts is what screens import. Both must
+  // agree — a route typed in only one compiles but fails to navigate or fails to type.
+  Book: BookParams | undefined;
   OrderDetail: { orderId: string };
   Track: { orderId: string };
   Chat: { orderId: string };
   Pay: { orderId: string };
+  Rate: { orderId: string };
+  Addresses: undefined;
+  AddressForm: { siteId?: string; returnTo?: 'Book' } | undefined;
 };
 
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -88,7 +103,8 @@ function OrdersTab(): React.ReactElement {
   return <OrdersScreen navigation={navigation} />;
 }
 
-/** The Daylight bottom tab bar — Home · Orders · center Book FAB · More. Real features only (no Prepaid). */
+/** [Inc-33/34] The Daylight bottom tab bar — Service · Orders · Profile · Refer. Book is the Service tab's
+ *  primary action (no center FAB); Refer (Inc-34) invites friends (no reward — reward is deferred). */
 function DaylightTabBar({ state, navigation }: BottomTabBarProps): React.ReactElement {
   const { colors, space } = useTheme();
   const insets = useSafeAreaInsets();
@@ -98,18 +114,15 @@ function DaylightTabBar({ state, navigation }: BottomTabBarProps): React.ReactEl
     fireHaptic('selection');
     navigation.navigate(name);
   };
-  const book = (): void => {
-    fireHaptic('selection');
-    // Book lives on the ROOT stack (it uses `.replace`) — push it over the tabs.
-    navigation.getParent()?.navigate('Book');
-  };
 
   return (
     <View style={[styles.tabBar, { backgroundColor: colors.surface, borderTopColor: colors.hairline, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
-      <TabButton icon="home" label="Home" active={active === 'Home'} onPress={() => go('Home')} />
+      {/* 'Home' route → the Service catalogue tab; 'Settings' route → the Profile tab (route names kept
+          stable so the frozen screens' navigate() calls resolve — see TabParamList above). */}
+      <TabButton icon="grid" label="Service" active={active === 'Home'} onPress={() => go('Home')} />
       <TabButton icon="package" label="Orders" active={active === 'Orders'} onPress={() => go('Orders')} />
-      <BookFab onPress={book} />
-      <TabButton icon="menu" label="More" active={active === 'Settings'} onPress={() => go('Settings')} />
+      <TabButton icon="user" label="Profile" active={active === 'Settings'} onPress={() => go('Settings')} />
+      <TabButton icon="user-plus" label="Refer" active={active === 'Refer'} onPress={() => go('Refer')} />
     </View>
   );
 }
@@ -127,21 +140,7 @@ function TabButton({ icon, label, active, onPress }: { icon: React.ComponentProp
   );
 }
 
-function BookFab({ onPress }: { onPress: () => void }): React.ReactElement {
-  const { colors, elevation } = useTheme();
-  return (
-    <Pressable style={styles.tabItem} onPress={onPress} accessibilityRole="button" accessibilityLabel="Book now" hitSlop={6}>
-      <View style={[styles.fab, elevation.e2, { backgroundColor: colors.honey }]}>
-        <Feather name="plus" size={26} color={colors.onHoney} />
-      </View>
-      <Text variant="caption" weight="700" style={{ color: colors.textSecondary, marginTop: 3 }}>
-        Book
-      </Text>
-    </Pressable>
-  );
-}
-
-/** The signed-in home surface: a bottom tab bar (Home · Orders · Book FAB · More). */
+/** [Inc-33] The signed-in home surface: a three-tab bottom bar — Service · Orders · Profile. */
 function MainTabs(): React.ReactElement {
   const theme = useTheme();
   return (
@@ -154,9 +153,13 @@ function MainTabs(): React.ReactElement {
         headerTintColor: theme.colors.azure,
       }}
     >
+      {/* Service tab (catalogue landing). HomeScreen owns its own header, so the tab header is hidden. */}
       <Tab.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Orders" component={OrdersTab} options={{ title: 'My orders' }} />
-      <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+      {/* Profile tab — route name stays 'Settings' (frozen), titled/labelled "Profile". */}
+      <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Profile' }} />
+      {/* [Inc-34] Refer tab — invite friends (reward deferred; no reward copy). */}
+      <Tab.Screen name="Refer" component={ReferScreen} options={{ title: 'Refer' }} />
     </Tab.Navigator>
   );
 }
@@ -191,6 +194,10 @@ function Root(): React.ReactElement {
       <RootStack.Screen name="Track" component={TrackScreen} options={{ title: 'Track my truck', headerLargeTitle: false }} />
       <RootStack.Screen name="Chat" component={ChatScreen} options={{ title: 'Messages', headerLargeTitle: false }} />
       <RootStack.Screen name="Pay" component={PayScreen} options={{ title: 'Pay', headerLargeTitle: false }} />
+      <RootStack.Screen name="Rate" component={RateScreen} options={{ title: 'Rate your order', headerLargeTitle: false }} />
+      <RootStack.Screen name="Addresses" component={AddressesScreen} options={{ title: 'Saved addresses', headerLargeTitle: false }} />
+      {/* Title is set by the screen itself ("Add address" vs "Edit address"). */}
+      <RootStack.Screen name="AddressForm" component={AddressFormScreen} options={{ title: 'Address', headerLargeTitle: false }} />
     </RootStack.Navigator>
   );
 }
@@ -224,7 +231,6 @@ export default function App(): React.ReactElement {
 
 const styles = StyleSheet.create({
   splash: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { flexDirection: 'row', alignItems: 'flex-start', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, paddingHorizontal: 8 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'flex-start' },
-  fab: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginTop: -18 },
+  tabBar: { flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, paddingHorizontal: 8 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

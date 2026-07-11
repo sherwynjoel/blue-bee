@@ -270,10 +270,12 @@ describe('Analytics e2e — Increment 15 (operational | commercial | account sco
       expect(byLabel['1-30']).toMatchObject({ amount: '500.00', count: 1 });
     });
 
-    it('HONESTY FIREWALL: active contracts + CSAT are Phase-2 — flagged unavailable, never faked', async () => {
+    it('HONESTY FIREWALL: active contracts stay Phase-2 (flagged unavailable); CSAT is real now (Inc-32)', async () => {
       const m = (await get(`/v1/analytics/commercial?${QS}`, 'owner').expect(200)).body.metrics;
       expect(m.activeContracts).toMatchObject({ value: null, available: false, status: 'unavailable_in_phase_1' });
-      expect(m.csat).toMatchObject({ value: null, available: false, status: 'unavailable_in_phase_1' });
+      // [Inc-32] CSAT flipped from a Phase-2 `deferred` to a REAL metric. No ratings in this window ⇒ a
+      // computed "no data" (value null, status 'ok'), never the Phase-2 badge and never a faked number.
+      expect(m.csat).toMatchObject({ available: true, status: 'ok' });
     });
 
     it('RBAC: commercial is tighter — a DISPATCHER is 403; OWNER/FINANCE are 200', async () => {
@@ -296,6 +298,8 @@ describe('Analytics e2e — Increment 15 (operational | commercial | account sco
       expect(m.onTimePercent).toMatchObject({ value: 50, status: 'ok', rowCount: 4 }); // 2 on-time of 4 AcctA stops
       expect(m.monthlySpend.value).toMatchObject({ total: '250.00', perMonth: '250.00' });
       expect(m.monthlySpend.rowCount).toBe(2);
+      // [Inc-32] Average rating is a real tile now (no ratings in this window ⇒ computed "no data").
+      expect(m.avgRatingScore).toMatchObject({ available: true, status: 'ok' });
       expect(m.costCenterSplit).toMatchObject({ value: null, status: 'unavailable_in_phase_1' });
     });
 

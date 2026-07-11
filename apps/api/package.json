@@ -2,7 +2,7 @@
   "name": "@blue-bee/api",
   "version": "0.0.0",
   "private": true,
-  "description": "Blue Bee API \u2014 NestJS modular monolith (PRD \u00a710). Phase-1 specialty slice.",
+  "description": "Blue Bee API — NestJS modular monolith (PRD §10). Phase-1 specialty slice.",
   "main": "dist/main.js",
   "scripts": {
     "prisma:generate": "prisma generate",
@@ -37,6 +37,8 @@
     "@nestjs/websockets": "^10.4.22",
     "@prisma/client": "^5.22.0",
     "@socket.io/redis-adapter": "^8.3.0",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3",
     "ioredis": "^5.4.1",
     "pdfkit": "^0.19.1",
     "reflect-metadata": "^0.2.2",

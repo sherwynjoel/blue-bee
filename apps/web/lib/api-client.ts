@@ -13,6 +13,8 @@ import type {
   AuditLogResult,
   CommercialAnalytics,
   ConfirmMediaDto,
+  Customer360View,
+  CustomerListResult,
   CreateDeviceDto,
   CreateDriverDto,
   NotificationConfigView,
@@ -34,6 +36,7 @@ import type {
   MediaResult,
   OperationalAnalytics,
   OptimizeRouteDto,
+  OrgScheduleView,
   PatchStopDto,
   PaymentView,
   PresignMediaDto,
@@ -41,9 +44,13 @@ import type {
   PublishRouteDto,
   QuoteBuildDto,
   ReceivedAtPlantDto,
+  RecordQcDto,
   RefundPaymentDto,
   RefundView,
+  RewashDto,
   SchedulePickupDto,
+  SendToQcDto,
+  StartCleaningDto,
   ServiceCatalogResult,
   ShiftActionDto,
   StopActionDto,
@@ -62,6 +69,7 @@ import type {
   SetParLevelDto,
   SoilPickupListResult,
   SoilPickupView,
+  UpdateOrgScheduleDto,
   UpdateParLevelDto,
 } from '@blue-bee/shared';
 import type {
@@ -231,6 +239,25 @@ export class ConsoleApiClient extends ApiClient {
 
   declineQuote(id: string, dto: DeclineQuoteDto = {}): Promise<OrderDetail> {
     return this.request('POST', `/orders/${id}/quote:decline`, { body: dto });
+  }
+
+  // ───────────── production / plant (Inc-30 — QUOTE_APPROVED → IN_CLEANING → QC → READY) ─────────────
+
+  /** Start (QUOTE_APPROVED) or restart (REWASH) cleaning → IN_CLEANING. */
+  startCleaning(id: string, dto: StartCleaningDto = {}): Promise<OrderDetail> {
+    return this.request('POST', `/orders/${id}/start-cleaning`, { body: dto });
+  }
+  /** Send a cleaned order to quality control → IN_CLEANING → QC. */
+  sendToQc(id: string, dto: SendToQcDto = {}): Promise<OrderDetail> {
+    return this.request('POST', `/orders/${id}/send-to-qc`, { body: dto });
+  }
+  /** Record the QC decision → READY (pass) or REWASH (fail, reason required). */
+  recordQc(id: string, dto: RecordQcDto): Promise<OrderDetail> {
+    return this.request('POST', `/orders/${id}/qc`, { body: dto });
+  }
+  /** Pull a load back for a rewash cycle mid-cleaning → IN_CLEANING → REWASH. */
+  rewashOrder(id: string, dto: RewashDto): Promise<OrderDetail> {
+    return this.request('POST', `/orders/${id}/rewash`, { body: dto });
   }
 
   holdOrder(id: string, dto: { reason: string }): Promise<OrderDetail> {
@@ -411,6 +438,45 @@ export class ConsoleApiClient extends ApiClient {
     for (const [k, v] of Object.entries(query)) if (v) p.set(k, String(v));
     const qs = p.toString();
     return this.request('GET', `/admin/audit-logs${qs ? `?${qs}` : ''}`);
+  }
+
+  // ───────────── pickup schedule (Inc-28 Part C — the founder's operating hours) ─────────────
+
+  /** The org's saved pickup hours + the timezone they're read in. `source: 'default'` ⇒ nothing saved yet. */
+  adminGetSchedule(): Promise<OrgScheduleView> {
+    return this.request('GET', '/admin/settings/schedule');
+  }
+
+  /**
+   * Replace the org's pickup schedule. A FULL replacement (a partial window list is ambiguous). The server
+   * re-validates against the same Zod schema the editor uses, audits the change, and
+   * `GET /v1/availability/pickup-slots` immediately serves what was saved.
+   */
+  adminUpdateSchedule(dto: UpdateOrgScheduleDto): Promise<OrgScheduleView> {
+    return this.request('PATCH', '/admin/settings/schedule', { body: dto });
+  }
+
+  // ───────────── customer-360 (Inc-27) — OWNER/CSR, read-only ─────────────
+
+  /**
+   * Residential-customer directory (org-scoped, cursor-paginated, searchable by name/phone/email).
+   * Staff-only; the server independently gates it to OWNER/CSR.
+   */
+  listCustomers(query: { search?: string; cursor?: string; limit?: number } = {}): Promise<CustomerListResult> {
+    const p = new URLSearchParams();
+    if (query.limit != null) p.set('limit', String(query.limit));
+    if (query.cursor) p.set('cursor', query.cursor);
+    if (query.search) p.set('search', query.search);
+    const qs = p.toString();
+    return this.request('GET', `/admin/customers${qs ? `?${qs}` : ''}`);
+  }
+
+  /**
+   * One customer's 360. Reading it writes an `AuditLog` row server-side (staff viewing consumer PII is
+   * accountable), so it is called only when a human actually opens the page — never speculatively.
+   */
+  getCustomer360(userId: string): Promise<Customer360View> {
+    return this.request('GET', `/admin/customers/${userId}`);
   }
 
   // ───────────── Track-A: B2B accounts (condo console) ─────────────

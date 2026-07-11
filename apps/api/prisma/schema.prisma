@@ -426,6 +426,22 @@ model User {
   updatedAt     DateTime   @updatedAt @map("updated_at")
   createdBy     String?    @map("created_by") @db.Uuid
 
+  // [Inc-34] Referral. `referralCode` is the customer's own invite code — short, unambiguous, GLOBALLY
+  // unique (a code maps to exactly one user), minted once and stable. `referredByUserId` is a set-once,
+  // immutable self-reference to whoever's code this customer signed up with (nullable; most have none).
+  // Attribution is derived from this column — no separate Referral table. onDelete: SetNull so removing a
+  // referrer never blocks; the row is normally anonymized-in-place (not deleted), preserving attribution.
+  referralCode     String? @unique @map("referral_code")
+  referredByUserId String? @map("referred_by_user_id") @db.Uuid
+
+  // [Inc-35] Login expansion. `passwordHash` is a bcrypt hash (never plaintext), present only when the
+  // email+password method is linked. `emailVerifiedAt` records when the email was proven controlled (by
+  // the verify-email token, or asserted by a verified OAuth provider) — the trust anchor for OAuth
+  // dedupe-by-verified-email. Method linkage itself is the existing `authProviders` string[]
+  // ('otp' | 'password' | 'google' | 'apple').
+  passwordHash    String?   @map("password_hash")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+
   roles                UserRole[]
   corporateMemberships CorporateMembership[]
   driver               Driver?
@@ -437,9 +453,38 @@ model User {
   messagesTo           Message[]               @relation("MessageTo")
   auditLogs            AuditLog[]
   refreshTokens        RefreshToken[]
+  referredBy           User?                   @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  referrals            User[]                  @relation("UserReferrals")
+  authTokens           AuthToken[]
 
   @@unique([orgId, email])
   @@index([orgId])
+  @@index([referredByUserId])
+}
+
+// [Inc-35] Purpose of a single-use email-delivered token.
+enum AuthTokenPurpose {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+// [Inc-35] Single-use, expiring, HASHED token delivered by email — email verification + password reset.
+// The raw token is emailed (never stored); only its SHA-256 hash lives here (like refresh/OTP hashes), so
+// a DB leak can't be replayed. Consumed exactly once. Org-scoped for tenant safety.
+model AuthToken {
+  id         String           @id @default(uuid()) @db.Uuid
+  orgId      String           @map("org_id") @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  purpose    AuthTokenPurpose
+  tokenHash  String           @unique @map("token_hash")
+  expiresAt  DateTime         @map("expires_at")
+  consumedAt DateTime?        @map("consumed_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([userId, purpose])
 }
 
 model UserRole {
@@ -514,6 +559,19 @@ model Site {
   // ST_DWithin(geo, point, matchRadiusM) is priced on the Site's account rate card. NULL = not a
   // match boundary (an ordinary site). Simplest reliable v1: address point + radius (documented).
   matchRadiusM   Int?                                   @map("match_radius_m")
+  // [Inc-26 saved addresses] Customer-managed delivery details. `name` doubles as the customer-facing
+  // label ("Home"/"Work"/free text); these three carry the last-100-metres instructions.
+  unit           String?
+  buzzer         String?
+  notes          String?
+  // The account's default pickup/delivery address. At most ONE ACTIVE default per account — enforced by
+  // the partial unique index `Site_one_default_per_account` (hand-authored below the migration divider;
+  // Prisma cannot express a WHERE-filtered unique index).
+  isDefault      Boolean                                @default(false) @map("is_default")
+  // Soft delete. A past Order/RouteStop references the site, so a customer "removing" an address
+  // DEACTIVATES it. Customer-facing reads filter `active = true`; ops/driver/billing surfaces
+  // intentionally still resolve it so historical orders keep rendering their pickup address.
+  active         Boolean                                @default(true)
   serviceWindows Json                                   @default("[]") @map("service_windows")
   createdAt      DateTime                               @default(now()) @map("created_at")
   updatedAt      DateTime                               @updatedAt @map("updated_at")
@@ -741,6 +799,7 @@ model Order {
   payments       Payment[]
   claims         Claim[]
   messages       Message[]
+  rating         Rating?
 
   @@index([orgId])
   @@index([accountId])
@@ -750,6 +809,31 @@ model Order {
   // (account_id + created_at range), so a composite index keeps that query index-only.
   @@index([accountId, createdAt])
   @@index([costCenterId])
+}
+
+// [Inc-32] Post-delivery customer rating / CSAT (PRD A6.3). One order-level rating per order — a 1–5
+// `score` + an optional free-text `comment`. Written by the order's customer-side principal AFTER the
+// order reaches DELIVERED; the original submitter may revise within 30 days. NO per-item breakdown (we
+// collect no per-item quality signal — the honesty firewall: we won't render a rating we didn't gather).
+model Rating {
+  id                String   @id @default(uuid()) @db.Uuid
+  orgId             String   @map("org_id") @db.Uuid
+  // `@unique` on the (globally-unique) order FK is the one-rating-per-order constraint AND lets Prisma
+  // model `Order.rating` as a to-one (so `getOrder`'s FULL_INCLUDE returns `rating`, not a list). The
+  // composite `@@unique([orgId, orderId])` mirrors the org_id-on-every-constraint tenancy convention.
+  orderId           String   @unique @map("order_id") @db.Uuid
+  score             Int
+  comment           String?
+  // The user who submitted (audit + the PATCH "only the original submitter" gate).
+  submittedByUserId String   @map("submitted_by_user_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdBy         String?  @map("created_by") @db.Uuid
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@unique([orgId, orderId])
+  @@index([orgId])
 }
 
 model OrderLine {
@@ -796,6 +880,18 @@ model Item {
   // Track-B: the resident-garment lifecycle position (§5.2-B). Null for non-garment items.
   garmentStatus GarmentStatus? @map("garment_status")
   measurements  Json           @default("{}")
+  // [Inc-29] The item's 0-based position WITHIN ITS ORDER — the order the customer submitted them in.
+  //
+  // Before this column, `Item` had no ordinal and the `items` include had no `orderBy`, so an order's items
+  // came back in Postgres HEAP order: any UPDATE (an inspection, a weigh) can move a row to a new page, so
+  // two reads of the same order could list its items differently, on every surface. `createdAt` is not a
+  // substitute — Prisma stamps it per statement, so it usually separates items by a few milliseconds, but it
+  // ties whenever two rows land in the same millisecond or arrive via one `createMany`.
+  //
+  // Meaningless (and left at 0) for a Track-B resident garment, which has no order; those are read by
+  // `residentId` and bucketed by `garmentStatus`. An item's `orderId` is set exactly once, at creation, and
+  // never reassigned, so this value is assigned once and stays correct.
+  sortOrder     Int            @default(0) @map("sort_order")
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
   createdBy     String?        @map("created_by") @db.Uuid
@@ -813,6 +909,8 @@ model Item {
   @@index([orgId])
   @@index([orderId])
   @@index([residentId])
+  // Serves the ordered read: every `items` include is now `ORDER BY sort_order, id` under an `order_id`.
+  @@index([orderId, sortOrder])
 }
 
 // Track-B (care homes) — a resident is the OWNER of personal garments (PRD §9 line ~413). PII is

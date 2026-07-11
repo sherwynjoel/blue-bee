@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OrdersModule } from '../orders/orders.module';
+import { ReferralModule } from '../referral/referral.module';
 import { AccountController } from './account.controller';
 import { AccountService } from './account.service';
 
@@ -11,7 +12,7 @@ import { AccountService } from './account.service';
  * append-only audit log. No schema change — deletion is anonymize-in-place + purge of PII children.
  */
 @Module({
-  imports: [PrismaModule, OrdersModule],
+  imports: [PrismaModule, OrdersModule, ReferralModule],
   controllers: [AccountController],
   providers: [AccountService],
 })

@@ -113,6 +113,7 @@ const scorecard: AccountScorecard = {
     lossRatePercent: ok(33, 3),
     onTimePercent: ok(50, 4),
     monthlySpend: ok({ total: '250.00', perMonth: '250.00', months: 1 }, 2),
+    avgRatingScore: ok(4.2, 3),
     costCenterSplit: deferred<Record<string, string>>(),
   },
 };

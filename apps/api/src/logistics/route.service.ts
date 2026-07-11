@@ -25,6 +25,47 @@ import { OptimizerService } from './optimizer.service';
 /** Order states from which a PICKUP stop is meaningful (pickup precedes intake/quote in §5.1). */
 const PICKUPABLE: OrderStatus[] = [OrderStatus.REQUESTED, OrderStatus.SCHEDULED_PICKUP];
 
+/** A `{ start, end }` ISO pair as stored in the `Json?` window columns. */
+type StoredWindow = { start: string; end: string };
+
+/**
+ * Is this stored JSON actually a `{ start, end }` window?
+ *
+ * `OrdersService.book` writes `Prisma.JsonNull` — a JSON `null` LITERAL — for an order booked without a
+ * window, so the column can hold `null`, and a hand-edited row could hold anything. Copying that onto a
+ * `RouteStop` would give the optimizer and the on-time KPI a window-shaped hole to parse. Validate, or
+ * inherit nothing.
+ */
+function isStoredWindow(value: unknown): value is StoredWindow {
+  if (!value || typeof value !== 'object') return false;
+  const w = value as { start?: unknown; end?: unknown };
+  return typeof w.start === 'string' && typeof w.end === 'string';
+}
+
+/**
+ * [Inc-28] The window a new stop inherits from its order when the dispatcher supplies none.
+ *
+ * WHY THIS EXISTS. `Order.scheduledPickupWindow` records the window the customer actually chose (from
+ * Inc-28 it is a real, capacity-checked slot, not a hard-coded "tomorrow morning"). Until now nothing
+ * carried it onto the `RouteStop`: this method defaulted to `Prisma.JsonNull`, so unless a dispatcher
+ * happened to retype the same window into the add-stop DTO, `RouteStop.timeWindow` was null. Downstream,
+ * `OptimizerService` sorts by a null `windowStartMs` and `onTimePercent` discards the stop as unmeasurable
+ * — the customer's chosen slot influenced nothing. A promise the system did not keep.
+ *
+ * An EXPLICIT `dto.timeWindow` still wins: a dispatcher moving a stop to a different window is stating a
+ * newer fact than the booking did.
+ *
+ * A DELIVERY stop inherits the DELIVERY window; `PICKUP` and `BOTH` inherit the pickup window, which is the
+ * time-critical half of a combined stop (the customer is waiting at the door for the collection).
+ */
+function inheritedWindow(
+  order: { scheduledPickupWindow: Prisma.JsonValue; scheduledDeliveryWindow: Prisma.JsonValue },
+  kind: RouteStopKind,
+): StoredWindow | null {
+  const source = kind === RouteStopKind.DELIVERY ? order.scheduledDeliveryWindow : order.scheduledPickupWindow;
+  return isStoredWindow(source) ? { start: source.start, end: source.end } : null;
+}
+
 const ROUTE_INCLUDE = {
   driver: { include: { user: { select: { id: true, name: true } } } },
   vehicle: true,
@@ -100,6 +141,10 @@ export class RouteService {
     // Auto-assigned seq is MAX(seq)+1; on a concurrent-add collision (unique [routeId,seq])
     // recompute and retry. An EXPLICIT seq that collides is a real 409 (no retry).
     const explicitSeq = dto.seq !== undefined;
+    const kind = dto.kind ?? RouteStopKind.PICKUP;
+    // [Inc-28] The stop INHERITS the order's scheduled window when the dispatcher does not override it.
+    // See `inheritedWindow` — without this the slot the customer picked died on the Order row.
+    const timeWindow = dto.timeWindow ?? inheritedWindow(order, kind) ?? Prisma.JsonNull;
     for (let attempt = 0; ; attempt++) {
       const seq = dto.seq ?? ((await this.prisma.routeStop.aggregate({ where: { routeId, orgId: principal.orgId }, _max: { seq: true } }))._max.seq ?? 0) + 1;
       try {
@@ -111,8 +156,8 @@ export class RouteService {
             accountId: order.accountId,
             siteId: order.siteId,
             orderId: order.id,
-            kind: dto.kind ?? RouteStopKind.PICKUP,
-            timeWindow: (dto.timeWindow ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            kind,
+            timeWindow: timeWindow as Prisma.InputJsonValue,
             status: RouteStopStatus.PENDING,
             createdBy: principal.userId,
           },
@@ -162,16 +207,25 @@ export class RouteService {
       const res = await tx.route.updateMany({ where: { id: routeId, orgId: principal.orgId, status: RouteStatus.PLANNED }, data: { status: RouteStatus.PUBLISHED } });
       if (res.count !== 1) throw new ConflictException({ error: LOGISTICS_ERRORS.INVALID_ROUTE_STATE, message: 'Route was concurrently modified' });
 
-      // Order-leg: publishing schedules each pickup — REQUESTED → SCHEDULED_PICKUP (atomic, audited).
-      // Dedupe by order id so an order on multiple pickup stops is advanced EXACTLY ONCE
-      // (a second apply on a now-SCHEDULED order would 409 and roll the whole publish back).
+      // Order-leg: publishing schedules each leg — a pickup REQUESTED → SCHEDULED_PICKUP and (Inc-31) a
+      // delivery READY → SCHEDULED_DELIVERY (atomic, audited). Dedupe per (order id, leg) so an order on
+      // multiple stops is advanced EXACTLY ONCE per leg (a second apply on an already-scheduled order would
+      // 409 and roll the whole publish back), while a BOTH stop can still schedule the leg its order-state
+      // is at (never both legs for the same order in one publish — an order is in one state at a time).
       const scheduled = new Set<string>();
       for (const stop of stops) {
         if (!stop.order) continue;
-        const isPickup = (stop.kind as unknown as RouteStopKind) !== RouteStopKind.DELIVERY;
-        if (isPickup && !scheduled.has(stop.order.id) && (stop.order.status as unknown as OrderStatus) === OrderStatus.REQUESTED) {
+        const kind = stop.kind as unknown as RouteStopKind;
+        const status = stop.order.status as unknown as OrderStatus;
+        const pickupKey = `${stop.order.id}:pickup`;
+        if (kind !== RouteStopKind.DELIVERY && !scheduled.has(pickupKey) && status === OrderStatus.REQUESTED) {
           await this.orderStateMachine.apply(tx, stop.order, OrderStatus.SCHEDULED_PICKUP, { actorId: principal.userId, reason: 'scheduled onto a published route', extraAudit: { routeId, stopId: stop.id } });
-          scheduled.add(stop.order.id);
+          scheduled.add(pickupKey);
+        }
+        const deliveryKey = `${stop.order.id}:delivery`;
+        if (kind !== RouteStopKind.PICKUP && !scheduled.has(deliveryKey) && status === OrderStatus.READY) {
+          await this.orderStateMachine.apply(tx, stop.order, OrderStatus.SCHEDULED_DELIVERY, { actorId: principal.userId, reason: 'scheduled onto a published route', extraAudit: { routeId, stopId: stop.id } });
+          scheduled.add(deliveryKey);
         }
       }
       await this.audit.record({ orgId: principal.orgId, actorId: principal.userId, entity: 'Route', entityId: routeId, action: 'ROUTE_PUBLISHED', after: { stopCount: stops.length } }, tx);

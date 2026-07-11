@@ -55,3 +55,16 @@ export function humanize(s: string | null | undefined): string {
   if (!s) return '—';
   return s.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+const TERMINAL_GREEN = new Set(['DELIVERED', 'INVOICED', 'CLOSED', 'APPROVED']);
+
+/**
+ * The `StatusPill` tone for an order status. Lifted out of `AccountDetail` (Inc-27) so the B2B account 360
+ * and the consumer customer 360 colour the same status identically — two copies would drift.
+ */
+export function orderTone(status: string): 'green' | 'amber' | 'red' | 'blue' {
+  if (TERMINAL_GREEN.has(status)) return 'green';
+  if (status === 'ON_HOLD') return 'amber';
+  if (status === 'CANCELLED' || status === 'DECLINED') return 'red';
+  return 'blue';
+}

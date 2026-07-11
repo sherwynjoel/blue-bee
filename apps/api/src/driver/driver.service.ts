@@ -31,6 +31,7 @@ import { WeighService } from '../orders/weigh.service';
 import { MediaService } from '../media/media.service';
 import { ShiftService } from '../logistics/fleet.service';
 import { RouteStopService } from '../logistics/route-stop.service';
+import { DELIVERY_KINDS } from '../logistics/stop-kinds';
 
 /** The own-stop fields the duty loop + POD flow need (kind/orderId gate the POD precondition). */
 interface OwnedStop {
@@ -39,7 +40,6 @@ interface OwnedStop {
   orderId: string | null;
   kind: RouteStopKind;
 }
-const DELIVERY_KINDS = new Set<RouteStopKind>([RouteStopKind.DELIVERY, RouteStopKind.BOTH]);
 
 /**
  * The driver-self-scoped duty-loop service (Increment 9). It owns ONE responsibility the proven

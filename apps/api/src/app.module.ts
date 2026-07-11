@@ -28,6 +28,10 @@ import { InvoicesModule } from './invoices/invoices.module';
 import { CorporateModule } from './corporate/corporate.module';
 import { ChatModule } from './chat/chat.module';
 import { ServiceZonesModule } from './service-zones/service-zones.module';
+import { GeocodingModule } from './geocoding/geocoding.module';
+import { SitesModule } from './sites/sites.module';
+import { AvailabilityModule } from './availability/availability.module';
+import { RatingsModule } from './ratings/ratings.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -51,6 +55,7 @@ import { ServiceZonesModule } from './service-zones/service-zones.module';
     PrismaModule,
     RedisModule,
     StorageModule,
+    GeocodingModule,
     SmsModule,
     AuthModule,
     OrdersModule,
@@ -75,6 +80,9 @@ import { ServiceZonesModule } from './service-zones/service-zones.module';
     CorporateModule,
     ChatModule,
     ServiceZonesModule,
+    SitesModule,
+    AvailabilityModule,
+    RatingsModule,
     HealthModule,
   ],
 })

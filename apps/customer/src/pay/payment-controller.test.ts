@@ -22,6 +22,7 @@ function order(over: Partial<OrderDetail> = {}): OrderDetail {
     items: [],
     quotes: [{ id: 'q', status: QuoteStatus.APPROVED, subtotal: '260.00', tax: '33.80', total: '293.80', lines: [], adjustments: null, expiresAt: null, approvedBy: 'x', approvedAt: 'y', createdAt: 'c' }],
     routeStops: [],
+    rating: null,
     ...over,
   };
 }

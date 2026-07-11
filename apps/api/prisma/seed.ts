@@ -733,10 +733,13 @@ async function seedTrackADemo(): Promise<void> {
     ],
     skipDuplicates: true,
   });
+  // [Inc-29] The only place the seed puts TWO items on ONE order. `createMany` is a single statement, so both
+  // rows would share a `created_at` millisecond and the Inc-29 backfill could only rank them by uuid. State
+  // the intended sequence explicitly instead of leaving it to be imposed.
   await prisma.item.createMany({
     data: [
-      { id: A6.items[0], orgId: ID.org, orderId: A6.orders[0], tagId: A6.tags[0], kind: ItemKind.LINEN, status: ItemStatus.RECEIVED, measurements: { pieces: 24 }, createdBy: ID.owner },
-      { id: A6.items[1], orgId: ID.org, orderId: A6.orders[0], tagId: A6.tags[1], kind: ItemKind.LINEN, status: ItemStatus.RECEIVED, measurements: { pieces: 18 }, createdBy: ID.owner },
+      { id: A6.items[0], orgId: ID.org, orderId: A6.orders[0], tagId: A6.tags[0], kind: ItemKind.LINEN, status: ItemStatus.RECEIVED, sortOrder: 0, measurements: { pieces: 24 }, createdBy: ID.owner },
+      { id: A6.items[1], orgId: ID.org, orderId: A6.orders[0], tagId: A6.tags[1], kind: ItemKind.LINEN, status: ItemStatus.RECEIVED, sortOrder: 1, measurements: { pieces: 18 }, createdBy: ID.owner },
     ],
     skipDuplicates: true,
   });
@@ -773,8 +776,14 @@ async function seedTrackADemo(): Promise<void> {
 const B1 = {
   careHome: 'b0000000-0000-4000-8000-0000000000a0',
   site: 'b0000000-0000-4000-8000-0000000000a1',
-  adminUid: 'e1000000-0000-4000-8000-000000000010',
-  adminRid: 'e2000000-0000-4000-8000-000000000010',
+  // ⚠ These were `…-010`, colliding with the "Demo Test Owner (simple login)" fixture in seedAuthFixtures.
+  // That runs FIRST, so this upsert matched the owner by id and the damage was silent: the care-home admin
+  // was never created; it inherited the owner's ORG-wide OWNER grant instead of an account-scoped
+  // ACCOUNT_ADMIN one (a real tenancy hole, and the cause of the 4 red assertions in
+  // care-home-linen.e2e-spec.ts); and `update: { phone }` clobbered the owner's memorable +11234567890
+  // login. Distinct ids keep the two fixtures apart. Do not reuse a `…-0NN` id across fixture tables.
+  adminUid: 'e1000000-0000-4000-8000-000000000011',
+  adminRid: 'e2000000-0000-4000-8000-000000000011',
   r1: 'b0000000-0000-4000-8000-0000000000b1',
   r2: 'b0000000-0000-4000-8000-0000000000b2',
   lostFound: 'b0000000-0000-4000-8000-0000000000f1',

@@ -1,11 +1,16 @@
 import type {
+  AccountProfileView,
   ApproveQuoteDto,
   BookOrderDto,
   ChatMessageDto,
   ConfirmMediaDto,
   CreatePaymentIntentDto,
+  CreateRatingDto,
+  CreateSiteDto,
   CustomerSitesResult,
   DeclineQuoteDto,
+  PatchRatingDto,
+  RatingView,
   DrycleanCatalogView,
   HomeServiceMenuView,
   InvoiceView,
@@ -19,12 +24,19 @@ import type {
   OrderWeightView,
   PaymentIntentResponse,
   PaymentView,
+  PickupSlotsResult,
   PresignMediaDto,
   PresignMediaResult,
+  ReferralView,
+  ReferralsView,
   RedeemJoinCodeDto,
   RedeemResultView,
   ServiceCatalogResult,
+  SiteDeactivateResult,
+  SiteMutationResult,
   UnreadCountResult,
+  UpdateProfileInput,
+  UpdateSiteDto,
 } from '@blue-bee/shared';
 import { ApiClient } from '@blue-bee/api-client';
 import type { OrderDetail, OrderListResult } from './types';
@@ -44,9 +56,58 @@ export class CustomerApiClient extends ApiClient {
     return this.request('GET', '/services');
   }
 
-  /** The customer's own sites (row-scoped) — the pickup/delivery address picker. */
+  /** The customer's own sites (row-scoped) — the pickup/delivery address picker. Active only, default first. */
   getSites(): Promise<CustomerSitesResult> {
     return this.request('GET', '/sites');
+  }
+
+  // ───────────── pickup availability (Inc-28 — the real time-slot picker) ─────────────
+
+  /**
+   * [Inc-28] The day's bookable pickup windows. The SERVER owns the schedule (the founder's saved operating
+   * hours, or the labelled default), the business timezone, the lead time, and any capacity cap. The app
+   * never invents a window, and never renders a count from `remaining: null` — that means "no cap is
+   * configured", not "we counted and it is low".
+   *
+   * Omit `date` to get the first bookable day. The result's `bookableDates` IS the day strip to render, so a
+   * device in another timezone can never offer a day the business is shut. Another account's `siteId` is a
+   * 404 (row-scoping is enforced server-side, never assumed here).
+   */
+  getPickupSlots(date?: string, siteId?: string): Promise<PickupSlotsResult> {
+    const params = new URLSearchParams();
+    if (date) params.set('date', date);
+    if (siteId) params.set('siteId', siteId);
+    const qs = params.toString();
+    return this.request('GET', `/availability/pickup-slots${qs ? `?${qs}` : ''}`);
+  }
+
+  // ───────────── saved addresses (Inc-26 — the write side of /sites) ─────────────
+
+  /**
+   * [Inc-26] Save a new address. The SERVER geocodes `dto.address` (or trusts `dto.geo` when the customer
+   * dropped a pin) and answers serviceability — the app never resolves a coordinate nor decides coverage.
+   * An address that cannot be resolved is a 422 `site.geocode_failed` and nothing is saved.
+   * Pass a stable `idempotencyKey` so a timeout-then-retry never saves the address twice.
+   */
+  createSite(dto: CreateSiteDto, idempotencyKey?: string): Promise<SiteMutationResult> {
+    return this.request('POST', '/sites', { body: dto, idempotencyKey });
+  }
+
+  /**
+   * [Inc-26] Edit a saved address. The server re-geocodes only when the address actually changed; another
+   * account's site is a 404 (row-scoping is enforced server-side, never assumed here).
+   */
+  updateSite(siteId: string, dto: UpdateSiteDto, idempotencyKey?: string): Promise<SiteMutationResult> {
+    return this.request('PATCH', `/sites/${siteId}`, { body: dto, idempotencyKey });
+  }
+
+  /**
+   * [Inc-26] Remove a saved address. Soft delete server-side (a past order still references the row), so it
+   * simply disappears from `getSites()`. Repeatable: removing an already-removed address succeeds. When the
+   * removed address was the default, the server promotes the next one and names it in the result.
+   */
+  deactivateSite(siteId: string): Promise<SiteDeactivateResult> {
+    return this.request('POST', `/sites/${siteId}:deactivate`);
   }
 
   /** [Inc-21] The customer Home service menu — the 8 top-level service cards (icon/title/description/tags +
@@ -94,6 +155,27 @@ export class CustomerApiClient extends ApiClient {
 
   declineQuote(orderId: string, dto: DeclineQuoteDto = {}): Promise<OrderDetail> {
     return this.request('POST', `/orders/${orderId}/quote:decline`, { body: dto });
+  }
+
+  // ───────────── ratings / CSAT (Increment 32 — after delivery) ─────────────
+
+  /**
+   * Rate a delivered order (1–5 + optional comment). Pass a stable `idempotencyKey` so a timeout/retry
+   * replays the first result instead of a 409. Server-authoritative: eligibility (delivered-or-later),
+   * ownership, and one-per-order are enforced server-side — 409 (`rating.already_exists`) if already rated.
+   */
+  submitRating(orderId: string, dto: CreateRatingDto, idempotencyKey?: string): Promise<RatingView> {
+    return this.request('POST', `/orders/${orderId}/rating`, { body: dto, idempotencyKey });
+  }
+
+  /** Revise your own rating (original submitter, within the edit window). */
+  updateRating(orderId: string, dto: PatchRatingDto): Promise<RatingView> {
+    return this.request('PATCH', `/orders/${orderId}/rating`, { body: dto });
+  }
+
+  /** The order's rating, or 404 (`rating.not_found`) when unrated. Usually unnecessary — `getOrder` embeds it. */
+  getRating(orderId: string): Promise<RatingView> {
+    return this.request('GET', `/orders/${orderId}/rating`);
   }
 
   // ───────────── track my truck (Increments 5–7) ─────────────
@@ -194,5 +276,31 @@ export class CustomerApiClient extends ApiClient {
    */
   deleteAccount(): Promise<void> {
     return this.request('DELETE', '/account', { body: {} });
+  }
+
+  /**
+   * [Inc-33] Update the signed-in user's OWN profile (name / email). Self-only + org-scoped server-side.
+   * Email is unique per org — a collision is a 409 (`email_taken` → ApiError.isConflict) the screen shows
+   * inline. Returns the updated profile (email normalized: trimmed + lowercased); phone is read-only
+   * (login identity). Callers should `reloadMe()` after so the rest of the app sees the new name/email.
+   */
+  updateProfile(input: UpdateProfileInput): Promise<AccountProfileView> {
+    return this.request('PATCH', '/account/profile', { body: input });
+  }
+
+  // ───────────── referral (Inc-34 — invite + code, reward deferred) ─────────────
+
+  /**
+   * The signed-in customer's OWN invite code (minted server-side on first read, stable after) + a
+   * `shareUrl` (only when a deep-link base is configured server-side, else null — the app shares the bare
+   * code, never a fake domain). Row-scoped to self server-side.
+   */
+  getReferral(): Promise<ReferralView> {
+    return this.request('GET', '/account/referral');
+  }
+
+  /** Who joined via my code (name-minimal + count), row-scoped to me server-side. No reward data. */
+  getReferrals(): Promise<ReferralsView> {
+    return this.request('GET', '/account/referrals');
   }
 }

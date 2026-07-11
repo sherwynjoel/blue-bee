@@ -31,6 +31,7 @@ import {
   Th,
 } from './ui';
 import { RequireCapability } from './AppShell';
+import { SchedulingCard } from './SchedulingCard';
 import type { VehicleView } from '@/lib/types';
 
 /**
@@ -38,14 +39,18 @@ import type { VehicleView } from '@/lib/types';
  * a read-only notification-config viewer, and the read-only audit-log viewer. Server-authoritative:
  * every mutation is independently OWNER-gated + audited server-side; this UI just calls the endpoint
  * and re-reads. Honest states (loading/empty/error) on every section.
+ *
+ * [Inc-28] Adds `SchedulingCard` — the org's pickup operating hours. It is the WRITE side of what the
+ * customer app's slot picker reads, and the first thing in the codebase ever to write `Organization.settings`.
  */
 export function AdminHome(): React.ReactElement {
   const { me } = useSession();
   return (
     <RequireCapability allowed={can.admin(me)}>
       <div className="space-y-6">
-        <PageHeader title="Admin" subtitle="Users & roles, fleet, devices, and the read-only config + audit viewers." />
+        <PageHeader title="Admin" subtitle="Users & roles, scheduling, fleet, devices, and the read-only config + audit viewers." />
         <UsersRolesCard />
+        <SchedulingCard />
         <FleetDevicesCard />
         <NotificationConfigCard />
         <AuditLogCard />

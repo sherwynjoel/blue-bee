@@ -14,6 +14,14 @@ interface SessionValue {
   requestOtp(phone: string): Promise<{ devCode?: string }>;
   login(phone: string, code: string): Promise<void>;
   logout(): Promise<void>;
+  /**
+   * [Inc-33] Re-pull `/me` after a self-service profile edit so the whole app (greetings, avatar,
+   * customer-360 parity) reflects the new name/email. Additive passthrough of the session core's existing
+   * `reloadMe` — the frozen `{ status, me, client, requestOtp, login, logout }` contract is unchanged.
+   */
+  reloadMe(): Promise<void>;
+  /** [Inc-35] Finish sign-in after `client.registerWithEmail/loginWithEmail/oauthSignIn` stored a session. */
+  completeSignIn(): Promise<void>;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -57,6 +65,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
     requestOtp: session.requestOtp,
     login: session.login,
     logout: session.logout,
+    reloadMe: session.reloadMe,
+    completeSignIn: session.completeSignIn,
   };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

@@ -51,6 +51,25 @@ export class ApiError extends Error {
     return this.status === 422 && this.code === 'zone.out_of_service_area';
   }
 
+  /**
+   * [Inc-26] A 422 `site.geocode_failed` — the server could not resolve the typed address to a point, so it
+   * saved nothing (it will never invent a coordinate). This is the USER's to fix: correct the address, or drop
+   * a pin. Distinct from `isOutOfServiceArea`, which means the address resolved fine but lies outside coverage.
+   * Matches SITE_ERRORS.GEOCODE_FAILED in @blue-bee/shared.
+   */
+  get isGeocodeFailed(): boolean {
+    return this.status === 422 && this.code === 'site.geocode_failed';
+  }
+
+  /**
+   * [Inc-26] A 503 `site.geocode_unavailable` — the geocoding provider is down or timed out. We learned
+   * nothing about the address, so this is TRANSIENT: the app should offer a retry rather than tell the
+   * customer their address is wrong. Matches SITE_ERRORS.GEOCODE_UNAVAILABLE in @blue-bee/shared.
+   */
+  get isGeocodeUnavailable(): boolean {
+    return this.status === 503 && this.code === 'site.geocode_unavailable';
+  }
+
   static async from(res: Response): Promise<ApiError> {
     let problem: ProblemDetails = {};
     try {

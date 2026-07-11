@@ -113,7 +113,7 @@ beforeEach(() => {
   mockMe = me(RoleType.OWNER);
   mockClient.getAccount.mockResolvedValue(ACCOUNT);
   // Overview-tab dependencies (default tab) — keep them resolving so the page renders cleanly.
-  mockClient.accountScorecard.mockResolvedValue({ accountId: 'acct-b', accountName: 'B', range: { from: '', to: '' }, generatedAt: '', currency: 'CAD', metrics: { lossRatePercent: { value: 0, available: true, status: 'ok', rowCount: 1, note: '' }, onTimePercent: { value: 100, available: true, status: 'ok', rowCount: 1, note: '' }, monthlySpend: { value: { total: '0', perMonth: '0', months: 1 }, available: true, status: 'ok', rowCount: 1, note: '' }, costCenterSplit: { value: null, available: false, status: 'unavailable_in_phase_1', rowCount: null, note: '' } } });
+  mockClient.accountScorecard.mockResolvedValue({ accountId: 'acct-b', accountName: 'B', range: { from: '', to: '' }, generatedAt: '', currency: 'CAD', metrics: { lossRatePercent: { value: 0, available: true, status: 'ok', rowCount: 1, note: '' }, onTimePercent: { value: 100, available: true, status: 'ok', rowCount: 1, note: '' }, monthlySpend: { value: { total: '0', perMonth: '0', months: 1 }, available: true, status: 'ok', rowCount: 1, note: '' }, avgRatingScore: { value: 4.5, available: true, status: 'ok', rowCount: 4, note: '' }, costCenterSplit: { value: null, available: false, status: 'unavailable_in_phase_1', rowCount: null, note: '' } } });
   mockClient.listStandingOrders.mockResolvedValue({ standingOrders: [], nextCursor: null, hasMore: false });
   mockClient.getServices.mockResolvedValue({ services: [] });
   mockClient.getGeneratedForAccount.mockResolvedValue({ accountId: 'acct-b', occurrences: [], orderCount: 0, routeCount: 0 });

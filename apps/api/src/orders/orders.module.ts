@@ -9,6 +9,7 @@ import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { PricingService } from './pricing.service';
 import { PricingAccountService } from './pricing-account.service';
+import { ProductionService } from './production.service';
 import { QuoteService } from './quote.service';
 import { OrderStateMachine } from './state-machine.service';
 import { WeighService } from './weigh.service';
@@ -29,6 +30,7 @@ import { WeighService } from './weigh.service';
   providers: [
     OrdersService,
     IntakeService,
+    ProductionService,
     QuoteService,
     WeighService,
     PricingService,

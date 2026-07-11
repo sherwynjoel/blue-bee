@@ -22,6 +22,7 @@ function order(over: Partial<OrderDetail> = {}): OrderDetail {
     items: [],
     quotes: [],
     routeStops: [],
+    rating: null,
     ...over,
   };
 }

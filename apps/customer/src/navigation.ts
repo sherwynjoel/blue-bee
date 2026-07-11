@@ -1,17 +1,35 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
 import type { ItemKind, PricingUnit } from '@blue-bee/shared';
 
+/**
+ * Params for the Book composer.
+ * [Inc-23] Optional card context — tapping a Home service card pre-selects its backing service.
+ * [Inc-26] `preselectSiteId` — set when returning from AddressForm, so the address just saved is the one
+ * selected in the picker. Additive: `navigate('Book')` with no params still opens the general composer.
+ */
+export type BookParams = {
+  serviceId?: string;
+  serviceName?: string;
+  unit?: PricingUnit;
+  kind?: ItemKind;
+  preselectSiteId?: string;
+};
+
 /** The signed-in navigation stack (PRD §7A customer flows). */
 export type RootStackParamList = {
   Orders: undefined;
-  // [Inc-23] Optional card context — tapping a Home service card pre-selects its backing service in Book.
-  // Additive: `navigation.navigate('Book')` with no params still opens the general composer.
-  Book: { serviceId?: string; serviceName?: string; unit?: PricingUnit; kind?: ItemKind } | undefined;
+  Book: BookParams | undefined;
   OrderDetail: { orderId: string };
   Track: { orderId: string };
   Chat: { orderId: string };
   Pay: { orderId: string };
+  /** [Inc-32] Rate a delivered order (1–5 + optional comment). Additive — existing param shapes unchanged. */
+  Rate: { orderId: string };
   Settings: undefined;
+  /** [Inc-26] Manage saved addresses (reached from Settings). */
+  Addresses: undefined;
+  /** [Inc-26] Add (no `siteId`) or edit (with `siteId`). `returnTo: 'Book'` hands the new id back to Book. */
+  AddressForm: { siteId?: string; returnTo?: 'Book' } | undefined;
 };
 
 /** A ref so out-of-tree code (a tapped push) can deep-link into the stack. */

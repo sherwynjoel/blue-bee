@@ -48,15 +48,29 @@ export class CatalogService {
     return { services };
   }
 
-  /** The caller's own sites (the pickup/delivery address picker). Account-scoped via the scoped client. */
+  /**
+   * The caller's own sites (the pickup/delivery address picker). Account-scoped via the scoped client.
+   *
+   * [Inc-26] Only ACTIVE sites: "removing" a saved address deactivates it (a past Order/RouteStop still
+   * references the row), so the picker must not offer it again. This filter is deliberately scoped to the
+   * CUSTOMER read — ops, driver, billing and corporate surfaces still resolve a deactivated site, which is
+   * what keeps a historical order rendering the address it was actually collected from.
+   *
+   * The account's default address sorts first so the app can pre-select `sites[0]`.
+   */
   async listSites(principal: RequestPrincipal): Promise<CustomerSitesResult> {
     const rows = await scopedPrisma(this.prisma, principal).site.findMany({
-      orderBy: { name: 'asc' },
+      where: { active: true },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
       select: {
         id: true,
         accountId: true,
         name: true,
         address: true,
+        unit: true,
+        buzzer: true,
+        notes: true,
+        isDefault: true,
         account: { select: { name: true, type: true } },
       },
     });
@@ -72,6 +86,10 @@ export class CatalogService {
       accountName: s.account.name,
       accountType: s.account.type as unknown as CustomerSite['accountType'],
       geo: geoById.get(s.id) ?? null,
+      unit: s.unit,
+      buzzer: s.buzzer,
+      notes: s.notes,
+      isDefault: s.isDefault,
     }));
     return { sites };
   }

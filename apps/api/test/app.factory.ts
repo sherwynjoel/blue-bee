@@ -17,9 +17,26 @@ function configure(app: INestApplication): void {
   SwaggerModule.setup('v1/docs', app, doc, { jsonDocumentUrl: 'v1/docs-json' });
 }
 
-/** Boots the full app exactly as main.ts does (URI /v1 versioning + problem+json + OpenAPI). */
-export async function createTestApp(): Promise<INestApplication> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+/** One provider swap: `{ token, useValue }`, applied before the testing module compiles. */
+export interface ProviderOverride {
+  token: unknown;
+  useValue: unknown;
+}
+
+/**
+ * Boots the full app exactly as main.ts does (URI /v1 versioning + problem+json + OpenAPI).
+ *
+ * `overrides` swaps DI tokens for test doubles. Its reason for existing is the geocoder: `POST /v1/sites`
+ * resolves an address through `GEOCODER_PROVIDER`, whose real implementation calls OpenStreetMap over the
+ * network. An e2e that hit OSM would be slow, rate-limited, and offline-flaky — so the sites spec injects a
+ * deterministic fake. Every OTHER seam (Postgres, PostGIS, Redis, row-scoping) stays real.
+ */
+export async function createTestApp(overrides: ProviderOverride[] = []): Promise<INestApplication> {
+  let builder = Test.createTestingModule({ imports: [AppModule] });
+  for (const o of overrides) {
+    builder = builder.overrideProvider(o.token).useValue(o.useValue);
+  }
+  const moduleRef = await builder.compile();
   // rawBody:true mirrors main.ts so the Stripe webhook e2e verifies signatures against the raw body.
   const app = moduleRef.createNestApplication({ rawBody: true });
   configure(app);

@@ -53,13 +53,13 @@ describe('Payments e2e — Increment 12 (Stripe billing rail, signed test events
       .send(payload);
   };
 
-  /** Insert an order already at QUOTE_APPROVED with an APPROVED quote (the payable precondition). */
-  async function makeApprovedOrder(accountId = ACCOUNT_A, total = '293.80'): Promise<string> {
+  /** Insert an order with an APPROVED quote (the payable precondition) at the given payable status. */
+  async function makeApprovedOrder(accountId = ACCOUNT_A, total = '293.80', status: OrderStatus = OrderStatus.QUOTE_APPROVED): Promise<string> {
     const order = await prisma.order.create({
       data: {
         orgId: ORG1,
         accountId,
-        status: OrderStatus.QUOTE_APPROVED,
+        status,
         totals: { subtotal: '260.00', tax: '33.80', total, currency: 'CAD' },
       },
     });
@@ -170,6 +170,36 @@ describe('Payments e2e — Increment 12 (Stripe billing rail, signed test events
 
     it('rejects double payment: a second create-intent on a paid order → 409', async () => {
       await post(`/v1/orders/${orderId}/payment-intent`, 'rita').expect(409);
+    });
+  });
+
+  // ─────────────────────────── Inc-31 — the DELIVERED → INVOICED path is now live ───────────────────────────
+
+  // Inc-31 makes DELIVERED a genuinely reachable order state (the POD-gated delivery-stop completion is
+  // proven end-to-end in pod.e2e-spec.ts). This closes the loop: a payment confirmed while the order is
+  // DELIVERED advances the §5.1 spine DELIVERED → INVOICED (payment.service.ts:maybeAdvanceToInvoiced),
+  // a path that could never fire before because no order ever reached DELIVERED.
+  describe('a DELIVERED order invoices when its payment confirms', () => {
+    it('payment_intent.succeeded on a DELIVERED order advances DELIVERED → INVOICED', async () => {
+      const orderId = await makeApprovedOrder(ACCOUNT_A, '293.80', OrderStatus.DELIVERED);
+      const pi = (await post(`/v1/orders/${orderId}/payment-intent`, 'rita').expect(201)).body; // DELIVERED is payable
+      const piId = piFromSecret(pi.clientSecret);
+
+      await fire('payment_intent.succeeded', {
+        id: piId,
+        object: 'payment_intent',
+        amount: 29380,
+        amount_received: 29380,
+        currency: 'cad',
+        status: 'succeeded',
+        latest_charge: `ch_${runNonce}_DEL`,
+        metadata: { orgId: ORG1, orderId, accountId: ACCOUNT_A },
+      }).expect(200);
+
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe(OrderStatus.INVOICED);
+      // ...and the billing artefacts still land (paid invoice + mirrored order billing state).
+      expect((await get(`/v1/orders/${orderId}/invoice`, 'rita').expect(200)).body.status).toBe('PAID');
+      expect((await get(`/v1/orders/${orderId}`, 'rita').expect(200)).body.totals.paymentStatus).toBe('PAID');
     });
   });
 

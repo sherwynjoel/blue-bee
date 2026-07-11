@@ -59,6 +59,7 @@ function quotedOrder(over: Partial<OrderDetail> = {}): OrderDetail {
       { id: 'q1', status: QuoteStatus.SENT, subtotal: '100.00', tax: '13.00', total: '113.00', lines: [], adjustments: null, expiresAt: '2099-01-01T00:00:00.000Z', approvedBy: null, approvedAt: null, createdAt: '2026-06-25T00:00:00.000Z' },
     ],
     routeStops: [],
+    rating: null,
     ...over,
   };
 }
@@ -140,5 +141,32 @@ describe('OrderDetailScreen', () => {
     await waitFor(() => expect(mockClient.getOrder).toHaveBeenCalled()); // re-synced to truth
     await findByTestId('action-msg');
     expect(getByTestId('action-msg').props.children).toMatch(/expired|refreshed/i);
+  });
+
+  // ───────────── Inc-32 — the rating CTA / read-only score ─────────────
+
+  it('shows the "Rate this order" CTA on a delivered, unrated order', async () => {
+    mockClient.getOrder.mockResolvedValue(quotedOrder({ status: OrderStatus.DELIVERED }));
+    const { findByTestId } = render(<OrderDetailScreen navigation={navigation} route={route} />);
+    expect(await findByTestId('rate-cta')).toBeTruthy();
+  });
+
+  it('hides the rate CTA until the order has been delivered', async () => {
+    mockClient.getOrder.mockResolvedValue(quotedOrder()); // QUOTED
+    const { findByTestId, queryByTestId } = render(<OrderDetailScreen navigation={navigation} route={route} />);
+    await findByTestId('status-timeline');
+    expect(queryByTestId('rate-cta')).toBeNull();
+  });
+
+  it('shows the submitted score read-only once the delivered order is rated (no CTA)', async () => {
+    mockClient.getOrder.mockResolvedValue(
+      quotedOrder({
+        status: OrderStatus.DELIVERED,
+        rating: { id: 'r1', orderId: 'order-aaaa1111', score: 4, comment: 'Nice work', submittedByUserId: 'u', createdAt: '2026-07-11T00:00:00.000Z', updatedAt: '2026-07-11T00:00:00.000Z', editable: true },
+      }),
+    );
+    const { findByTestId, queryByTestId } = render(<OrderDetailScreen navigation={navigation} route={route} />);
+    expect(await findByTestId('order-rating-score')).toBeTruthy();
+    expect(queryByTestId('rate-cta')).toBeNull();
   });
 });

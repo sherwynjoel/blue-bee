@@ -45,8 +45,18 @@ describe('Logistics e2e — Increment 4 (Route/RouteStop backbone · §5.4 · §
     request(app.getHttpServer()).patch(path).set('Authorization', `Bearer ${token[who]}`).send(body as object);
   const get = (path: string, who: string) => request(app.getHttpServer()).get(path).set('Authorization', `Bearer ${token[who]}`);
 
-  async function bookOrder(siteId: string, who = 'owner'): Promise<string> {
-    const res = await post('/v1/orders', who, { accountId: ACCOUNT_A, siteId, pickupWindow: win(), items: [{ kind: 'RUG', serviceId: SERVICE, estimatedMeasure: 40 }] }).expect(201);
+  /**
+   * Book a pickup-able order. `pickupWindow: null` books WITHOUT a scheduled window.
+   *
+   * [Inc-28] That distinction now reaches the route: a stop added without an explicit `timeWindow`
+   * INHERITS its order's `scheduledPickupWindow`, and `NearestNeighbourOptimizer` treats a window start as
+   * a HARD ordering key ahead of distance. A test that wants to prove pure-distance sequencing must
+   * therefore book windowless orders — before Inc-28 it got that for free, because the stop silently
+   * dropped whatever window the order carried.
+   */
+  async function bookOrder(siteId: string, who = 'owner', pickupWindow: { start: string; end: string } | null = win()): Promise<string> {
+    const body = { accountId: ACCOUNT_A, siteId, ...(pickupWindow ? { pickupWindow } : {}), items: [{ kind: 'RUG', serviceId: SERVICE, estimatedMeasure: 40 }] };
+    const res = await post('/v1/orders', who, body).expect(201);
     return res.body.id as string;
   }
 
@@ -90,9 +100,13 @@ describe('Logistics e2e — Increment 4 (Route/RouteStop backbone · §5.4 · §
 
   it('creates a route, adds 3 stops, assigns, optimizes (real PostGIS reorder), publishes', async () => {
     const routeId = await createRoute(true);
-    const oWest = await bookOrder(SITE_WEST);
-    const oEast = await bookOrder(SITE_EAST);
-    const oNorth = await bookOrder(SITE_NORTH);
+    // Windowless on purpose: this test proves the PostGIS *distance* reorder, and a window start outranks
+    // distance in the optimizer. (Inc-28: the stops would otherwise inherit these orders' windows, whose
+    // starts differ by the milliseconds between the three `bookOrder` calls — enough to pin the original
+    // sequence and hide the reorder entirely.)
+    const oWest = await bookOrder(SITE_WEST, 'owner', null);
+    const oEast = await bookOrder(SITE_EAST, 'owner', null);
+    const oNorth = await bookOrder(SITE_NORTH, 'owner', null);
     // add in a deliberately non-optimal order: West, East, North (no time windows → pure distance reorder)
     await post(`/v1/routes/${routeId}/stops`, 'dispatcher', { orderId: oWest }).expect(201);
     await post(`/v1/routes/${routeId}/stops`, 'dispatcher', { orderId: oEast }).expect(201);

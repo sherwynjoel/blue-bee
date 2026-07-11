@@ -112,6 +112,17 @@ export function renderTemplate(eventType: string, channel: CommsChannel, data: T
       }
       return { body: `${data.appName}: ${line}` }; // SMS
     }
+    case NOTIFICATION_EVENTS.RATE_REQUEST: {
+      // Honest, plain — invites feedback, promises nothing. Deep-links to the Rate screen (PUSH payload).
+      const line = `Your order ${data.orderRef} was delivered. How did we do?`;
+      if (channel === CommsChannel.EMAIL) {
+        return { subject: `How did we do with order ${data.orderRef}?`, body: `${line}\n\nOpen the ${data.appName} app to leave a rating.` };
+      }
+      if (channel === CommsChannel.PUSH) {
+        return { title: `${data.appName} — rate your order`, body: line };
+      }
+      return { body: `${data.appName}: ${line}` }; // SMS
+    }
     default:
       throw new Error(`no template for notification event type "${eventType}"`);
   }

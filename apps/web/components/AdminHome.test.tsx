@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { RoleType, type MeResponse } from '@blue-bee/shared';
+import { DEFAULT_PICKUP_SCHEDULE, RoleType, type MeResponse } from '@blue-bee/shared';
 
 const mockClient = {
   adminListUsers: jest.fn(),
@@ -14,6 +14,10 @@ const mockClient = {
   adminNotificationConfig: jest.fn(),
   adminAuditLogs: jest.fn(),
   listVehicles: jest.fn(),
+  // [Inc-28] AdminHome now mounts `SchedulingCard`, which reads the org's pickup hours on mount. Its own
+  // behaviour is proven in `SchedulingCard.test.tsx`; here it only has to resolve so the page renders.
+  adminGetSchedule: jest.fn(),
+  adminUpdateSchedule: jest.fn(),
 };
 let mockMe: MeResponse;
 jest.mock('@/lib/session', () => ({ useSession: () => ({ client: mockClient, me: mockMe }) }));
@@ -72,6 +76,7 @@ beforeEach(() => {
   mockClient.listVehicles.mockResolvedValue(vehicles);
   mockClient.adminNotificationConfig.mockResolvedValue(notifConfig);
   mockClient.adminAuditLogs.mockResolvedValue(auditResult);
+  mockClient.adminGetSchedule.mockResolvedValue({ schedule: DEFAULT_PICKUP_SCHEDULE, timezone: 'America/Toronto', source: 'default' });
   mockClient.adminAssignRole.mockResolvedValue({ userId: 'user-2', roles: [] });
   mockClient.adminRevokeRole.mockResolvedValue({ userId: 'user-1', roles: [] });
   mockClient.adminCreateDevice.mockResolvedValue({ id: 'dev-2' });
@@ -129,10 +134,19 @@ describe('AdminHome (OWNER-gated admin console)', () => {
     );
   });
 
+  it('[Inc-28] mounts the Scheduling card — the founder can set pickup hours from here', async () => {
+    render(<AdminHome />);
+    await waitFor(() => expect(screen.getByTestId('schedule-save')).toBeInTheDocument());
+    expect(mockClient.adminGetSchedule).toHaveBeenCalled();
+    expect(screen.getByTestId('schedule-source-default')).toBeInTheDocument();
+  });
+
   it('blocks a non-OWNER with a no-access notice and no fetch', async () => {
     mockMe = me(RoleType.DISPATCHER);
     render(<AdminHome />);
     expect(screen.getByText(/don’t have access/)).toBeInTheDocument();
     expect(mockClient.adminListUsers).not.toHaveBeenCalled();
+    // [Inc-28] The schedule is org config: a non-OWNER must not even read it (the endpoint is OWNER-gated too).
+    expect(mockClient.adminGetSchedule).not.toHaveBeenCalled();
   });
 });

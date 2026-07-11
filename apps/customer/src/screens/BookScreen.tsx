@@ -1,17 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { ItemKind, PricingUnit, type CustomerSite, type DrycleanCatalogView, type ServiceCatalogItem } from '@blue-bee/shared';
+import { ItemKind, PricingUnit, type CustomerSite, type DrycleanCatalogView, type PickupSlot, type PickupSlotsResult, type ServiceCatalogItem } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
-import { buildBookDto, newIdempotencyKey, tomorrowMorningWindow, type DraftItem } from '../orders/booking';
+import { buildBookDto, newIdempotencyKey, slotToWindow, type DraftItem } from '../orders/booking';
 import { rangeText } from '../format';
 import { useTheme } from '../../theme';
-import { Button, Card, Text, fireHaptic } from '../../components/ui';
+import { Button, Card, EmptyState, Text, fireHaptic } from '../../components/ui';
 import { CorporatePricingNote } from '../components/CorporatePricing';
 import { DrycleanPicker } from '../components/DrycleanPicker';
+import { PickupSlotPicker } from '../components/PickupSlotPicker';
 
 const ITEM_KINDS: ItemKind[] = [ItemKind.RUG, ItemKind.CARPET, ItemKind.BLIND, ItemKind.UPHOLSTERY, ItemKind.GARMENT];
 
@@ -49,7 +50,25 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
   const [measure, setMeasure] = useState('');
   const [items, setItems] = useState<DraftItem[]>([]);
   const [siteId, setSiteId] = useState<string | undefined>(undefined);
-  const [schedulePickup, setSchedulePickup] = useState(true);
+
+  // [Inc-28] The real pickup picker.
+  //
+  // `requestedDate` is the day the customer EXPLICITLY tapped, and nothing else — it is the fetch input, so
+  // it must not be written from a response, or the load effect would re-trigger itself. When it is null the
+  // SERVER chooses the first bookable day and names it in `day.date`. The day actually on screen is derived
+  // from the two (`pickupDate` below), never stored a third time.
+  //
+  // `pickupSlot` is the window the customer chose on that day. Null ⇒ nothing is scheduled and submit stays
+  // disabled: there is no hard-coded fallback window any more.
+  const [requestedDate, setRequestedDate] = useState<string | null>(null);
+  const [pickupSlot, setPickupSlot] = useState<PickupSlot | null>(null);
+  const [day, setDay] = useState<PickupSlotsResult | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(true);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+  /** Bumped to force a re-fetch (the picker's "Try again"). */
+  const [slotsNonce, setSlotsNonce] = useState(0);
+  /** Highlight the tapped day immediately, then fall back to whichever day the server answered with. */
+  const pickupDate = requestedDate ?? day?.date ?? null;
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -59,15 +78,73 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
   // Stable across retries → no double-booking on a timeout (server IdempotencyInterceptor).
   const idemKeyRef = useRef<string | null>(null);
 
+  /**
+   * [Inc-26] Load the address picker. The server returns ACTIVE sites with the account default first, so
+   * `sites[0]` is the right pre-selection. `preselect` wins when we've just come back from AddressForm
+   * having saved a new address; otherwise we keep the current choice if it still exists (it may have been
+   * removed on the Addresses screen while we were away).
+   */
+  const loadSites = useCallback(
+    async (preselect?: string): Promise<void> => {
+      const st = await client.getSites();
+      setSites(st.sites);
+      setSiteId((current) => {
+        if (preselect && st.sites.some((s) => s.id === preselect)) return preselect;
+        if (current && st.sites.some((s) => s.id === current)) return current;
+        return st.sites[0]?.id;
+      });
+    },
+    [client],
+  );
+
+  /**
+   * [Inc-28] Load the chosen day's pickup windows. Re-runs when the customer taps a different day, when they
+   * switch address (a site's service zone may one day carry its own hours — the server owns that seam), and
+   * on an explicit retry.
+   *
+   * BLOCKING, unlike the memberships/dryclean reads below. Those degrade to a hidden badge; this one decides
+   * whether a booking is possible at all, so a failure surfaces as an error the customer can retry — never
+   * as a silent fallback to a window we invented.
+   *
+   * Gated on the initial load so it fires ONCE, with the resolved `siteId`, rather than firing immediately
+   * against `undefined` and again the moment the address list arrives.
+   */
+  useEffect(() => {
+    if (loading) return undefined; // wait for sites, so the first read already knows the address
+    let cancelled = false;
+    setSlotsLoading(true);
+    setSlotsError(null);
+    (async () => {
+      try {
+        const res = await client.getPickupSlots(requestedDate ?? undefined, siteId);
+        if (cancelled) return;
+        setDay(res);
+        // Drop a selection the server no longer offers — the day changed under us, or the slot filled while
+        // the customer was composing their items. Re-point at the fresh object so `remaining` stays current.
+        setPickupSlot((cur) => {
+          if (!cur) return null;
+          const fresh = res.slots.find((s) => s.label === cur.label && s.start === cur.start);
+          return fresh && fresh.available ? fresh : null;
+        });
+      } catch (e) {
+        // Keep the last good `day` so the date strip survives one bad day and the customer can tap another.
+        if (!cancelled) setSlotsError(e instanceof ApiError ? e.message : 'Could not load pickup times.');
+      } finally {
+        if (!cancelled) setSlotsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, siteId, requestedDate, slotsNonce, loading]);
+
   useEffect(() => {
     (async () => {
       try {
-        const [svc, st] = await Promise.all([client.getServices(), client.getSites()]);
+        const [svc] = await Promise.all([client.getServices(), loadSites(card?.preselectSiteId)]);
         setServices(svc.services);
-        setSites(st.sites);
         // Keep the card's pre-selected service; otherwise default to the first service.
         if (!card?.serviceId && svc.services[0]) setServiceId(svc.services[0].id);
-        if (st.sites[0]) setSiteId(st.sites[0].id);
       } catch (e) {
         setLoadError(e instanceof ApiError ? e.message : 'Could not load the booking options.');
       } finally {
@@ -93,6 +170,25 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
       }
     })();
   }, [client]);
+
+  // [Inc-26] Re-read the picker whenever Book regains focus — the customer may have just added an address
+  // (AddressForm hands the new id back as `preselectSiteId`) or removed one. Uses the navigation prop's
+  // `focus` event rather than `useFocusEffect`, which needs a NavigationContainer in the React tree and so
+  // cannot run in a plain screen unit test. The first focus fires right after mount, which the effect above
+  // already covered, so it is skipped.
+  const firstFocus = useRef(true);
+  const preselectSiteId = route?.params?.preselectSiteId;
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      // A failure here leaves the previous picker on screen; the mount path owns the error state.
+      void loadSites(preselectSiteId).catch(() => undefined);
+    });
+    return unsubscribe;
+  }, [navigation, loadSites, preselectSiteId]);
 
   // [Inc-17] Catalog selections feed the SAME draft-item list (unit ITEM, one line per garment type, qty in
   // estimatedMeasure) — no parallel cart. The picker's +/- adds/removes one unit of a catalog serviceId.
@@ -135,6 +231,13 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
       setSubmitError('Your account is not set up for booking yet.');
       return;
     }
+    // [Inc-28] A booking carries the window the SERVER offered and the customer picked. The button is already
+    // disabled without one; this guard means no future refactor of the label logic can smuggle a booking
+    // through with a fabricated window.
+    if (!pickupSlot) {
+      setSubmitError('Choose a pickup time first.');
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     setOutOfArea(null);
@@ -146,7 +249,7 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
         accountId,
         siteId,
         items,
-        pickupWindow: schedulePickup ? tomorrowMorningWindow() : undefined,
+        pickupWindow: slotToWindow(pickupSlot),
         ...(selectedSite?.geo ? { serviceGeo: selectedSite.geo } : {}),
       });
       const order = await client.book(dto, idemKeyRef.current);
@@ -164,7 +267,7 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
     } finally {
       setSubmitting(false);
     }
-  }, [accountId, siteId, sites, items, schedulePickup, client, navigation]);
+  }, [accountId, siteId, sites, items, pickupSlot, client, navigation]);
 
   const catalogById = new Map((dryclean?.categories ?? []).flatMap((c) => c.items).map((i) => [i.id, i]));
   const serviceName = (id: string) => services.find((s) => s.id === id)?.name ?? catalogById.get(id)?.name ?? id.slice(0, 8);
@@ -293,7 +396,21 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
         </Card>
       ) : null}
 
-      {sites.length > 0 ? (
+      {/* [Inc-26] A customer with no saved address used to see NOTHING here (the card was hidden), leaving
+          them unable to book and with no way to add one. Now the zero-state IS the call to action. */}
+      {sites.length === 0 ? (
+        <Card title="Pickup & delivery address">
+          <EmptyState
+            testID="no-addresses"
+            icon="map-pin"
+            title="Add your address"
+            body="We need somewhere to collect from before you can book a pickup."
+            actionLabel="Add address"
+            actionIcon="plus"
+            onAction={() => navigation.navigate('AddressForm', { returnTo: 'Book' })}
+          />
+        </Card>
+      ) : (
         <Card title="Pickup & delivery address">
           {sites.map((s) => {
             const on = siteId === s.id;
@@ -327,40 +444,52 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
               </Pressable>
             );
           })}
-        </Card>
-      ) : null}
-
-      <Card>
-        <View style={styles.switchRow}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <Text variant="subhead" weight="600">
-              Schedule a pickup
-            </Text>
-            <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
-              Tomorrow morning window.
-            </Text>
-          </View>
-          <Switch
-            testID="schedule-toggle"
-            value={schedulePickup}
-            onValueChange={(v) => {
-              fireHaptic('selection');
-              setSchedulePickup(v);
-            }}
-            trackColor={{ true: colors.azure, false: colors.hairline }}
-            thumbColor="#FFFFFF"
-            ios_backgroundColor={colors.hairline}
+          <Button
+            testID="book-add-address"
+            label="Add another address"
+            icon="plus"
+            variant="ghost"
+            size="sm"
+            fullWidth={false}
+            onPress={() => navigation.navigate('AddressForm', { returnTo: 'Book' })}
+            style={{ marginTop: 10 }}
           />
-        </View>
-      </Card>
+        </Card>
+      )}
 
+      {/* [Inc-28] The real picker: the org's saved windows for a day the server says is bookable. */}
+      <PickupSlotPicker
+        date={pickupDate}
+        day={day}
+        loading={slotsLoading}
+        error={slotsError}
+        selectedLabel={pickupSlot?.label ?? null}
+        onSelectDate={(d) => {
+          setRequestedDate(d);
+          setPickupSlot(null); // a slot belongs to its day
+        }}
+        onSelectSlot={setPickupSlot}
+        onRetry={() => setSlotsNonce((n) => n + 1)}
+      />
+
+      {/* [Inc-26] A booking without a `siteId` has nowhere to collect from; [Inc-28] one without a chosen slot
+          has no time. The button names whichever is missing rather than failing at the server — and, unlike
+          the Switch it replaced, it can no longer send a window nobody agreed to. */}
       <Button
         testID="submit-booking"
-        label={items.length > 0 ? `Book ${items.length} item${items.length > 1 ? 's' : ''}` : 'Add an item to book'}
+        label={
+          items.length === 0
+            ? 'Add an item to book'
+            : !siteId
+              ? 'Add an address to book'
+              : !pickupSlot
+                ? 'Choose a pickup time'
+                : `Book ${items.length} item${items.length > 1 ? 's' : ''}`
+        }
         icon="check"
         onPress={() => void submit()}
         busy={submitting}
-        disabled={submitting || items.length === 0}
+        disabled={submitting || items.length === 0 || !siteId || !pickupSlot}
         style={{ marginTop: space.md }}
       />
 
@@ -513,7 +642,6 @@ const styles = StyleSheet.create({
   estimateBox: { borderRadius: 12, padding: 14, marginTop: 14 },
   estimateTop: { flexDirection: 'row', alignItems: 'center' },
   siteRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 12, padding: 14, marginBottom: 8 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   errorBox: { borderRadius: 12, padding: 12, marginTop: 12 },
   outOfAreaBox: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, borderWidth: 1, padding: 12, marginTop: 12 },
 });

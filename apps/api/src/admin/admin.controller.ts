@@ -5,9 +5,11 @@ import {
   assignDriverVehicleSchema,
   assignRoleSchema,
   createDeviceSchema,
+  updateOrgScheduleSchema,
   type AssignDriverVehicleDto,
   type AssignRoleDto,
   type CreateDeviceDto,
+  type UpdateOrgScheduleDto,
 } from '@blue-bee/shared';
 import { CurrentUser, Roles } from '../auth/rbac/decorators';
 import { ZodBody } from '../common/zod-validation.pipe';
@@ -92,6 +94,28 @@ export class AdminController {
     @Body(new ZodBody(assignDriverVehicleSchema)) dto: AssignDriverVehicleDto,
   ) {
     return this.admin.assignDriverVehicle(p, driverId, dto);
+  }
+
+  // ── pickup schedule (Inc-28 Part C — the founder's operating hours) ──
+  @Get('settings/schedule')
+  @ApiOperation({
+    summary:
+      "The org's pickup operating hours + per-slot cap, and the timezone they are read in. `source: 'default'` means no hours have been saved yet, so the documented default is what customers are currently offered.",
+  })
+  getSchedule(@CurrentUser() p: RequestPrincipal) {
+    return this.admin.getSchedule(p);
+  }
+
+  @Patch('settings/schedule')
+  @ApiOperation({
+    summary:
+      'Replace the org pickup schedule (audited). A FULL replacement: overlapping/inverted windows, a zero cap, and closing all seven days are rejected. `GET /v1/availability/pickup-slots` then serves exactly what is saved here.',
+  })
+  updateSchedule(
+    @CurrentUser() p: RequestPrincipal,
+    @Body(new ZodBody(updateOrgScheduleSchema)) dto: UpdateOrgScheduleDto,
+  ) {
+    return this.admin.updateSchedule(p, dto);
   }
 
   // ── notification config (read-only) ──

@@ -351,14 +351,26 @@ export function Field({
 const CONTROL_BASE =
   'w-full rounded-input border border-hairline bg-surface px-3 py-2 text-subhead text-ink placeholder:text-tertiary transition duration-fast ease-daylight focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-focus disabled:opacity-60 disabled:cursor-not-allowed';
 
+/**
+ * A caller-supplied width MUST beat the control's default `w-full`.
+ *
+ * `cn()` is a plain join (no tailwind-merge), and Tailwind emits `w-full` AFTER the numeric width scale — so
+ * `<Input className="w-24" />` silently lost: the control still stretched to `w-full`, then got crushed to a
+ * few pixels by its flex siblings. That is exactly what turned the catalog's price box into an unreadable
+ * sliver. Six call sites were passing a width that never applied. Rather than make each one fight the base
+ * class, the base simply yields its width when the caller states one.
+ */
+const controlClass = (className: string | undefined, extra: string): string =>
+  cn(/(^|\s)!?w-\S+/.test(className ?? '') ? CONTROL_BASE.replace('w-full ', '') : CONTROL_BASE, extra, className);
+
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>): React.ReactElement {
   const { className, ...rest } = props;
-  return <input {...rest} className={cn(CONTROL_BASE, 'h-10', className)} />;
+  return <input {...rest} className={controlClass(className, 'h-10')} />;
 }
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>): React.ReactElement {
   const { className, ...rest } = props;
-  return <textarea {...rest} className={cn(CONTROL_BASE, 'min-h-[88px] resize-y leading-relaxed', className)} />;
+  return <textarea {...rest} className={controlClass(className, 'min-h-[88px] resize-y leading-relaxed')} />;
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>): React.ReactElement {
@@ -366,12 +378,13 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>): Re
   return (
     <select
       {...rest}
-      className={cn(
-        CONTROL_BASE,
-        'h-10 cursor-pointer appearance-none bg-[length:18px] bg-[right_0.6rem_center] bg-no-repeat pr-9',
-        // chevron rendered via an inline SVG data-uri so no extra asset/markup is needed
-        "bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%238A99AE%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')]",
+      className={controlClass(
         className,
+        cn(
+          'h-10 cursor-pointer appearance-none bg-[length:18px] bg-[right_0.6rem_center] bg-no-repeat pr-9',
+          // chevron rendered via an inline SVG data-uri so no extra asset/markup is needed
+          "bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%238A99AE%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')]",
+        ),
       )}
     />
   );

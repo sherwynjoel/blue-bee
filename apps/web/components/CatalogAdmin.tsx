@@ -310,8 +310,27 @@ function ItemCard({
             {!item.active && <Badge tone="neutral">Off</Badge>}
           </div>
           <div className="mt-1 text-footnote text-secondary">Base {money(item.baseRate)}</div>
-          <div className="mt-2 flex items-center gap-2">
-            <Input value={price} onChange={(e) => setPrice(e.target.value)} type="number" step="0.01" min="0" className="w-24" aria-label={`${item.name} price`} />
+          {/* The price field used to be an unlabelled box that collapsed to a sliver — the founder could not
+              tell what it was ("I don't even know what that is"). It now says Price, shows the $ it is edited
+              in, and holds its width instead of being crushed by the buttons beside it. */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label htmlFor={`catalog-price-${item.id}`} className="text-footnote font-medium text-secondary">
+              Price
+            </label>
+            <div className="relative w-28 shrink-0">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-subhead text-tertiary">$</span>
+              <Input
+                id={`catalog-price-${item.id}`}
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                type="number"
+                step="0.01"
+                min="0"
+                className="w-28 pl-7 tabular-nums"
+                aria-label={`${item.name} price`}
+                data-testid={`catalog-item-price-${item.id}`}
+              />
+            </div>
             <Button size="sm" variant="secondary" loading={busy} disabled={!dirty} onClick={() => void savePrice()}>Save</Button>
             <Button size="sm" variant="ghost" onClick={() => void toggleActive()}>{item.active ? 'Deactivate' : 'Activate'}</Button>
             <MoveControls onUp={onMoveUp} onDown={onMoveDown} label={item.name} testIdPrefix={`catalog-item-${item.id}`} />

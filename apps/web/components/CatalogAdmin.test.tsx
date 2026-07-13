@@ -97,6 +97,28 @@ describe('CatalogAdmin (dry-clean catalog, RBAC-gated)', () => {
     await waitFor(() => expect(mockClient.updateCatalogItem).toHaveBeenCalledWith('item-1', { price: 9 }));
   });
 
+  /**
+   * The founder's report: *"can you fix the (box) before the Save — I don't even know what that is, it's too
+   * small"*. The price field was an unlabelled input that collapsed to a few pixels, because `Input`'s base
+   * class is `w-full` and Tailwind emits `w-full` AFTER `w-24` — so the fixed width the call site asked for
+   * never applied, and the flex siblings crushed what was left. Money you cannot see is money you cannot
+   * trust, so this pins BOTH halves of the fix.
+   */
+  it('the price field is visibly a PRICE — labelled, and it keeps the width it asks for', async () => {
+    render(<CatalogAdmin />);
+    const item = await screen.findByTestId('catalog-item-item-1');
+
+    // It announces itself as a price, in $, and carries the item's real base rate.
+    within(item).getByText('Price');
+    within(item).getByText('$');
+    const input = within(item).getByTestId('catalog-item-price-item-1');
+    expect(input).toHaveValue(6); // the seeded base rate — not an empty mystery box
+
+    // …and the width it declares actually survives: `w-full` must NOT come along and stretch it flat.
+    expect(input.className).toContain('w-28');
+    expect(input.className).not.toContain('w-full');
+  });
+
   it('RBAC (UX): a non-catalog role gets a no-access notice and never fetches the catalog', async () => {
     mockMe = me(RoleType.RESIDENTIAL_CUSTOMER);
     render(<CatalogAdmin />);

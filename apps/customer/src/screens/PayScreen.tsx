@@ -31,6 +31,9 @@ export function PayScreen({ navigation, route }: Props): React.ReactElement {
   const present = usePresentPayment();
   const [phase, setPhase] = useState<Phase>('loading');
   const [amount, setAmount] = useState<string | null>(null);
+  // [Inc-37] What the customer's credit covered, and the bill before it — so the screen can show the maths.
+  const [creditApplied, setCreditApplied] = useState<string | null>(null);
+  const [orderTotal, setOrderTotal] = useState<string | null>(null);
   const [currency, setCurrency] = useState<string>('CAD');
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<InvoiceView | null>(null);
@@ -69,6 +72,23 @@ export function PayScreen({ navigation, route }: Props): React.ReactElement {
       const intent = await client.createPaymentIntent(orderId);
       setAmount(intent.amount);
       setCurrency(intent.currency);
+      setCreditApplied(intent.creditApplied);
+      setOrderTotal(intent.orderTotal);
+
+      /**
+       * [Inc-37] The customer's CREDIT covered the whole bill — the server already settled the order (there is
+       * no charge to make, so there is no Stripe intent and no client secret). Opening PaymentSheet here would
+       * be a $0 charge and would fail. Skip straight to the confirmed state and show the receipt.
+       */
+      if (intent.clientSecret == null) {
+        setPhase('confirming');
+        setPayment(await client.getPayment(orderId));
+        setReceipt(await client.getInvoice(orderId));
+        fireHaptic('success');
+        setPhase('paid');
+        return;
+      }
+
       setPhase('presenting');
       const result = await present({ clientSecret: intent.clientSecret, amountLabel: intent.amount });
       if (result.outcome === 'canceled') {
@@ -129,6 +149,20 @@ export function PayScreen({ navigation, route }: Props): React.ReactElement {
             {receipt?.lines.map((l, i) => (
               <KeyValue key={i} label={l.description} value={money(l.amount, currency)} />
             ))}
+            {/* [Inc-37] Show the maths when credit was used: what the order cost, what the credit covered, and
+                what the card actually paid. Only rendered when credit was genuinely applied. */}
+            {creditApplied && creditApplied !== '0.00' ? (
+              <>
+                <Divider spacing={8} />
+                {orderTotal ? <KeyValue label="Order total" value={money(orderTotal, currency)} /> : null}
+                <KeyValue testID="pay-credit-applied" label="Credit applied" value={`− ${money(creditApplied, currency)}`} />
+                <KeyValue
+                  testID="pay-card-charged"
+                  label={amount === '0.00' ? 'Charged to card' : 'Paid by card'}
+                  value={money(amount ?? '0', currency)}
+                />
+              </>
+            ) : null}
             <Divider spacing={8} />
             <KeyValue label="Total paid" value={money(receipt?.total ?? payment?.amount ?? amount ?? '0', currency)} total />
           </Card>

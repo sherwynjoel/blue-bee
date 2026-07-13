@@ -44,7 +44,9 @@ export function WeighScreen({ route, navigation }: WeighProps): React.ReactEleme
 
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // NOTE: intentionally keyed on `stopId` only — `refresh` is re-created every render, so depending on it
+    // would re-fetch in a loop. The driver's eslint config does not load eslint-plugin-react-hooks, so an
+    // `exhaustive-deps` disable comment here is an *unknown rule* (itself a lint error) — hence a plain note.
   }, [stopId]);
 
   const submit = async (): Promise<void> => {

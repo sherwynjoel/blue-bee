@@ -11,6 +11,7 @@ import { StripeProvider } from '@stripe/stripe-react-native';
 import { SessionProvider, useSession } from './src/session/SessionProvider';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
+import { DashboardScreen } from './src/screens/DashboardScreen';
 import { OrdersScreen } from './src/screens/OrdersScreen';
 import { BookScreen } from './src/screens/BookScreen';
 import { OrderDetailScreen } from './src/screens/OrderDetailScreen';
@@ -40,7 +41,7 @@ import { BeeMark, Text, fireHaptic } from './components/ui';
  *
  * [Inc-34] A 4th tab, **Refer**, is added (route name 'Refer' — net-new, nothing frozen navigates to it).
  */
-type TabParamList = { Home: undefined; Orders: undefined; Settings: undefined; Refer: undefined };
+type TabParamList = { Home: undefined; Services: undefined; Orders: undefined; Settings: undefined; Refer: undefined };
 type RootNavParamList = {
   Main: undefined;
   // [Inc-26] Book now takes params (a preselected site after adding an address). This list is the
@@ -119,7 +120,8 @@ function DaylightTabBar({ state, navigation }: BottomTabBarProps): React.ReactEl
     <View style={[styles.tabBar, { backgroundColor: colors.surface, borderTopColor: colors.hairline, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
       {/* 'Home' route → the Service catalogue tab; 'Settings' route → the Profile tab (route names kept
           stable so the frozen screens' navigate() calls resolve — see TabParamList above). */}
-      <TabButton icon="grid" label="Service" active={active === 'Home'} onPress={() => go('Home')} />
+      <TabButton icon="home" label="Home" active={active === 'Home'} onPress={() => go('Home')} />
+      <TabButton icon="grid" label="Services" active={active === 'Services'} onPress={() => go('Services')} />
       <TabButton icon="package" label="Orders" active={active === 'Orders'} onPress={() => go('Orders')} />
       <TabButton icon="user" label="Profile" active={active === 'Settings'} onPress={() => go('Settings')} />
       <TabButton icon="user-plus" label="Refer" active={active === 'Refer'} onPress={() => go('Refer')} />
@@ -153,8 +155,10 @@ function MainTabs(): React.ReactElement {
         headerTintColor: theme.colors.azure,
       }}
     >
-      {/* Service tab (catalogue landing). HomeScreen owns its own header, so the tab header is hidden. */}
-      <Tab.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+      {/* [Inc-37] Home — the landing dashboard (what's new · my orders · my account + credit). Owns its own header. */}
+      <Tab.Screen name="Home" component={DashboardScreen} options={{ headerShown: false }} />
+      {/* Services (catalogue grid). HomeScreen owns its own header, so the tab header is hidden. */}
+      <Tab.Screen name="Services" component={HomeScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Orders" component={OrdersTab} options={{ title: 'My orders' }} />
       {/* Profile tab — route name stays 'Settings' (frozen), titled/labelled "Profile". */}
       <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Profile' }} />

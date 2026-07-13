@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import type Redis from 'ioredis';
 import { CustodyStage, NOTIFICATION_EVENTS, POD_ERRORS, RouteStopKind, RouteStopStatus } from '@blue-bee/shared';
@@ -18,6 +18,12 @@ const PHONES = {
   driver1: '+14165550006',
   driver2: '+14165550007',
 };
+
+// [Inc-37] A throwaway referral pair, so the credit assertion mutates NO seeded row.
+const ORG1 = '11111111-1111-4111-8111-111111111111';
+const REFERRER = 'c0d00000-0000-4000-8000-00000000d001'; // gets paid
+const FRIEND = 'c0d00000-0000-4000-8000-00000000d002'; // the invited friend who books
+const REFERRAL_REWARD = 5; // CAD — funded by this spec, un-funded again in afterAll
 
 interface Scenario {
   routeId: string;
@@ -150,6 +156,14 @@ describe('Driver POD e2e — Increment 17 (/v1/driver/stops/:id/{pod/presign,pro
   }, 60000);
 
   afterAll(async () => {
+    // [Inc-37] leave no credit state behind: drop the throwaway referral pair + un-fund the reward.
+    await prisma.creditEntry.deleteMany({ where: { OR: [{ userId: REFERRER }, { referredUserId: FRIEND }] } });
+    await prisma.user.deleteMany({ where: { id: { in: [FRIEND, REFERRER] } } });
+    const org = await prisma.organization.findUnique({ where: { id: ORG1 }, select: { settings: true } });
+    const settings = { ...((org?.settings as Record<string, unknown> | null) ?? {}) };
+    delete settings.referralRewardAmount;
+    await prisma.organization.update({ where: { id: ORG1 }, data: { settings: settings as Prisma.InputJsonValue } });
+
     await prisma.$disconnect();
     await app.close();
     await pub.quit();
@@ -304,6 +318,62 @@ describe('Driver POD e2e — Increment 17 (/v1/driver/stops/:id/{pod/presign,pro
     const rateNotifs = await prisma.notification.findMany({ where: { sourceId: orderId, eventType: NOTIFICATION_EVENTS.RATE_REQUEST } });
     expect(rateNotifs.length).toBeGreaterThan(0);
     expect(rateNotifs.every((n) => (n.payload as { orderId?: string }).orderId === orderId)).toBe(true);
+  });
+
+  // ─────────────────────────── Inc-37 — the referral EARN fires on the REAL delivery ───────────────────────────
+
+  /**
+   * The credit ledger is proven in credits.e2e; what this proves is the WIRING: that a credit is earned by the
+   * SAME DELIVERED transition a driver actually performs (route → POD → complete), not by a service call a test
+   * made up. The reward is FUNDED here and un-funded in afterAll — with no funded reward, no credit exists at all.
+   */
+  it('[Inc-37] the real driver delivery grants the referrer their funded credit — provenance on the delivered order', async () => {
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: ORG1 }, select: { settings: true } });
+    await prisma.organization.update({
+      where: { id: ORG1 },
+      data: {
+        settings: { ...((org.settings as Record<string, unknown> | null) ?? {}), referralRewardAmount: REFERRAL_REWARD } as Prisma.InputJsonValue,
+      },
+    });
+    await prisma.user.create({ data: { id: REFERRER, orgId: ORG1, name: 'POD e2e — referrer', phone: '+14165559901', status: 'ACTIVE', authProviders: ['otp'] } });
+    await prisma.user.create({
+      data: { id: FRIEND, orgId: ORG1, name: 'POD e2e — friend', phone: '+14165559902', status: 'ACTIVE', authProviders: ['otp'], referredByUserId: REFERRER },
+    });
+
+    // A real, deliverable order — booked by the invited FRIEND (the hook pays on Order.createdBy's referrer).
+    const orderId = await deliverableReadyOrder();
+    await prisma.order.update({ where: { id: orderId }, data: { createdBy: FRIEND } });
+    expect(await prisma.creditEntry.count({ where: { orgId: ORG1, userId: REFERRER } })).toBe(0); // nothing earned yet
+
+    // Route it, capture a REAL POD, complete → DELIVERED (the exact driver path, no shortcuts).
+    seq += 1;
+    const vehicleId = (await post('/v1/vehicles', 'dispatcher', { label: `Ref Van ${seq}`, plate: `REF-${seq}` }).expect(201)).body.id;
+    const shift = (await post('/v1/shifts', 'dispatcher', { driverId: driver1Id, vehicleId }).expect(201)).body;
+    const routeId = (await post('/v1/routes', 'dispatcher', { date: '2026-07-22' }).expect(201)).body.id;
+    const stop = (await post(`/v1/routes/${routeId}/stops`, 'dispatcher', { orderId, kind: RouteStopKind.DELIVERY }).expect(201)).body;
+    await post(`/v1/routes/${routeId}/assign`, 'dispatcher', { driverId: driver1Id, vehicleId }).expect(200);
+    await post(`/v1/routes/${routeId}/publish`, 'dispatcher').expect(200);
+    await post(`/v1/driver/shifts/${shift.id}/start`, 'driver1').expect(200);
+    await post(`/v1/driver/stops/${stop.id}/depart`, 'driver1').expect(200);
+    await post(`/v1/driver/stops/${stop.id}/arrive`, 'driver1').expect(200);
+    await post(`/v1/driver/stops/${stop.id}/start`, 'driver1').expect(200);
+    const photoKey = await uploadPod(stop.id, 'image/jpeg', Buffer.from('referral-photo-' + 'x'.repeat(400)));
+    const sigKey = await uploadPod(stop.id, 'image/png', Buffer.from('referral-sig-' + 'y'.repeat(200)));
+    await post(`/v1/driver/stops/${stop.id}/proof-of-delivery`, 'driver1', {
+      signatureStorageKey: sigKey,
+      photoStorageKeys: [photoKey],
+      geo: { lng: -79.4111, lat: 43.7615 },
+    }).expect(201);
+    await post(`/v1/driver/stops/${stop.id}/complete`, 'driver1').expect(200);
+    expect(await orderStatus(orderId)).toBe('DELIVERED');
+
+    // ONE credit entry — to the REFERRER, for the funded amount, stamped with the friend + the order that earned it.
+    const entries = await prisma.creditEntry.findMany({ where: { orgId: ORG1, userId: REFERRER } });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].kind).toBe('REFERRAL_EARN');
+    expect(Number(entries[0].amount)).toBe(REFERRAL_REWARD);
+    expect(entries[0].referredUserId).toBe(FRIEND);
+    expect(entries[0].orderId).toBe(orderId); // provenance: the delivery that earned it
   });
 
   it('rejects an unsupported content-type and a cross-stop storage key (no raw-URL trust)', async () => {

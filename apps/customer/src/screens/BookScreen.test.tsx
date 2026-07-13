@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import { ServiceVertical, ServiceUnit, AccountType, type PickupSlot, type PickupSlotsResult } from '@blue-bee/shared';
+import { ServiceVertical, ServiceUnit, AccountType, ItemKind, PricingUnit, type PickupSlot, type PickupSlotsResult } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 
 const siteWithGeo = (address: string, geo: { lng: number; lat: number }) => ({
@@ -41,9 +41,7 @@ const mockClient = {
   getSites: jest.fn(async () => ({ sites: [{ id: 'site-1', accountId: 'acc', name: 'Home', address: '1 Main St', accountName: 'Rita', accountType: AccountType.RESIDENTIAL }] })),
   // [Inc-16] BookScreen reads memberships to show the corporate-pricing badge; default = none.
   listMyMemberships: jest.fn(async () => ({ memberships: [] as Array<{ id: string; accountId: string; accountName: string; status: string; source: string; createdAt: string }> })),
-  // [Inc-17] BookScreen reads the dry-clean catalog for the visual picker; default = empty (no picker).
-  getDrycleanCatalog: jest.fn(async () => ({ categories: [] as unknown[], currency: 'CAD', pricingAccountName: null })),
-  // [Inc-28] The real pickup windows. BLOCKING, unlike the two reads above: with no slot chosen, no booking.
+  // [Inc-28] The real pickup windows. BLOCKING, unlike the membership read: with no slot chosen, no booking.
   getPickupSlots: jest.fn(async (): Promise<PickupSlotsResult> => mkDay()),
   book: jest.fn(),
 };
@@ -62,16 +60,20 @@ const navigation = {
   navigate: jest.fn(),
   addListener: jest.fn((_event: string, _handler: () => void) => jest.fn()),
 };
-// BookScreen only uses `navigation`; cast the screen props (route is unused by the test path).
-const screenProps = { navigation } as unknown as React.ComponentProps<typeof BookScreen>;
+/**
+ * [Inc-36] Book is now ALWAYS opened from a Home service card, which carries the backing `serviceId` + the
+ * card's `PricingUnit`. That is what makes the screen the focused single-measure checkout — without it the
+ * screen is a dead end that sends the customer back to the grid (covered by its own test below).
+ * This card is the PER_MEASURE (sqft) rug service, matching `getServices()`'s `svc-1` @ $6.50/sqft.
+ */
+const CARD = { serviceId: 'svc-1', serviceName: 'Rug cleaning', unit: PricingUnit.PER_MEASURE, kind: ItemKind.RUG };
+const screenProps = { navigation, route: { params: CARD } } as unknown as React.ComponentProps<typeof BookScreen>;
 
 describe('BookScreen', () => {
   beforeEach(() => {
     mockClient.book.mockReset();
     mockClient.listMyMemberships.mockReset();
     mockClient.listMyMemberships.mockResolvedValue({ memberships: [] });
-    mockClient.getDrycleanCatalog.mockReset();
-    mockClient.getDrycleanCatalog.mockResolvedValue({ categories: [], currency: 'CAD', pricingAccountName: null });
     mockClient.getPickupSlots.mockReset();
     mockClient.getPickupSlots.mockResolvedValue(mkDay());
     navigation.replace.mockClear();
@@ -83,35 +85,55 @@ describe('BookScreen', () => {
   });
 
   /**
-   * [Inc-28] Stage a bookable order: one real item, plus a pickup slot the SERVER offered. Every booking test
-   * routes through here, because a booking with no chosen slot is precisely what this increment made
-   * impossible — the old screen would have quietly sent a hard-coded "tomorrow 9am".
+   * [Inc-28] Stage a bookable order: the measure, plus a pickup slot the SERVER offered. A booking with no
+   * chosen slot is precisely what Inc-28 made impossible (no hard-coded "tomorrow 9am").
+   * [Inc-36] There is no "Add" step any more — typing the single measure IS the order line.
    */
   const stageBooking = async (screen: ReturnType<typeof render>, slotLabel = 'Morning'): Promise<void> => {
     fireEvent.changeText(screen.getByTestId('measure-input'), '40');
-    fireEvent.press(screen.getByTestId('add-item'));
     fireEvent.press(await screen.findByTestId(`slot-${slotLabel}`));
   };
 
-  it('renders the dry-clean visual picker when the catalog loads, and tapping + stages an ITEM line for booking', async () => {
-    mockClient.getDrycleanCatalog.mockResolvedValue({
-      currency: 'CAD',
-      pricingAccountName: null,
-      categories: [{ id: 'cat-1', name: 'Shirts', sortOrder: 1, items: [{ id: 'dc-1', name: 'Dress shirt', imageUrl: null, price: '6.00', priceSource: 'service_base' }] }],
-    });
-    mockClient.book.mockResolvedValue({ id: 'order-1' });
+  // ───────────── [Inc-36] the simplified single-measure checkout ─────────────
+
+  it('[Inc-36] is ONE measure — no item-type chips, no service picker, no garment sub-catalog, no "Add" step', async () => {
+    const { findByTestId, queryByTestId } = render(<BookScreen {...screenProps} />);
+    await findByTestId('measure-input');
+    // The complexity that used to greet a customer here is gone.
+    expect(queryByTestId('kind-RUG')).toBeNull();
+    expect(queryByTestId('service-svc-1')).toBeNull();
+    expect(queryByTestId('dryclean-item-dc-1')).toBeNull();
+    expect(queryByTestId('add-item')).toBeNull();
+  });
+
+  it('[Inc-36] shows a LIVE estimate as the measure is typed (no Add tap), labelled as rough — never final', async () => {
     const screen = render(<BookScreen {...screenProps} />);
-    const { getByTestId, findByLabelText, findByTestId } = screen;
-    await findByTestId('dryclean-item-dc-1');
+    await screen.findByTestId('measure-input');
+    expect(screen.queryByTestId('estimate')).toBeNull(); // nothing typed yet
 
-    fireEvent.press(await findByLabelText('Add one Dress shirt'));
-    expect(getByTestId('dryclean-qty-dc-1').props.children).toBe(1); // staged one unit
+    // 40 sqft × $6.50 (svc-1 baseRate) = $260 → the ±band the screen renders.
+    fireEvent.changeText(screen.getByTestId('measure-input'), '40');
+    const estimate = await screen.findByTestId('estimate');
+    expect(String(estimate.props.children)).toContain('234.00'); // 260 × 0.9
+    expect(String(estimate.props.children)).toContain('299.00'); // 260 × 1.15
+    // Honesty firewall: never presented as a final/guaranteed price.
+    expect(screen.getByTestId('estimate-caveat').props.children).toMatch(/final quote confirmed/i);
+  });
 
-    fireEvent.press(await findByTestId('slot-Morning'));
-    fireEvent.press(getByTestId('submit-booking'));
-    await waitFor(() => expect(mockClient.book).toHaveBeenCalled());
-    const [dto] = mockClient.book.mock.calls[0]!;
-    expect(dto.items).toEqual([{ kind: 'GARMENT', serviceId: 'dc-1', estimatedMeasure: 1 }]); // through the existing line-item path
+  it('[Inc-36] drives the measure unit from the CARD, not the screen (a PER_KG card asks for kg)', async () => {
+    const kgCard = { serviceId: 'svc-1', serviceName: 'Wash & Fold', unit: PricingUnit.PER_KG, kind: ItemKind.GARMENT };
+    const kgProps = { navigation, route: { params: kgCard } } as unknown as React.ComponentProps<typeof BookScreen>;
+    const { findByText, getByText } = render(<BookScreen {...kgProps} />);
+    await findByText('kg'); // the unit suffix on the input — sqft never appears for a wash service
+    getByText('About how much does your load weigh?');
+  });
+
+  it('[Inc-36] opened with NO service it is a dead end back to the grid — the general composer is unreachable', async () => {
+    const noCardProps = { navigation, route: { params: undefined } } as unknown as React.ComponentProps<typeof BookScreen>;
+    const { findByTestId, queryByTestId } = render(<BookScreen {...noCardProps} />);
+    await findByTestId('book-no-service');
+    expect(queryByTestId('measure-input')).toBeNull();
+    expect(queryByTestId('service-svc-1')).toBeNull(); // no service picker to fall into
   });
 
   it('shows the corporate-pricing badge when the user holds an active membership (server truth); hidden otherwise', async () => {
@@ -124,7 +146,7 @@ describe('BookScreen', () => {
 
   it('hides the corporate-pricing badge when there is no membership (and never blocks booking)', async () => {
     const { findByTestId, queryByTestId } = render(<BookScreen {...screenProps} />);
-    await findByTestId('service-svc-1');
+    await findByTestId('measure-input');
     expect(queryByTestId('corp-pricing-note')).toBeNull();
   });
 
@@ -132,7 +154,7 @@ describe('BookScreen', () => {
     mockClient.listMyMemberships.mockRejectedValue(new Error('offline'));
     mockClient.book.mockResolvedValue({ id: 'order-1' });
     const screen = render(<BookScreen {...screenProps} />);
-    await screen.findByTestId('service-svc-1');
+    await screen.findByTestId('measure-input');
     expect(screen.queryByTestId('corp-pricing-note')).toBeNull();
     await stageBooking(screen);
     fireEvent.press(screen.getByTestId('submit-booking'));
@@ -142,7 +164,7 @@ describe('BookScreen', () => {
   it('builds an order from the catalog and books it (real serviceId + siteId + the chosen window)', async () => {
     mockClient.book.mockResolvedValue({ id: 'order-1' });
     const screen = render(<BookScreen {...screenProps} />);
-    await screen.findByTestId('service-svc-1'); // catalog loaded
+    await screen.findByTestId('measure-input'); // focused checkout ready
 
     await stageBooking(screen);
     fireEvent.press(screen.getByTestId('submit-booking'));
@@ -157,7 +179,7 @@ describe('BookScreen', () => {
     mockClient.getSites.mockResolvedValueOnce(siteWithGeo('1 Main St', { lng: -79.38, lat: 43.65 }));
     mockClient.book.mockResolvedValue({ id: 'order-1' });
     const screen = render(<BookScreen {...screenProps} />);
-    await screen.findByTestId('service-svc-1');
+    await screen.findByTestId('measure-input');
     await stageBooking(screen);
     fireEvent.press(screen.getByTestId('submit-booking'));
     await waitFor(() => expect(mockClient.book).toHaveBeenCalled());
@@ -171,7 +193,7 @@ describe('BookScreen', () => {
       new ApiError(422, { error: 'zone.out_of_service_area', title: 'zone.out_of_service_area', status: 422 }, 'This address is outside our current service area'),
     );
     const screen = render(<BookScreen {...screenProps} />);
-    await screen.findByTestId('service-svc-1');
+    await screen.findByTestId('measure-input');
     await stageBooking(screen);
     fireEvent.press(screen.getByTestId('submit-booking'));
     await waitFor(() => expect(screen.getByTestId('book-out-of-area')).toBeTruthy());
@@ -182,7 +204,7 @@ describe('BookScreen', () => {
   it('reuses the SAME idempotency key on retry after a failure (no double-booking)', async () => {
     mockClient.book.mockRejectedValueOnce(new Error('timeout')).mockResolvedValueOnce({ id: 'order-1' });
     const screen = render(<BookScreen {...screenProps} />);
-    await screen.findByTestId('service-svc-1');
+    await screen.findByTestId('measure-input');
 
     await stageBooking(screen);
 
@@ -258,7 +280,7 @@ describe('BookScreen', () => {
     it('books the EXACT instants of the chosen slot (no client-side date math)', async () => {
       mockClient.book.mockResolvedValue({ id: 'order-1' });
       const screen = render(<BookScreen {...screenProps} />);
-      await screen.findByTestId('service-svc-1');
+      await screen.findByTestId('measure-input');
       await stageBooking(screen, 'Afternoon');
       fireEvent.press(screen.getByTestId('submit-booking'));
 
@@ -269,18 +291,17 @@ describe('BookScreen', () => {
 
     it('blocks submit until a slot is chosen, and names what is missing', async () => {
       const screen = render(<BookScreen {...screenProps} />);
-      await screen.findByTestId('service-svc-1');
+      await screen.findByTestId('measure-input');
       fireEvent.changeText(screen.getByTestId('measure-input'), '40');
-      fireEvent.press(screen.getByTestId('add-item'));
 
-      // Item ✔, address ✔, slot ✘ → the button says so and refuses. The old screen would have booked
+      // Measure ✔, address ✔, slot ✘ → the button says so and refuses. The old screen would have booked
       // a window the customer never saw.
       screen.getByText('Choose a pickup time');
       fireEvent.press(screen.getByTestId('submit-booking'));
       await waitFor(() => expect(mockClient.book).not.toHaveBeenCalled());
 
       fireEvent.press(await screen.findByTestId('slot-Morning'));
-      screen.getByText('Book 1 item');
+      screen.getByText('Book pickup'); // [Inc-36] one service, one measure — no item count in the label
     });
 
     it('a full or past slot is DISABLED, says why, and cannot be selected', async () => {
@@ -304,7 +325,6 @@ describe('BookScreen', () => {
       // Pressing a disabled slot selects nothing, so the booking stays blocked.
       fireEvent.press(screen.getByTestId('slot-Morning'));
       fireEvent.changeText(screen.getByTestId('measure-input'), '40');
-      fireEvent.press(screen.getByTestId('add-item'));
       screen.getByText('Choose a pickup time');
     });
 
@@ -332,7 +352,6 @@ describe('BookScreen', () => {
       screen.getByText('Fully booked that day');
 
       fireEvent.changeText(screen.getByTestId('measure-input'), '40');
-      fireEvent.press(screen.getByTestId('add-item'));
       fireEvent.press(screen.getByTestId('submit-booking'));
       await waitFor(() => expect(mockClient.book).not.toHaveBeenCalled());
     });
@@ -408,7 +427,6 @@ describe('BookScreen', () => {
 
       // No fabricated window is offered in the meantime: submit stays blocked.
       fireEvent.changeText(screen.getByTestId('measure-input'), '40');
-      fireEvent.press(screen.getByTestId('add-item'));
       screen.getByText('Choose a pickup time');
 
       mockClient.getPickupSlots.mockResolvedValue(mkDay());

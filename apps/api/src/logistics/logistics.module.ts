@@ -3,6 +3,7 @@ import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { OrdersModule } from '../orders/orders.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { CreditsModule } from '../credits/credits.module';
 import { FleetController } from './fleet.controller';
 import { DriverService, ShiftService, VehicleService } from './fleet.service';
 import { LogisticsAccessService } from './logistics-access.service';
@@ -24,7 +25,9 @@ import { RoutesController } from './routes.controller';
 @Module({
   // [Inc-32] NotificationsModule exports NotificationService → the RATE_REQUEST push on a completed
   // delivery. One-directional (Notifications imports no app module) → no cycle.
-  imports: [OrdersModule, RealtimeModule, NotificationsModule],
+  // [Inc-37] CreditsModule → the referral earn-on-DELIVERED grant. Credits depends only on Prisma, so
+  // this cannot introduce a cycle.
+  imports: [OrdersModule, RealtimeModule, NotificationsModule, CreditsModule],
   controllers: [FleetController, RoutesController, RouteStopsController],
   providers: [
     VehicleService,

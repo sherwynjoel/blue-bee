@@ -3,7 +3,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { RoleType, type Customer360View, type MeResponse } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 
-const mockClient = { getCustomer360: jest.fn() };
+// [Inc-37] The 360 now renders the credit ledger, which reads its own endpoint.
+const mockGetCredits = jest.fn(async () => ({ balance: '0.00', currency: 'CAD', entries: [] as unknown[] }));
+const mockAdjustCredits = jest.fn();
+const mockClient = { getCustomer360: jest.fn(), getCustomerCredits: mockGetCredits, adjustCustomerCredits: mockAdjustCredits };
 let mockMe: MeResponse;
 jest.mock('@/lib/session', () => ({ useSession: () => ({ client: mockClient, me: mockMe }) }));
 
@@ -112,6 +115,24 @@ describe('CustomerDetail (consumer 360)', () => {
     expect(within(referral).getByText('3')).toBeInTheDocument(); // referrals made
     // Honesty firewall: the referral surface shows the invite GRAPH, never a reward/credit (none exists).
     expect(referral.textContent).not.toMatch(/reward|credit|earn|\$/i);
+  });
+
+  it('[Inc-37] shows the REAL credit balance + the append-only ledger', async () => {
+    mockGetCredits.mockResolvedValue({
+      balance: '30.00',
+      currency: 'CAD',
+      entries: [
+        { id: 'c1', kind: 'REFERRAL_EARN', amount: '10.00', currency: 'CAD', orderId: null, referredName: 'Priya Nair', note: null, createdAt: '2026-07-01T10:00:00.000Z' },
+        { id: 'c2', kind: 'REDEMPTION', amount: '-10.00', currency: 'CAD', orderId: 'order-1', referredName: null, note: 'Credit applied to this order', createdAt: '2026-07-02T10:00:00.000Z' },
+      ] as never,
+    });
+    render(<CustomerDetail userId={USER_ID} />);
+    const balance = await screen.findByTestId('credit-balance');
+    expect(balance.textContent).toContain('30.00');
+    // Both a grant and a spend are shown — the ledger, not a stored counter.
+    expect(await screen.findByTestId('credit-entry-c1')).toBeInTheDocument();
+    expect(screen.getByTestId('credit-entry-c2')).toBeInTheDocument();
+    expect(screen.getByTestId('credit-entry-c1').textContent).toContain('Priya Nair');
   });
 
   // ── the honesty firewall, rendered ──

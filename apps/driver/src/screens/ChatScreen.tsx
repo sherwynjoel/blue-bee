@@ -6,7 +6,7 @@ import { useSession } from '../session/SessionProvider';
 import { useDriverChat } from '../chat/useDriverChat';
 import type { OutboxItem } from '../chat/outbox-store';
 import { useTheme } from '../theme';
-import { Button, EmptyState, Input, Screen, Text } from '../components/kit';
+import { Button, EmptyState, Input, Text } from '../components/kit';
 import type { ChatProps } from '../navigation';
 
 /** Local, Intl-free clock: "2:45 PM". */

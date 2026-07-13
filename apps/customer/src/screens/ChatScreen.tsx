@@ -39,7 +39,7 @@ function clock(iso: string): string {
 export function ChatScreen({ route }: { navigation: Nav; route: Route }): React.ReactElement {
   const { orderId } = route.params;
   const { client, me } = useSession();
-  const { colors, space, radius } = useTheme();
+  const { colors, radius } = useTheme();
   const myUserId = me?.user.userId ?? null;
 
   const chat = useOrderChat(client, orderId);

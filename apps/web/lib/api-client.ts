@@ -1,5 +1,11 @@
 import { ApiClient, ApiError, type TokenStore } from '@blue-bee/api-client';
 import type {
+  AdjustCreditDto,
+  CreateHomeBlockDto,
+  CreditBalanceView,
+  HomeBlockAdminView,
+  ReferralRewardTerms,
+  UpdateHomeBlockDto,
   AccountScorecard,
   AddStopDto,
   AdminDevice,
@@ -182,6 +188,48 @@ export type StopAction = 'depart' | 'arrive' | 'start' | 'complete' | 'fail' | '
  * the console only calls the endpoint and renders the result.
  */
 export class ConsoleApiClient extends ApiClient {
+  // ───────────── [Inc-37] Home content (the customer's landing tab) ─────────────
+
+  /** Every Home block (active or not), in render order — the content editor's list. */
+  listHomeBlocks(): Promise<{ blocks: HomeBlockAdminView[] }> {
+    return this.request('GET', '/admin/home-blocks');
+  }
+
+  /** Author a "What's new" card. It appears on the customer's Home on their next refresh. */
+  createHomeBlock(dto: CreateHomeBlockDto): Promise<HomeBlockAdminView> {
+    return this.request('POST', '/admin/home-blocks', { body: dto });
+  }
+
+  updateHomeBlock(id: string, dto: UpdateHomeBlockDto): Promise<HomeBlockAdminView> {
+    return this.request('PATCH', `/admin/home-blocks/${id}`, { body: dto });
+  }
+
+  deleteHomeBlock(id: string): Promise<{ deleted: true; id: string }> {
+    return this.request('DELETE', `/admin/home-blocks/${id}`);
+  }
+
+  // ───────────── [Inc-37] Credits — REAL money ─────────────
+
+  /** The live referral reward. `enabled: false` ⇒ nothing is granted and the app promises nothing. */
+  getReferralReward(): Promise<ReferralRewardTerms> {
+    return this.request('GET', '/admin/referral-reward');
+  }
+
+  /** Fund the referral reward (or pass null/0 to switch it OFF entirely). */
+  setReferralReward(amount: number | null): Promise<ReferralRewardTerms> {
+    return this.request('PUT', '/admin/referral-reward', { body: { amount } });
+  }
+
+  /** A customer's credit balance + full append-only ledger. */
+  getCustomerCredits(userId: string): Promise<CreditBalanceView> {
+    return this.request('GET', `/admin/customers/${userId}/credits`);
+  }
+
+  /** Manually grant (+) or deduct (−) credit. A note is mandatory; a deduction can never overdraw. */
+  adjustCustomerCredits(userId: string, dto: AdjustCreditDto): Promise<CreditBalanceView> {
+    return this.request('POST', `/admin/customers/${userId}/credits/adjust`, { body: dto });
+  }
+
   /** The current access token — needed for the `WS /live/fleet` handshake auth (Inc 6 contract). */
   async accessToken(): Promise<string | null> {
     return this.store.getAccess();

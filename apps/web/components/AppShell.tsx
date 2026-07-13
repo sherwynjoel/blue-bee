@@ -23,6 +23,7 @@ import {
   Users,
   Wallet,
   X,
+  Megaphone,
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { can, isOps, isPortal, roleNames } from '@/lib/rbac';
@@ -112,6 +113,8 @@ export function AppShell({ children }: { children: React.ReactNode }): React.Rea
         { href: '/corporate', label: 'Corporate', show: can.corporate(me), icon: Landmark },
         { href: '/service-zones', label: 'Service zones', show: can.zones(me), icon: MapIcon },
         { href: '/catalog', label: 'Catalog & pricing', show: can.catalog(me), icon: Tag },
+        // [Inc-37] The customer Home tab's content + the referral reward (real credit).
+        { href: '/content', label: 'Customer home', show: can.catalog(me), icon: Megaphone },
         { href: '/finance', label: 'Finance', show: can.finance(me), icon: Wallet },
         { href: '/analytics', label: 'Analytics', show: can.analytics(me), icon: BarChart3 },
       ],

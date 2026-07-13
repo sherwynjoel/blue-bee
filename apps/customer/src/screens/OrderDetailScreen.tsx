@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { io } from 'socket.io-client';
-import { PhotoKind, WS_EVENTS, WS_NAMESPACES, type LiveWeightEvent, type OrderWeightView } from '@blue-bee/shared';
+import { PhotoKind, WS_EVENTS, WS_NAMESPACES, type OrderWeightView } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useFocusEffect, type NavigationProp, type RouteProp } from '@react-navigation/native';
 import { useSession } from '../session/SessionProvider';

@@ -34,3 +34,5 @@ export * from './ratings';
 export * from './account-profile';
 export * from './referral';
 export * from './auth-credentials';
+export * from './credits';
+export * from './home';

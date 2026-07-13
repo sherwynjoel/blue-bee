@@ -230,7 +230,9 @@ export function PortalInvoiceDetail({ invoiceId }: { invoiceId: string }): React
       )}
 
       {/* ── Pay surface (Stripe PaymentElement, browser-only) ── */}
-      {inv && intent && (
+      {/* [Inc-37] `clientSecret` is nullable now (a CUSTOMER order can be fully covered by credit). A B2B
+          invoice never is, but gate on it rather than assert — no secret, no pay panel. */}
+      {inv && intent?.clientSecret && (
         <Modal title={`Pay ${money(inv.total, inv.currency)}`} onClose={closePay}>
           <PortalPayPanel
             clientSecret={intent.clientSecret}

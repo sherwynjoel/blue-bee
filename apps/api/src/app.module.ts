@@ -32,6 +32,8 @@ import { GeocodingModule } from './geocoding/geocoding.module';
 import { SitesModule } from './sites/sites.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { RatingsModule } from './ratings/ratings.module';
+import { CreditsModule } from './credits/credits.module';
+import { HomeModule } from './home/home.module';
 
 /**
  * Root module of the Blue Bee modular monolith (PRD §10.3). Phase-1 wires config +
@@ -51,6 +53,9 @@ import { RatingsModule } from './ratings/ratings.module';
  */
 @Module({
   imports: [
+    // [Inc-37] Customer credit ledger (real money) + the Home tab & its founder content editor.
+    CreditsModule,
+    HomeModule,
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     RedisModule,

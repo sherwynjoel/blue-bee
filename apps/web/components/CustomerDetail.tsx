@@ -1,14 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import type { Customer360View, CustomerAddressView, SiteServiceability } from '@blue-bee/shared';
+import { ApiError } from '@blue-bee/api-client';
 import { ArrowLeft } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/useAsync';
 import { can } from '@/lib/rbac';
 import { humanize, money, orderRef, orderTone, shortDate } from '@/lib/format';
-import { Badge, Card, EmptyState, ErrorBox, KV, Skeleton, StatusPill, Table, TableSkeleton, Td, Th } from './ui';
+import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, KV, Skeleton, StatusPill, Table, TableSkeleton, Td, Th } from './ui';
 import { RequireCapability } from './AppShell';
 
 /**
@@ -79,7 +80,7 @@ function CustomerDetailInner({ userId }: { userId: string }): React.ReactElement
         </div>
       </Card>
 
-      {/* ── referral (Inc-34) — the invite graph, read-only. Reward is deferred, so NO reward/credit is shown. ── */}
+      {/* ── referral (Inc-34) — the invite graph. The REWARD it now pays is the credit ledger below (Inc-37). ── */}
       <Card title="Referral">
         <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2" data-testid="referral">
           <KV label="Referral code" value={d.referral.code ?? '—'} />
@@ -87,6 +88,9 @@ function CustomerDetailInner({ userId }: { userId: string }): React.ReactElement
           <KV label="Referrals made" value={String(d.referral.referralsMadeCount)} />
         </div>
       </Card>
+
+      {/* ── credit (Inc-37) — REAL money: the append-only ledger + a support adjust. ── */}
+      <CreditsCard userId={userId} />
 
       {/* ── saved addresses (Inc-26) ── */}
       <Card title="Saved addresses">
@@ -329,4 +333,96 @@ function quietHours(start: number | null, end: number | null): string {
   if (start === null || end === null) return 'Not set';
   const hhmm = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   return `${hhmm(start)} – ${hhmm(end)}`;
+}
+
+/**
+ * [Inc-37] A customer's credit — the append-only ledger, and the console's manual grant/deduct.
+ *
+ * The balance is always `SUM(amount)` server-side; nothing here is a stored counter that could drift. A
+ * deduction that would overdraw is refused by the API (400 `credit.insufficient_balance`), and every
+ * adjustment demands a note — because this is money, and the entry it writes is immutable.
+ */
+function CreditsCard({ userId }: { userId: string }): React.ReactElement {
+  const { client, me } = useSession();
+  const [nonce, setNonce] = useState(0);
+  const state = useAsync(() => client.getCustomerCredits(userId), [userId, nonce]);
+  const canAdjust = can.finance(me);
+
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const adjust = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n === 0 || !note.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await client.adjustCustomerCredits(userId, { amount: n, note: note.trim() });
+      setAmount('');
+      setNote('');
+      setNonce((x: number) => x + 1);
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : 'Could not adjust the credit.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title="Credit" subtitle="An append-only ledger — a correction is a new entry, never an edit.">
+      {!state.data && state.loading ? (
+        <Skeleton className="h-20 w-full rounded-card" />
+      ) : !state.data && state.error ? (
+        <ErrorBox message={state.error} onRetry={() => setNonce((x: number) => x + 1)} />
+      ) : state.data ? (
+        <>
+          <div className="mb-4 flex items-baseline gap-2" data-testid="credit-balance">
+            <span className="text-2xl font-semibold tabular-nums">{money(state.data.balance, state.data.currency)}</span>
+            <span className="text-sm text-slate-500">available — applied automatically at checkout</span>
+          </div>
+
+          {canAdjust && (
+            <form className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700" onSubmit={adjust}>
+              <Field label="Adjust (+ grant / − deduct)">
+                <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 10 or -5" aria-label="Adjust amount" data-testid="credit-amount" />
+              </Field>
+              <Field label="Reason (required)">
+                <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Why?" aria-label="Reason" data-testid="credit-note" />
+              </Field>
+              <Button type="submit" loading={busy} disabled={busy || !Number(amount) || !note.trim()} data-testid="credit-adjust">
+                Apply
+              </Button>
+            </form>
+          )}
+          {err && (
+            <p className="mb-3 text-sm font-medium text-red-600" data-testid="credit-error">
+              {err}
+            </p>
+          )}
+
+          {state.data.entries.length === 0 ? (
+            <EmptyState title="No credit yet" message="Nothing has been earned, granted or spent." />
+          ) : (
+            <ul className="divide-y divide-slate-200 dark:divide-slate-700" data-testid="credit-entries">
+              {state.data.entries.map((e) => (
+                <li key={e.id} data-testid={`credit-entry-${e.id}`} className="flex items-center gap-3 py-2.5">
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">{humanize(e.kind)}</span>
+                    <span className="ml-2 text-xs text-slate-500">{e.referredName ?? e.note ?? ''}</span>
+                    <div className="text-xs text-slate-500">{shortDate(e.createdAt)}</div>
+                  </div>
+                  <span className={`shrink-0 font-mono text-sm tabular-nums ${e.amount.startsWith('-') ? 'text-slate-500' : 'text-emerald-600'}`}>
+                    {money(e.amount, e.currency)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : null}
+    </Card>
+  );
 }

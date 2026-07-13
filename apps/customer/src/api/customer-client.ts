@@ -1,5 +1,7 @@
 import type {
   AccountProfileView,
+  CreditBalanceView,
+  HomeView,
   ApproveQuoteDto,
   BookOrderDto,
   ChatMessageDto,
@@ -299,8 +301,25 @@ export class CustomerApiClient extends ApiClient {
     return this.request('GET', '/account/referral');
   }
 
-  /** Who joined via my code (name-minimal + count), row-scoped to me server-side. No reward data. */
+  /** Who joined via my code (name-minimal + count), row-scoped to me server-side. */
   getReferrals(): Promise<ReferralsView> {
     return this.request('GET', '/account/referrals');
+  }
+
+  // ───────────── home + credits (Inc-37) ─────────────
+
+  /**
+   * [Inc-37] Everything the Home tab renders, in one round trip: the founder's announcement blocks, the
+   * customer's REAL credit balance + ledger, the live referral reward terms (`reward.enabled === false` ⇒ the
+   * app must promise NOTHING), recent orders and account identity. All server-resolved — the app invents none
+   * of it.
+   */
+  getHome(): Promise<HomeView> {
+    return this.request('GET', '/home');
+  }
+
+  /** The signed-in customer's REAL credit balance (SUM of an append-only ledger) + every entry. Self-scoped. */
+  getCredits(): Promise<CreditBalanceView> {
+    return this.request('GET', '/account/credits');
   }
 }

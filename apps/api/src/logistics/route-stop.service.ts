@@ -23,6 +23,7 @@ import { ITEM_ORDER_BY } from '../orders/item-order';
 import { OrderStateMachine } from '../orders/state-machine.service';
 import { RealtimePublisher } from '../realtime/realtime-publisher.service';
 import { NotificationService } from '../notifications/notification.service';
+import { CreditsService } from '../credits/credits.service';
 import { LogisticsAccessService } from './logistics-access.service';
 import { RouteStopStateMachine } from './route-stop-state-machine.service';
 import { DELIVERY_KINDS } from './stop-kinds';
@@ -41,6 +42,7 @@ export class RouteStopService {
     private readonly stopStateMachine: RouteStopStateMachine,
     private readonly realtime: RealtimePublisher,
     private readonly notifications: NotificationService,
+    private readonly credits: CreditsService,
   ) {}
 
   // ─────────────────────────────── reads ───────────────────────────────
@@ -137,6 +139,13 @@ export class RouteStopService {
     // the dispatch is fully isolated (never throws) so a notification hiccup can't fail the stop action.
     if (deliveredOrderId) {
       await this.notifications.dispatchRateRequest(stop.orgId, deliveredOrderId);
+
+      // [Inc-37] THE REFERRAL EARN RULE. If the customer who booked this order was referred by someone, the
+      // referrer is credited — but only now, on a real DELIVERED order, and only once per referred friend
+      // (DB unique index). Granting at signup instead would be farmable with throwaway accounts, and this is
+      // real money. Like the push above: AFTER the tx (a rolled-back delivery pays nobody) and fully isolated
+      // (`grantReferralForDeliveredOrder` never throws), so a credit hiccup can never fail a delivery.
+      await this.credits.grantReferralForDeliveredOrder(stop.orgId, deliveredOrderId);
     }
     return this.getStop(principal, stopId);
   }

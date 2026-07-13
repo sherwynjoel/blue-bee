@@ -49,10 +49,23 @@ export type GenerateInvoiceDto = z.infer<typeof generateInvoiceSchema>;
 /** The PaymentIntent handed to the customer app to drive PaymentSheet (clientSecret only — SAQ-A). */
 export interface PaymentIntentResponse {
   paymentId: string;
-  /** Stripe PaymentIntent client secret — the ONLY value the card SDK needs. */
-  clientSecret: string;
-  /** Charged amount as a fixed-2 dollar string (server-computed from the approved quote). */
+  /**
+   * Stripe PaymentIntent client secret — the ONLY value the card SDK needs.
+   *
+   * [Inc-37] **NULL when the customer's credit covered the whole bill.** There is no card charge to make, so
+   * there is no intent and no secret: the order is already settled (`status: SUCCEEDED`, `amount: "0.00"`).
+   * The app MUST check this before opening PaymentSheet.
+   */
+  clientSecret: string | null;
+  /**
+   * The amount actually CHARGED to the card, as a fixed-2 dollar string — server-computed from the approved
+   * quote MINUS any credit applied. "0.00" when credit covered everything.
+   */
   amount: string;
+  /** [Inc-37] Credit applied to this order from the customer's balance ("0.00" when none). Server-decided. */
+  creditApplied: string;
+  /** [Inc-37] The order's full total before credit — so the app can show "total − credit = charged". */
+  orderTotal: string;
   /** ISO 4217, always CAD this phase. */
   currency: string;
   status: PaymentStatus;

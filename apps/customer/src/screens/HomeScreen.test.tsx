@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { ItemKind, PricingModel, PricingUnit, type HomeServiceCardView, type HomeServiceMenuView } from '@blue-bee/shared';
 
 // [Inc-21] HomeScreen renders the service menu off client.getServiceMenu(); mock the session + navigation
@@ -14,7 +14,12 @@ jest.mock('../session/SessionProvider', () => ({
   useSession: () => ({ client: mockClient, me: { user: { name: 'Grace Okafor' } } }),
 }));
 const mockNavigate = jest.fn();
-jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ navigate: mockNavigate }) }));
+// [Inc-36] HomeScreen subscribes to the tab's 'focus' event to re-read the catalog (a console edit must reach
+// an app that is already open). Mirror the real navigation prop: `addListener` returns the unsubscribe fn.
+const mockAddListener = jest.fn((_event: string, _handler: () => void) => jest.fn());
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ navigate: mockNavigate, addListener: mockAddListener }),
+}));
 
 import { HomeScreen } from './HomeScreen';
 
@@ -24,7 +29,21 @@ describe('HomeScreen service grid (Inc-21)', () => {
   beforeEach(() => {
     mockClient.getServiceMenu.mockReset();
     mockNavigate.mockReset();
+    mockAddListener.mockClear();
   });
+
+  /** Invoke the 'focus' handler HomeScreen registered. The FIRST focus fires right after mount (already
+   *  covered by the mount fetch) and is deliberately skipped, so a real re-fetch is the second call. */
+  const refocus = async (times = 1): Promise<void> => {
+    const handler = mockAddListener.mock.calls.find(([e]) => e === 'focus')?.[1];
+    if (!handler) throw new Error('HomeScreen never subscribed to focus');
+    handler(); // first focus → skipped (mount already loaded)
+    for (let i = 0; i < times; i += 1) {
+      await act(async () => {
+        handler();
+      });
+    }
+  };
 
   it('renders every footer variant honestly (Get a quote / from $X + per kg / per item / measured at pickup)', async () => {
     mockClient.getServiceMenu.mockResolvedValue({
@@ -63,15 +82,74 @@ describe('HomeScreen service grid (Inc-21)', () => {
     expect(getByText('measured at pickup')).toBeTruthy();
   });
 
-  it('[Inc-33] the Service tab exposes a Book primary action (reachable in every state) that opens Book', async () => {
-    mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold' })] });
-    const { getByTestId, findByTestId } = render(<HomeScreen />);
-    // It lives in the shared header, so it is present immediately (during the loading state)…
-    expect(getByTestId('service-book')).toBeTruthy();
-    // …and still present with data; tapping it opens the general Book composer (absorbed the old FAB).
+  it('[Inc-36] renders NO process-identifier chips — just the plain one-line description', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({
+      currency: 'CAD',
+      cards: [card({ id: 'wf', name: 'Wash & Fold', description: 'For everyday laundry, bedsheets and towels.', features: ['WASH', 'TUMBLE-DRY', 'FOLDED', 'IN A BAG'] })],
+    });
+    const { findByTestId, getByText, queryByText } = render(<HomeScreen />);
     await findByTestId('home-service-wf');
-    fireEvent.press(getByTestId('service-book'));
-    expect(mockNavigate).toHaveBeenCalledWith('Book');
+    getByText('For everyday laundry, bedsheets and towels.'); // the plain line stays
+    // The jargon chips are gone, even though the server still sends `features`.
+    for (const chip of ['WASH', 'TUMBLE-DRY', 'FOLDED', 'IN A BAG']) expect(queryByText(chip)).toBeNull();
+  });
+
+  it('[Inc-36] re-reads the catalog when the Service tab regains focus — a console edit reaches an OPEN app', async () => {
+    // The bug this closes: the grid was fetched once per app launch. A card whose `serviceId` was still null
+    // in that stale copy navigated to Book with NO service → the customer dead-ended at "Choose a service".
+    mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold', serviceId: null, priceFrom: null })] });
+    const { findByTestId, getByTestId } = render(<HomeScreen />);
+    await findByTestId('home-service-wf');
+    expect(mockClient.getServiceMenu).toHaveBeenCalledTimes(1);
+    expect(getByTestId('home-price-wf').props.children).toBe('Get a quote');
+
+    // The founder now sets a rate + backing service in the console…
+    mockClient.getServiceMenu.mockResolvedValue({
+      currency: 'CAD',
+      cards: [card({ id: 'wf', name: 'Wash & Fold', serviceId: 'svc-wf', unit: PricingUnit.PER_KG, priceFrom: '4.25' })],
+    });
+    await refocus(); // …and coming back to the tab picks it up — no app restart.
+
+    expect(mockClient.getServiceMenu).toHaveBeenCalledTimes(2);
+    expect(String(getByTestId('home-price-wf').props.children)).toMatch(/^from /);
+    // …and the card now carries its backing service into Book (the focused checkout, not the dead end).
+    fireEvent.press(getByTestId('home-service-wf'));
+    expect(mockNavigate).toHaveBeenCalledWith('Book', { serviceId: 'svc-wf', serviceName: 'Wash & Fold', unit: PricingUnit.PER_KG, kind: ItemKind.GARMENT });
+  });
+
+  it('[Inc-36] pull-to-refresh re-reads the catalog', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold' })] });
+    const { findByTestId, getByTestId } = render(<HomeScreen />);
+    await findByTestId('home-service-wf');
+    expect(mockClient.getServiceMenu).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      getByTestId('home-scroll').props.refreshControl.props.onRefresh();
+    });
+    expect(mockClient.getServiceMenu).toHaveBeenCalledTimes(2);
+  });
+
+  it('[Inc-36] a FAILED refresh keeps the grid on screen (never blanks a working catalog)', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold' })] });
+    const { findByTestId, getByTestId, queryByTestId } = render(<HomeScreen />);
+    await findByTestId('home-service-wf');
+
+    mockClient.getServiceMenu.mockRejectedValue(new Error('offline'));
+    await act(async () => {
+      getByTestId('home-scroll').props.refreshControl.props.onRefresh();
+    });
+    // The grid the customer was looking at survives; no full-screen error takeover.
+    expect(getByTestId('home-service-wf')).toBeTruthy();
+    expect(queryByTestId('home-retry')).toBeNull();
+  });
+
+  it('[Inc-36] the general-composer CTA is gone — the grid IS the picker', async () => {
+    mockClient.getServiceMenu.mockResolvedValue({ currency: 'CAD', cards: [card({ id: 'wf', name: 'Wash & Fold' })] });
+    const { findByTestId, queryByTestId } = render(<HomeScreen />);
+    await findByTestId('home-service-wf');
+    // The Inc-33 "Book a pickup" button navigated to Book with no service — the only door into the
+    // item-type/service/garment composer. It no longer exists.
+    expect(queryByTestId('service-book')).toBeNull();
   });
 
   it('tapping an unpriced card (no backing service) opens the general Book composer', async () => {

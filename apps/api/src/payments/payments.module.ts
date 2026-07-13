@@ -14,6 +14,7 @@ import { DisputeService } from './dispute.service';
 import { StripeWebhookService } from './webhook.service';
 import { PaymentsController } from './payments.controller';
 import { StripeWebhookController } from './webhook.controller';
+import { CreditsModule } from '../credits/credits.module';
 
 /**
  * Payments / billing module (Increment 12, BUILD-PLAN — the "bill" leg). The Stripe billing rail:
@@ -27,7 +28,7 @@ import { StripeWebhookController } from './webhook.controller';
  * real. Reuses OrdersModule (state machine + parent-ownership gate + audit) + NotificationsModule.
  */
 @Module({
-  imports: [OrdersModule, NotificationsModule],
+  imports: [OrdersModule, NotificationsModule, CreditsModule],
   controllers: [PaymentsController, StripeWebhookController],
   providers: [
     { provide: PAYMENTS_CONFIG, useFactory: loadPaymentsConfig },

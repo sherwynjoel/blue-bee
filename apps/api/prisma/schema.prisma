@@ -337,6 +337,9 @@ enum PaymentMethod {
   ACH
   PAD
   CASH
+  // [Inc-37] Settled entirely from the customer's credit balance — no card was charged. A distinct method so
+  // finance reporting never mistakes a credit-settled order for card revenue.
+  CREDIT
 }
 
 enum PaymentStatus {
@@ -456,10 +459,92 @@ model User {
   referredBy           User?                   @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
   referrals            User[]                  @relation("UserReferrals")
   authTokens           AuthToken[]
+  creditEntries        CreditEntry[]           @relation("CreditEntryUser")
+  creditsEarnedFrom    CreditEntry[]           @relation("CreditEntryReferredUser")
 
   @@unique([orgId, email])
   @@index([orgId])
   @@index([referredByUserId])
+}
+
+// [Inc-37] What moved a customer's credit balance. The ledger is APPEND-ONLY: an entry is never edited or
+// deleted — a correction is a NEW entry (a REVERSAL or an ADJUSTMENT). Balance = SUM(amount).
+enum CreditEntryKind {
+  // + Earned because a customer this user referred had their FIRST order DELIVERED (not at signup — signup
+  //   grants are farmable with fake accounts, and this is real money).
+  REFERRAL_EARN
+  // − Spent against an order at payment time (one per order, enforced by a unique index).
+  REDEMPTION
+  // ± Manual grant/deduction by an OWNER/FINANCE in the console, always with a note. Also how a cancelled
+  //   order's redemption is returned.
+  ADJUSTMENT
+  // + Returns credit previously consumed by a REDEMPTION (e.g. the order was voided).
+  REVERSAL
+}
+
+// [Inc-37] The customer credit ledger — REAL money-equivalent, so it is modelled like the audit trail:
+// append-only, signed amounts, full provenance. `amount` is POSITIVE for a grant and NEGATIVE for a spend;
+// a customer's balance is SUM(amount) over their entries (never a stored, drift-prone counter).
+//
+// Idempotency is enforced by the DB, not by application luck:
+//   • one REFERRAL_EARN per referred user  → @@unique([orgId, kind, referredUserId])
+//   • one REDEMPTION per order             → @@unique([orgId, kind, orderId])
+// so a retried delivery hook or a retried PaymentIntent can never double-grant or double-spend.
+model CreditEntry {
+  id       String          @id @default(uuid()) @db.Uuid
+  orgId    String          @map("org_id") @db.Uuid
+  userId   String          @map("user_id") @db.Uuid
+  kind     CreditEntryKind
+  /// Signed: + grants credit, − spends it. Balance = SUM(amount).
+  amount   Decimal         @db.Decimal(12, 2)
+  currency String          @default("CAD")
+  /// Set on REDEMPTION / REVERSAL — the order the credit was spent against (or returned from).
+  orderId  String?         @map("order_id") @db.Uuid
+  /// Set on REFERRAL_EARN — the referred customer whose first delivery triggered the grant.
+  referredUserId String?   @map("referred_user_id") @db.Uuid
+  note      String?
+  createdAt DateTime       @default(now()) @map("created_at")
+  createdBy String?        @map("created_by") @db.Uuid
+
+  user         User   @relation("CreditEntryUser", fields: [userId], references: [id], onDelete: Cascade)
+  referredUser User?  @relation("CreditEntryReferredUser", fields: [referredUserId], references: [id], onDelete: SetNull)
+  order        Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, kind, referredUserId])
+  @@unique([orgId, kind, orderId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+// [Inc-37] The kind of founder-authored block on the customer Home screen.
+enum HomeBlockKind {
+  /// "What's new" — an announcement/promo card the founder writes in the console.
+  ANNOUNCEMENT
+}
+
+// [Inc-37] Founder-authored content for the customer Home screen, edited in the console and read by the app
+// through GET /v1/home. Nothing on Home is hard-coded copy — the founder owns the words.
+//
+// HONESTY: a block may carry a ctaTarget of 'refer', but the app renders the REFERRAL REWARD TERMS from the
+// live config + the customer's real balance — never from this free text. So a founder cannot accidentally
+// promise a reward the ledger cannot pay (reward amount unset ⇒ the app shows no reward claim at all).
+model HomeBlock {
+  id        String        @id @default(uuid()) @db.Uuid
+  orgId     String        @map("org_id") @db.Uuid
+  kind      HomeBlockKind @default(ANNOUNCEMENT)
+  title     String
+  body      String
+  /// Optional call-to-action. `ctaTarget` is a SEMANTIC key the app maps to a tab ('refer' | 'services' |
+  /// 'orders'), never a raw route/URL — so the console can't deep-link the app somewhere that doesn't exist.
+  ctaLabel  String?       @map("cta_label")
+  ctaTarget String?       @map("cta_target")
+  active    Boolean       @default(true)
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdBy String?       @map("created_by") @db.Uuid
+
+  @@index([orgId])
 }
 
 // [Inc-35] Purpose of a single-use email-delivered token.
@@ -797,6 +882,8 @@ model Order {
   photos         Photo[]
   routeStops     RouteStop[]
   payments       Payment[]
+  // [Inc-37] Credit spent against (or returned from) this order — at most one REDEMPTION, by unique index.
+  creditEntries  CreditEntry[]
   claims         Claim[]
   messages       Message[]
   rating         Rating?

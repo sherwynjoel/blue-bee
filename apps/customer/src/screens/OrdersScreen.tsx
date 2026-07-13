@@ -65,7 +65,9 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
       <Text variant="subhead" color="secondary" style={{ marginTop: 2 }}>
         Your specialty cleaning, tracked door to door.
       </Text>
-      <Button testID="book-cta" label="Book a specialty cleaning" icon="plus" onPress={() => navigation.navigate('Book')} style={{ marginTop: space.lg }} />
+      {/* [Inc-36] Booking now always starts from a service card, so this sends the customer to the Service
+          grid to pick one — it no longer opens the general composer. */}
+      <Button testID="book-cta" label="Book a pickup" icon="plus" onPress={() => navigation.navigate('Services')} style={{ marginTop: space.lg }} />
     </View>
   );
 
@@ -122,10 +124,10 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
           <EmptyState
             icon="package"
             title="No orders yet"
-            body="Book your first specialty pickup and we’ll track it door to door."
-            actionLabel="Book a pickup"
+            body="Pick a service and we’ll collect, clean and deliver it back to you."
+            actionLabel="Choose a service"
             actionIcon="plus"
-            onAction={() => navigation.navigate('Book')}
+            onAction={() => navigation.navigate('Services')}
           />
         }
       />

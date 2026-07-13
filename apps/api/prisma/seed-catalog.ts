@@ -20,11 +20,23 @@
  */
 import { deflateSync } from 'node:zlib';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { PrismaClient, RoleType, type PricingModel, type PricingUnit } from '@prisma/client';
+import { PrismaClient, RoleType, ServiceUnit, ServiceVertical, type PricingModel, type PricingUnit } from '@prisma/client';
+import { backingServiceUnit, isWeightPricingUnit, type PricingUnit as SharedPricingUnit } from '@blue-bee/shared';
 
 const uuidIn = (prefix: string) => (n: number): string => `${prefix}-0000-4000-8000-${n.toString().padStart(12, '0')}`;
 const cat = uuidIn('ca000000');
 const svc = uuidIn('5e000000'); // [Inc-21] the 8 top-level service-menu cards
+const rateSvc = uuidIn('5e000001'); // [Inc-36] each card's BACKING rate Service (one per card)
+
+/**
+ * [Inc-36] The backing Service's unit + vertical are derived with the SAME shared helpers the console's rate
+ * editor uses (`catalog-admin.service.ts`), so a seeded card and a console-edited card can never disagree:
+ * PER_KG→KG, PER_LB→LB, PER_MEASURE→SQFT, PER_ITEM→ITEM; weight units ⇒ WASHFOLD, else SPECIALTY.
+ * (Prisma's generated enums and the shared enums are the same string literals — hence the structural casts.)
+ */
+const backingUnitOf = (u: PricingUnit): ServiceUnit => backingServiceUnit(u as unknown as SharedPricingUnit) as unknown as ServiceUnit;
+const verticalOf = (u: PricingUnit): ServiceVertical =>
+  isWeightPricingUnit(u as unknown as SharedPricingUnit) ? ServiceVertical.WASHFOLD : ServiceVertical.SPECIALTY;
 
 /** [Inc-25] Where this seed writes, and who is recorded as `createdBy`. Resolved, never hardcoded. */
 export interface SeedCatalogTarget {
@@ -91,16 +103,27 @@ interface ServiceCard {
   icon: string;
   unit: PricingUnit;
   pricingModel: PricingModel;
+  /** [Inc-36] The card's BACKING rate Service — deterministic id + name. */
+  serviceId: string;
+  serviceName: string;
+  /**
+   * [Inc-36] STARTER per-unit rate in CAD. This is a CONFIGURABLE PLACEHOLDER so the in-checkout estimate
+   * has real math to run — it is **NOT** an official Blue Bee published price. The founder sets the real
+   * rate in the `/catalog` console (which overwrites it; a re-seed never clobbers a founder-set rate).
+   * The card's public "from $X" anchor (`priceFrom`) stays NULL until the founder sets a real price, so the
+   * grid honestly shows "Get a quote" rather than advertising a starter number (honesty firewall).
+   */
+  starterRate: string;
 }
 const SERVICE_CARDS: ServiceCard[] = [
-  { id: svc(1), name: 'Wash & Fold', sortOrder: 1, description: 'For everyday laundry, bedsheets and towels.', features: ['WASH', 'TUMBLE-DRY', 'FOLDED', 'IN A BAG'], icon: 'wash-fold', unit: 'PER_KG', pricingModel: 'FIXED' },
-  { id: svc(2), name: 'Wash & Iron', sortOrder: 2, description: 'Everyday clothes washed and pressed, back on hangers.', features: ['WASH', 'TUMBLE-DRY', 'IRONING', 'ON HANGERS'], icon: 'wash-iron', unit: 'PER_ITEM', pricingModel: 'FIXED' },
-  { id: DRY_CLEANING_ID, name: 'Dry Cleaning', sortOrder: 3, description: 'Delicates, suits and formalwear, professionally dry cleaned.', features: ['DRY CLEANING', 'IRONING', 'ON HANGERS'], icon: 'dry-clean', unit: 'PER_ITEM', pricingModel: 'FIXED' },
-  { id: svc(4), name: 'Ironing only', sortOrder: 4, description: 'Freshly pressed and ready to wear — ironing only.', features: ['IRONING', 'ON HANGERS'], icon: 'iron', unit: 'PER_ITEM', pricingModel: 'FIXED' },
-  { id: svc(5), name: 'Rug Cleaning', sortOrder: 5, description: 'Deep clean for rugs; final price after we measure at pickup.', features: ['DEEP CLEAN', 'MEASURED AT PICKUP'], icon: 'rug', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED' },
-  { id: svc(6), name: 'Carpet Cleaning', sortOrder: 6, description: 'Deep clean for carpets; final price after we measure at pickup.', features: ['DEEP CLEAN', 'MEASURED AT PICKUP'], icon: 'carpet', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED' },
-  { id: svc(7), name: 'Upholstery', sortOrder: 7, description: 'Sofas and armchairs refreshed; final price after we measure at pickup.', features: ['SPECIALTY CARE', 'MEASURED AT PICKUP'], icon: 'sofa', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED' },
-  { id: svc(8), name: 'Blinds', sortOrder: 8, description: 'Blinds cleaned and de-dusted; final price after we measure at pickup.', features: ['SPECIALTY CARE', 'MEASURED AT PICKUP'], icon: 'blinds', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED' },
+  { id: svc(1), name: 'Wash & Fold', sortOrder: 1, description: 'For everyday laundry, bedsheets and towels.', features: ['WASH', 'TUMBLE-DRY', 'FOLDED', 'IN A BAG'], icon: 'wash-fold', unit: 'PER_KG', pricingModel: 'FIXED', serviceId: rateSvc(1), serviceName: 'Wash & Fold — per kg', starterRate: '3.5000' },
+  { id: svc(2), name: 'Wash & Iron', sortOrder: 2, description: 'Everyday clothes washed and pressed, back on hangers.', features: ['WASH', 'TUMBLE-DRY', 'IRONING', 'ON HANGERS'], icon: 'wash-iron', unit: 'PER_KG', pricingModel: 'FIXED', serviceId: rateSvc(2), serviceName: 'Wash & Iron — per kg', starterRate: '4.5000' },
+  { id: DRY_CLEANING_ID, name: 'Dry Cleaning', sortOrder: 3, description: 'Delicates, suits and formalwear, professionally dry cleaned.', features: ['DRY CLEANING', 'IRONING', 'ON HANGERS'], icon: 'dry-clean', unit: 'PER_LB', pricingModel: 'FIXED', serviceId: rateSvc(3), serviceName: 'Dry Cleaning — per lb', starterRate: '3.0000' },
+  { id: svc(4), name: 'Ironing only', sortOrder: 4, description: 'Freshly pressed and ready to wear — ironing only.', features: ['IRONING', 'ON HANGERS'], icon: 'iron', unit: 'PER_ITEM', pricingModel: 'FIXED', serviceId: rateSvc(4), serviceName: 'Ironing only — per item', starterRate: '2.5000' },
+  { id: svc(5), name: 'Rug Cleaning', sortOrder: 5, description: 'Deep clean for rugs; final price after we measure at pickup.', features: ['DEEP CLEAN', 'MEASURED AT PICKUP'], icon: 'rug', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED', serviceId: rateSvc(5), serviceName: 'Rug Cleaning — per sqft', starterRate: '6.5000' },
+  { id: svc(6), name: 'Carpet Cleaning', sortOrder: 6, description: 'Deep clean for carpets; final price after we measure at pickup.', features: ['DEEP CLEAN', 'MEASURED AT PICKUP'], icon: 'carpet', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED', serviceId: rateSvc(6), serviceName: 'Carpet Cleaning — per sqft', starterRate: '4.0000' },
+  { id: svc(7), name: 'Upholstery', sortOrder: 7, description: 'Sofas and armchairs refreshed; final price after we measure at pickup.', features: ['SPECIALTY CARE', 'MEASURED AT PICKUP'], icon: 'sofa', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED', serviceId: rateSvc(7), serviceName: 'Upholstery — per sqft', starterRate: '5.0000' },
+  { id: svc(8), name: 'Blinds', sortOrder: 8, description: 'Blinds cleaned and de-dusted; final price after we measure at pickup.', features: ['SPECIALTY CARE', 'MEASURED AT PICKUP'], icon: 'blinds', unit: 'PER_MEASURE', pricingModel: 'FROM_MEASURED', serviceId: rateSvc(8), serviceName: 'Blinds — per sqft', starterRate: '3.0000' },
 ];
 
 // ── local MinIO defaults (overridable by env; the founder never runs the demo seed against prod) ──
@@ -215,13 +238,39 @@ export async function seedDrycleanCatalog(prisma: PrismaClient, opts: SeedCatalo
   // NOTE (Inc-25): `update` DOES re-assert `sortOrder`, so re-running this seed resets a console reorder.
   // Reorder after seeding, not before.
   for (const s of SERVICE_CARDS) {
+    // [Inc-36] `update` now ALSO re-asserts `unit` + `pricingModel`. These are product STRUCTURE (which single
+    // measure the checkout asks for), not money — and they were wrong in the live catalog (Wash & Iron was
+    // PER_ITEM, Dry Cleaning was PER_ITEM), which is what dropped customers into the general composer.
+    // `priceFrom` is still NEVER touched: the public "from $X" anchor is the founder's, and stays NULL until
+    // they set a real CAD price in /catalog (so the grid honestly says "Get a quote").
     await prisma.serviceCategory.upsert({
       where: { id: s.id },
-      update: { name: s.name, sortOrder: s.sortOrder, description: s.description, features: s.features, icon: s.icon },
+      update: {
+        name: s.name, sortOrder: s.sortOrder, description: s.description, features: s.features, icon: s.icon,
+        unit: s.unit, pricingModel: s.pricingModel,
+      },
       create: {
         id: s.id, orgId: ORG, name: s.name, sortOrder: s.sortOrder, description: s.description, features: s.features,
         icon: s.icon, unit: s.unit, pricingModel: s.pricingModel, currency: 'CAD', priceFrom: null, parentId: null,
         active: true, createdBy: OWNER,
+      },
+    });
+
+    // [Inc-36] EVERY card gets a BACKING rate Service. Without one, `GET /catalog/home` returns
+    // `serviceId: null` and tapping the card falls through to the GENERAL composer (item-type chips + service
+    // chips + garment picker) — the exact complexity this increment removes. With one, every tap lands in the
+    // focused single-measure checkout.
+    //   • `create` seeds the STARTER rate so the in-checkout estimate has real math.
+    //   • `update` deliberately does NOT write `baseRate` — once the founder sets a real rate in /catalog,
+    //     re-seeding must never clobber it. It only keeps the STRUCTURE (unit/vertical/link/active) correct.
+    await prisma.service.upsert({
+      where: { id: s.serviceId },
+      update: {
+        name: s.serviceName, unit: backingUnitOf(s.unit), vertical: verticalOf(s.unit), categoryId: s.id, active: true,
+      },
+      create: {
+        id: s.serviceId, orgId: ORG, name: s.serviceName, vertical: verticalOf(s.unit), unit: backingUnitOf(s.unit),
+        baseRate: s.starterRate, categoryId: s.id, active: true, sortOrder: 0, createdBy: OWNER,
       },
     });
   }
@@ -262,7 +311,8 @@ export async function seedDrycleanCatalog(prisma: PrismaClient, opts: SeedCatalo
   }
   const sampleCount = withSamples ? CATEGORIES.reduce((n, c) => n + c.items.length, 0) : 0;
   console.log(
-    `[seed] org ${ORG}: ${SERVICE_CARDS.length} top-level Home cards (priceFrom NULL, NO rate — founder sets real CAD prices via /catalog) ` +
+    `[seed] org ${ORG}: ${SERVICE_CARDS.length} top-level Home cards + a backing rate Service each ` +
+      `(STARTER rates — configurable placeholders, NOT official prices; priceFrom stays NULL so the grid says "Get a quote" until the founder sets a real CAD price via /catalog) ` +
       `+ ${CATEGORIES.length} garment categories nested under Dry Cleaning; ` +
       (withSamples
         ? `${sampleCount} DEV sample items, ${images} real PNGs uploaded to S3/MinIO.`

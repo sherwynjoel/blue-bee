@@ -17,6 +17,13 @@ export type BookParams = {
 
 /** The signed-in navigation stack (PRD §7A customer flows). */
 export type RootStackParamList = {
+  /** [Inc-37] The Home tab — the landing dashboard (what's new · my orders · my account + credit). */
+  Home: undefined;
+  /** [Inc-36] The Services tab (the catalogue grid). Booking ALWAYS starts from a service card, so the
+   *  "book something" CTAs elsewhere send the customer here to pick one, never to a general composer. */
+  Services: undefined;
+  /** [Inc-37] The Refer tab. Typed here (it was tab-only) because Home's block CTAs now navigate to it. */
+  Refer: undefined;
   Orders: undefined;
   Book: BookParams | undefined;
   OrderDetail: { orderId: string };

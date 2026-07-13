@@ -90,7 +90,15 @@ async function fireWebhook(type: string, object: Record<string, unknown>, opts: 
   return res.status;
 }
 
-const piFromSecret = (cs: string): string => cs.split('_secret_')[0] ?? cs;
+/**
+ * [Inc-37] `clientSecret` is null ONLY when the customer's credit covered the whole bill (no card charge, no
+ * Stripe intent). Every order in this proof is paid by card, so a null here means the proof's premise broke —
+ * fail loudly rather than paper over it.
+ */
+const piFromSecret = (cs: string | null): string => {
+  if (!cs) throw new Error('expected a card charge (no credit applied) — got a credit-covered intent');
+  return cs.split('_secret_')[0] ?? cs;
+};
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 async function bookApproved(customer: CustomerApiClient, owner: string, plant: string): Promise<string> {

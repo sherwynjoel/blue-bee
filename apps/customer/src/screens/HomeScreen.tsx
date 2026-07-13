@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,10 +13,15 @@ import { Button, Card, EmptyState, SkeletonCard, Text, fireHaptic } from '../../
 
 /**
  * Home — the service grid (PRD §7A). A 2-up grid of the org's service categories, driven ENTIRELY by the
- * live catalog (`getDrycleanCatalog`): each card is a category's icon → title → description → feature tags →
- * a "from" price. Nothing here is hard-coded — `description`/`features`/`icon`/`priceFrom` all come from the
- * server (founder-editable in the console). The card degrades gracefully when a field is unset (missing copy
- * is simply omitted; a missing icon falls back). Tapping a card opens the existing Book flow.
+ * live catalog (`getServiceMenu` → `GET /v1/catalog/home`): each card is a category's icon → title → a plain
+ * one-line description → a "from" price. Nothing here is hard-coded — `description`/`icon`/`unit`/`priceFrom`
+ * and the backing `serviceId` all come from the server (founder-editable in the `/catalog` console). The card
+ * degrades gracefully when a field is unset (missing copy omitted; unknown icon falls back; no price → an
+ * honest "Get a quote").
+ *
+ * [Inc-36] The card's `serviceId` is what makes a tap open the FOCUSED single-measure checkout, so the grid
+ * re-reads the catalog on focus + pull-to-refresh (see `load`): a stale copy would send `serviceId: undefined`
+ * and dead-end the customer at "Choose a service".
  */
 export function HomeScreen(): React.ReactElement {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
@@ -26,20 +31,58 @@ export function HomeScreen(): React.ReactElement {
 
   const [catalog, setCatalog] = useState<HomeServiceMenuView | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Whether we've ever held a catalog — so a failed RE-fetch keeps the grid instead of blanking it. */
+  const hasCatalog = useRef(false);
 
   const load = useCallback(async (): Promise<void> => {
-    setError(null);
     try {
-      setCatalog(await client.getServiceMenu());
+      const next = await client.getServiceMenu();
+      hasCatalog.current = true;
+      setCatalog(next);
+      setError(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not load our services.');
+      // A refresh that fails must NOT throw away a grid the customer is already looking at — only show the
+      // full error state when we have nothing to fall back to.
+      if (!hasCatalog.current) setError(e instanceof ApiError ? e.message : 'Could not load our services.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [client]);
 
   useEffect(() => {
+    void load();
+  }, [load]);
+
+  /**
+   * [Inc-36] Re-read the catalog whenever the Service tab regains focus.
+   *
+   * Without this the grid was fetched ONCE per app launch and never again — so a founder changing a rate,
+   * description or unit in the `/catalog` console was invisible to every customer who already had the app
+   * open (they'd keep tapping cards built from a stale `serviceId`). Tabs stay mounted in React Navigation,
+   * so switching away and back does not remount this screen; the explicit 'focus' listener is what makes the
+   * console → app round-trip actually reach a running app.
+   *
+   * `addListener` (not `useFocusEffect`) for the same reason BookScreen uses it: it works without a
+   * NavigationContainer, so this stays unit-testable. The first focus fires right after mount, which the
+   * effect above already covered — skip it rather than fetch twice on launch.
+   */
+  const firstFocus = useRef(true);
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      void load();
+    });
+    return unsubscribe;
+  }, [navigation, load]);
+
+  const onRefresh = useCallback((): void => {
+    setRefreshing(true);
     void load();
   }, [load]);
 
@@ -57,17 +100,10 @@ export function HomeScreen(): React.ReactElement {
       <Text variant="subhead" color="secondary" style={{ marginTop: 4 }}>
         {firstName ? `Hi ${firstName} — pick a service to get started.` : 'Pick a service to get started.'}
       </Text>
-      {/* [Inc-33] Book as the Service tab's primary action (it absorbed the old center Book FAB). Lives in
-          the shared header so it is reachable in every state — loading, error, empty, and the grid. Opens
-          the general Book composer; tapping a specific card still pre-selects that service (below). */}
-      <Button
-        testID="service-book"
-        label="Book a pickup"
-        icon="plus"
-        onPress={() => navigation.navigate('Book')}
-        style={{ marginTop: space.lg }}
-        haptic="medium"
-      />
+      {/* [Inc-36] The Inc-33 "Book a pickup" button is GONE. It navigated to Book with no service, which is
+          the only way into the general composer (item-type chips + service chips + garment picker). The grid
+          below IS the picker: every card now carries a backing service, so a tap always opens the focused
+          single-measure checkout. */}
     </View>
   );
 
@@ -110,18 +146,18 @@ export function HomeScreen(): React.ReactElement {
       style={{ backgroundColor: colors.canvas }}
       contentContainerStyle={{ paddingBottom: space.huge }}
       showsVerticalScrollIndicator={false}
+      // [Inc-36] Pull-to-refresh — the customer's own way to pick up a fresh catalog (alongside the
+      // focus re-fetch above), so a founder's console edit never needs an app restart to appear.
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.azure} colors={[colors.azure]} />
+      }
     >
       {header}
       {categories.length === 0 ? (
         <View style={{ paddingHorizontal: space.xl }}>
-          <EmptyState
-            icon="tag"
-            title="No services yet"
-            body="Our catalog is being set up. Check back soon, or start a booking."
-            actionLabel="Book a pickup"
-            actionIcon="plus"
-            onAction={() => navigation.navigate('Book')}
-          />
+          {/* [Inc-36] No CTA here any more: with no services there is nothing to book, and the old CTA led
+              into the general composer. Honest empty state — check back. */}
+          <EmptyState icon="tag" title="No services yet" body="Our catalog is being set up. Check back soon." />
         </View>
       ) : (
         <View style={styles.grid}>
@@ -222,7 +258,6 @@ function ServiceCard({
     honey: { bg: colors.honeyTint, fg: colors.honey },
     success: { bg: colors.successTint, fg: colors.success },
   }[look.tint];
-  const features = category.features.slice(0, 4);
   const footer = priceFooter(category, currency);
 
   return (
@@ -250,21 +285,14 @@ function ServiceCard({
             <Text variant="headline" weight="700" center numberOfLines={1} style={styles.title}>
               {category.name}
             </Text>
+            {/* [Inc-36] One plain line only. The process-identifier chips (`category.features` — "WASH ·
+                TUMBLE-DRY · FOLDED") are no longer rendered: they read as jargon and added noise to what
+                should be a one-glance choice. The field stays in the schema/console; the customer app just
+                doesn't show it. */}
             {category.description ? (
               <Text variant="footnote" color="secondary" center numberOfLines={2} style={styles.desc}>
                 {category.description}
               </Text>
-            ) : null}
-            {features.length > 0 ? (
-              <View style={styles.tags}>
-                {features.map((f) => (
-                  <View key={f} style={[styles.tag, { backgroundColor: colors.subtle }]}>
-                    <Text variant="caption" weight="600" color="secondary">
-                      {f}
-                    </Text>
-                  </View>
-                ))}
-              </View>
             ) : null}
           </View>
           <View style={[styles.footer, { borderTopColor: colors.hairline, backgroundColor: colors.subtle }]}>
@@ -304,8 +332,6 @@ const styles = StyleSheet.create({
   iconCircle: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   title: { marginBottom: 2 },
   desc: { minHeight: 36 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 10 },
-  tag: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   footer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
   stateCard: { marginHorizontal: 20, alignItems: 'center', paddingVertical: 28 },
 });

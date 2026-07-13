@@ -1,0 +1,113 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0A0E1A;font-family:-apple-system,"SF Pro Text","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;padding:28px}
+  .tnum{font-variant-numeric:tabular-nums;font-feature-settings:'tnum'}
+  .mono{font-family:ui-monospace,Menlo,monospace}
+  .caption-note{color:#6B7C96;font-size:13px;margin-bottom:18px;letter-spacing:.2px}
+  .sheet{display:flex;gap:24px;align-items:flex-start;flex-wrap:nowrap}
+  .phone{width:344px;border-radius:40px;background:#0A0E1A;border:1px solid rgba(255,255,255,0.10);overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+  .nav{background:#141B2D;padding:52px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.10);display:flex;align-items:center;justify-content:center;position:relative}
+  .nav .back{position:absolute;left:14px;bottom:11px;color:#3D8BFF;font-size:22px;font-weight:600}
+  .nav h1{color:#EAF0F8;font-size:17px;font-weight:700}
+  .scr{padding:16px;min-height:660px}
+  .label{color:#6B7C96;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin:14px 0 10px;display:block}
+  .h1{color:#EAF0F8;font-size:28px;font-weight:700;letter-spacing:.2px}
+  .muted{color:#9DB0C9} .faint{color:#6B7C96} .txt{color:#EAF0F8}
+  .card{background:#141B2D;border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:16px;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+  .field{display:flex;justify-content:space-between;align-items:center;padding:6px 0}
+  .field .k{color:#9DB0C9;font-size:15px;font-weight:500}
+  .field .v{color:#EAF0F8;font-size:15px;font-weight:600}
+  .badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
+  .dot{width:7px;height:7px;border-radius:50%}
+  .btn{height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:18px;font-weight:600}
+  .btn.md{height:48px;font-size:17px}
+  .btn-primary{background:#3D8BFF;color:#fff;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+  .btn-danger{background:#FF6168;color:#fff;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+  .btn-secondary{background:#141B2D;border:1px solid rgba(255,255,255,0.10);color:#EAF0F8}
+  .btn-ghost{color:#3D8BFF}
+  .input{height:54px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.10);background:#141B2D;display:flex;align-items:center;gap:10px;padding:0 14px;color:#6B7C96;font-size:18px}
+  .input.focus{border-color:#3D8BFF}
+  .row{background:#141B2D;border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:16px;box-shadow:0 6px 18px rgba(0,0,0,0.45);display:flex;align-items:center;gap:12px}
+  .seq{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px}
+  .kpi{background:#141B2D;border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:16px;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+  .kpi .n{font-size:30px;font-weight:700;line-height:34px}
+  .kpi .l{color:#9DB0C9;font-size:13px;margin-top:6px}
+  .grid{display:flex;flex-wrap:wrap;gap:12px}
+  .grid > div{width:calc(50% - 6px)}
+  .seg{display:flex;background:#111728;border-radius:12px;padding:3px}
+  .seg div{flex:1;text-align:center;padding:7px 0;border-radius:9px;font-size:13px;font-weight:500;color:#9DB0C9}
+  .seg div.on{background:#141B2D;color:#EAF0F8;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+  .share{background:rgba(45,213,131,0.18);border-bottom:1px solid rgba(255,255,255,0.10);padding:10px 16px;display:flex;align-items:center;gap:10px;color:#2DD583;font-size:13px;font-weight:600}
+  .map{height:200px;border-radius:16px;border:1px solid rgba(255,255,255,0.10);background:linear-gradient(135deg,#111728,#141B2D);position:relative;overflow:hidden}
+  .pin{position:absolute;background:#3D8BFF;color:#fff;font-weight:800;font-size:12px;border:2px solid #fff;border-radius:11px;padding:3px 7px}
+  .vpin{position:absolute;width:32px;height:32px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px}
+</style></head><body>
+      <div class="caption-note">Daylight design preview · owner app · dark mode — token-accurate mockup rendered headlessly (not a device screenshot). On-device captures are the founder's run.</div>
+      <div class="sheet"><div class="phone"><div class="nav"><h1>Today</h1></div><div class="scr">
+    <div class="faint" style="font-size:13px;margin-bottom:6px">Blue Bee GTA</div>
+    <div class="h1" style="margin-bottom:16px">Today</div>
+    <div class="grid">
+      <div><div class="kpi"><div class="n tnum" style="color:#EAF0F8">5</div><div class="l">Orders today</div></div></div>
+      <div><div class="kpi"><div class="n tnum" style="color:#3D8BFF">3</div><div class="l">In flight</div></div></div>
+      <div><div class="kpi"><div class="n tnum" style="color:#2DD583">2</div><div class="l">Completed today</div></div></div>
+      <div><div class="kpi"><div class="n tnum" style="color:#EAF0F8">80%</div><div class="l">On-time</div></div></div>
+      <div><div class="kpi"><div class="n tnum" style="color:#2DD583">$500.00 CAD</div><div class="l">Collected today</div></div></div>
+      <div><div class="kpi"><div class="n tnum" style="color:#EAF0F8">$1000.00 CAD</div><div class="l">GMV approved today</div></div></div>
+    </div>
+    <div style="height:16px"></div>
+    
+    <div class="row" style="margin-bottom:12px">
+      <div style="width:40px;height:40px;border-radius:12px;background:#111728;display:flex;align-items:center;justify-content:center;color:#3D8BFF;font-size:18px">🚚</div>
+      <div style="flex:1"><div class="txt" style="font-weight:600;font-size:17px">Live fleet</div><div class="faint" style="font-size:13px;margin-top:2px">Every truck on the road, in real time</div></div>
+      <span class="faint" style="font-size:20px">›</span>
+    </div>
+    
+    <div class="row" style="margin-bottom:12px">
+      <div style="width:40px;height:40px;border-radius:12px;background:#111728;display:flex;align-items:center;justify-content:center;color:#3D8BFF;font-size:18px">✓</div>
+      <div style="flex:1"><div class="txt" style="font-weight:600;font-size:17px">Approvals</div><div class="faint" style="font-size:13px;margin-top:2px">Quotes awaiting your decision</div></div>
+      <span class="badge" style="background:rgba(61,139,255,0.18);color:#3D8BFF">4</span>
+    </div>
+    
+    <div class="row" style="margin-bottom:12px">
+      <div style="width:40px;height:40px;border-radius:12px;background:#111728;display:flex;align-items:center;justify-content:center;color:#FF6168;font-size:18px">⚠</div>
+      <div style="flex:1"><div class="txt" style="font-weight:600;font-size:17px">Exceptions</div><div class="faint" style="font-size:13px;margin-top:2px">Failed stops, holds, disputes, failed payments</div></div>
+      <span class="badge" style="background:rgba(255,97,104,0.18);color:#FF6168">1</span>
+    </div>
+    <div class="faint" style="text-align:center;font-size:12px;margin-top:16px">Updated 4:00 PM · America/Toronto</div>
+  </div></div><div class="phone"><div class="nav"><h1>Live fleet</h1></div><div class="scr">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="h1">Live fleet</div><span class="badge" style="background:rgba(45,213,131,0.18);color:#2DD583"><span class="dot" style="background:#2DD583"></span>Live</span></div>
+    <div class="map">
+      <div class="vpin" style="left:70px;top:70px;background:#2DD583">🚚</div>
+      <div class="vpin" style="left:180px;top:120px;background:#3D8BFF">🚚</div>
+    </div>
+    <div class="muted tnum" style="font-size:13px;margin:16px 0 8px">2 reporting · 1 idle</div>
+    
+    <div class="row" style="margin-bottom:10px"><div style="flex:1"><div class="txt" style="font-weight:600;font-size:17px">VAN-12</div><div class="faint" style="font-size:13px;margin-top:2px">live</div></div><span class="badge" style="background:rgba(45,213,131,0.18);color:#2DD583"><span class="dot" style="background:#2DD583"></span>live</span></div>
+    
+    <div class="row" style="margin-bottom:10px"><div style="flex:1"><div class="txt" style="font-weight:600;font-size:17px">VAN-07</div><div class="faint" style="font-size:13px;margin-top:2px">updated 3m ago</div></div><span class="badge" style="background:rgba(61,139,255,0.18);color:#3D8BFF">snapshot</span></div>
+    
+    <div class="row" style="margin-bottom:10px"><div style="flex:1"><div class="txt" style="font-weight:600;font-size:17px">TRUCK-3</div><div class="faint" style="font-size:13px;margin-top:2px">no position yet</div></div><span class="badge" style="background:#111728;color:#9DB0C9">idle</span></div>
+  </div></div><div class="phone"><div class="nav"><span class="back">‹</span><h1>Exceptions</h1></div><div class="scr">
+    <div class="seg" style="margin-bottom:14px"><div class="on">All</div><div>Stops</div><div>Orders</div><div>Payments</div></div>
+    
+    <div class="row" style="margin-bottom:12px"><div style="flex:1">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="badge" style="background:rgba(255,97,104,0.18);color:#FF6168">✕ Failed stop</span><span class="faint tnum" style="font-size:12px">1h ago</span></div>
+      <div class="txt" style="font-weight:600;font-size:17px;margin-top:6px">Stop failed — City Hall</div>
+      <div class="muted" style="font-size:13px;margin-top:4px">customer not home</div>
+      
+    </div><span class="faint" style="font-size:20px">›</span></div>
+    
+    <div class="row" style="margin-bottom:12px"><div style="flex:1">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="badge" style="background:rgba(255,195,77,0.16);color:#FFC34D">❚❚ On hold</span><span class="faint tnum" style="font-size:12px">2h ago</span></div>
+      <div class="txt" style="font-weight:600;font-size:17px;margin-top:6px">Order on hold — Acme</div>
+      <div class="muted" style="font-size:13px;margin-top:4px">Paused from IN_CLEANING</div>
+      
+    </div><span class="faint" style="font-size:20px">›</span></div>
+    
+    <div class="row" style="margin-bottom:12px"><div style="flex:1">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="badge" style="background:rgba(255,97,104,0.18);color:#FF6168">▭ Payment failed</span><span class="faint tnum" style="font-size:12px">3h ago</span></div>
+      <div class="txt" style="font-weight:600;font-size:17px;margin-top:6px">Card declined — Westin</div>
+      <div class="muted" style="font-size:13px;margin-top:4px">Retry scheduled</div>
+      <div class="mono tnum" style="color:#FF6168;font-weight:700;margin-top:4px">$1,240.00</div>
+    </div><span class="faint" style="font-size:20px">›</span></div>
+  </div></div></div></body></html>

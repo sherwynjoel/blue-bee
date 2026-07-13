@@ -1,6 +1,6 @@
 # Inc-37 — Home tab + REAL referral credit (earn · balance · spend)
 
-**Date:** 2026-07-13 · **Status:** built, fully verified, **NOT deployed** (no `railway up`, no EAS) · **Stop point:** founder audit
+**Date:** 2026-07-13 · **Status:** built, fully verified, **DEPLOYED to staging** (commit `94ab4f8`, api + web; no EAS build needed — the founder's existing Android build is already Inc-37 client code) · **Reward funded at $10 CAD**
 
 ---
 
@@ -101,9 +101,23 @@ Every suite is green standalone, in prefix combination, and in the final full fr
 
 ---
 
-## 8. Still parked / next
+## 8. Deploy (2026-07-13, after founder audit)
 
-- **Nothing is deployed.** No `railway up`, no EAS build. Staging still runs Inc-28→35.
-- The reward is **OFF by default** on every environment. Until a founder funds it in `/content`, the app promises nothing — which is the correct, honest default.
+The founder built the Android app and hit **"Couldn't load your home. Cannot get /v1/home"**. That string is **Express's default 404** — the deployed API was still Inc-35 and simply had no such route (an Inc-34 route like `/v1/account/referral` correctly returned 401 on the same host). **A missing deploy, not a bug**: the same build works untouched now, no rebuild needed.
+
+Shipped commit `94ab4f8` (the Inc-36 / 36a / 37 arc) → `railway up` **api** + **web** (production env, `NODE_ENV=staging`). The credits/home migration auto-applied on boot.
+
+**Post-deploy smoke — all green:**
+- `/v1/health` ok — postgis 3.4.3, timescaledb 2.26.4, redis up.
+- `/v1/home`, `/v1/account/credits`, `/v1/admin/referral-reward`, `/v1/admin/home-blocks` → **401, not 404** (routes exist and are guarded).
+- `GET /v1/home` as a real customer returns the live card, the funded reward, her real order and her invite code.
+- Console `/content` serves the editor (`Customer home` / `Referral reward` / `Fund reward` present in the shipped bundle; a bogus route still 404s).
+
+**Founder decisions taken at deploy:** the referral reward is **FUNDED at $10.00 CAD**, and the "Get free credits" card is **live**. So the app now states the exact terms — *"You earn $10.00 credit when a friend you invite has their first order delivered"* — and that is a promise the ledger will honour.
+
+## 9. Still parked / next
+
+- ⚠️ **The reward is real money.** Each referred friend's first delivered order grants their referrer **$10 CAD**, spendable against a future order (and if credit covers the bill, Stripe is never charged). Adjust or switch it off any time in *Customer home → Referral reward*.
+- No EAS build was run — the founder's existing build already contains the Inc-37 client. A rebuild is only needed for future app-side changes.
 - `000000` OTP dev bypass is still active on staging (known, parked since the Inc-28→35 deploy).
 - Suggested follow-up: fix the `orders.e2e` concurrent-approve assertion to accept either legal losing outcome (or make the loser deterministic).

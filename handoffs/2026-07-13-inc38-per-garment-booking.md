@@ -1,6 +1,6 @@
 # Inc-38 — FIX: the founder's dry-clean garments never reached the app
 
-**Date:** 2026-07-13 · **Status:** built, fully verified, **NOT deployed** · **Trigger:** founder report
+**Date:** 2026-07-13 · **Status:** built, fully verified, **DEPLOYED to staging** (api `020beb2` · web `80f682b`) · **Trigger:** founder report
 
 > *"I have added a shirt… that shirt should also reflect in the dry cleaning. Right now I have Shirt as a category and also Pant. Why is it not reflected in the app? Even if I refresh it."*
 
@@ -69,8 +69,20 @@ Two earlier full runs showed 12 and 2 failures. **Both were `beforeAll`/test TIM
 - **Re-file two garments:** **Coat** currently sits under *Shirts*, and **Pant** under *Outerwear*. Harmless, but the customer's drill-in will read oddly.
 - Consider setting the Dry Cleaning card's `priceFrom` to the lowest garment price ($5.00) so the grid can honestly say *"from $5.00"* instead of *"Get a quote"*.
 
-## 7. Deploy
+## 7. Deploy (done, 2026-07-13)
 
-**Nothing deployed.** To reach the founder's phone this needs:
-1. `railway up --service api` — the `garmentCount` field + `?cardId` scoping.
-2. **`eas update`** — the app half. `expo-updates` is installed and configured (`runtimeVersion: appVersion`), and **no native dependency changed**, so this ships **over-the-air to the installed build — no rebuild, no 2-hour EAS wait.**
+**api `020beb2` + web `80f682b` → staging.** Post-deploy smoke, live:
+
+- `GET /v1/catalog/home` → **Dry Cleaning `garmentCount: 3`**, every other card `0`. That flag is the *entire* trigger for the drill-in, so this is the assertion that matters.
+- `GET /v1/catalog/dryclean?cardId=<dry-cleaning>` → **Shirt $5.00 · Coat $15.00 · Pant $7.00** (the founder's real prices, corporate-resolved).
+- `GET /v1/catalog/dryclean?cardId=<wash-and-fold>` → **0 categories** — a card with no garments returns an empty picker, never another card's.
+
+**No EAS build and no OTA were needed.** The founder views the app through the Expo dev client, so Metro serves the JS straight from this repo; a reload picks up the garment picker. An `eas update` is only required to refresh a standalone APK — and it is *not* a free action here: the OTA bundle bakes in `EXPO_PUBLIC_API_BASE_URL`, which has silently fallen back to localhost on this project before (fixed for builds in `f2c52b9`). Fire it deliberately, with the env set, or not at all.
+
+## 8. Also shipped alongside — the console price box
+
+The founder: *"can you fix the (box) before the Save — I don't even know what that is, it's too small."*
+
+That box was the **item price field**, and the bug was not cosmetic. `Input`'s base class starts with `w-full`, `cn()` is a plain join (no `tailwind-merge`), and Tailwind emits `w-full` **after** the numeric width scale — so `<Input className="w-24" />` never got 24. It stretched to full width, then the Save / Deactivate / arrow buttons crushed it into a sliver. The `$15.00` was in the box; there was no room to render it. **Six inputs across the console** were passing widths that never applied.
+
+Fixed in the primitive (`ui.tsx`): the control yields its default `w-full` whenever a caller states a width — all six call sites fixed, no dependency added. And `CatalogAdmin`'s field now says **"Price"**, shows the **`$`**, and is wide enough to read. Money you cannot see is money you cannot trust. web **216/216**.

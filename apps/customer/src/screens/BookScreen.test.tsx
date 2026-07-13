@@ -1,6 +1,16 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import { ServiceVertical, ServiceUnit, AccountType, ItemKind, PricingUnit, type PickupSlot, type PickupSlotsResult } from '@blue-bee/shared';
+import {
+  ServiceVertical,
+  ServiceUnit,
+  AccountType,
+  ItemKind,
+  PricingUnit,
+  type DrycleanCatalogItemView,
+  type DrycleanCatalogView,
+  type PickupSlot,
+  type PickupSlotsResult,
+} from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 
 const siteWithGeo = (address: string, geo: { lng: number; lat: number }) => ({
@@ -36,8 +46,32 @@ const mkDay = (over: Partial<PickupSlotsResult> = {}): PickupSlotsResult => ({
   ...over,
 });
 
+// ───────────── [Inc-38] the per-garment (dry-clean) fixtures ─────────────
+//
+// Modelled on the founder's REAL catalog: a Shirt at $5, a Coat at $15, a Pant at $7 — deliberately different
+// prices, because the whole point of this mode is that a coat must not be charged like a shirt.
+const garment = (id: string, name: string, price: string, sortOrder = 0): DrycleanCatalogItemView => ({
+  id, name, imageUrl: null, price, priceSource: 'service_base', sortOrder,
+});
+const GARMENTS: DrycleanCatalogView = {
+  currency: 'CAD',
+  pricingAccountName: null,
+  categories: [
+    {
+      id: 'cat-shirts', name: 'Shirts', description: null, features: [], icon: null, priceFrom: '5.00', sortOrder: 0,
+      items: [garment('svc-shirt', 'Shirt', '5.00', 0), garment('svc-coat', 'Coat', '15.00', 1)],
+    },
+    {
+      id: 'cat-outer', name: 'Outerwear', description: null, features: [], icon: null, priceFrom: '7.00', sortOrder: 1,
+      items: [garment('svc-pant', 'Pant', '7.00', 0)],
+    },
+  ],
+};
+
 const mockClient = {
   getServices: jest.fn(async () => ({ services: [{ id: 'svc-1', vertical: ServiceVertical.SPECIALTY, name: 'Rug cleaning', unit: ServiceUnit.SQFT, baseRate: '6.5' }] })),
+  // [Inc-38] The garment drill-in, scoped to the tapped card.
+  getDrycleanCatalog: jest.fn(async (_cardId?: string): Promise<DrycleanCatalogView> => GARMENTS),
   getSites: jest.fn(async () => ({ sites: [{ id: 'site-1', accountId: 'acc', name: 'Home', address: '1 Main St', accountName: 'Rita', accountType: AccountType.RESIDENTIAL }] })),
   // [Inc-16] BookScreen reads memberships to show the corporate-pricing badge; default = none.
   listMyMemberships: jest.fn(async () => ({ memberships: [] as Array<{ id: string; accountId: string; accountName: string; status: string; source: string; createdAt: string }> })),
@@ -72,6 +106,8 @@ const screenProps = { navigation, route: { params: CARD } } as unknown as React.
 describe('BookScreen', () => {
   beforeEach(() => {
     mockClient.book.mockReset();
+    mockClient.getDrycleanCatalog.mockClear();
+    mockClient.getDrycleanCatalog.mockResolvedValue(GARMENTS);
     mockClient.listMyMemberships.mockReset();
     mockClient.listMyMemberships.mockResolvedValue({ memberships: [] });
     mockClient.getPickupSlots.mockReset();
@@ -445,6 +481,119 @@ describe('BookScreen', () => {
       const onOrg = render(<BookScreen {...screenProps} />);
       await onOrg.findByTestId('slots-list');
       expect(onOrg.queryByTestId('slots-default-note')).toBeNull();
+    });
+  });
+  // ───────────── [Inc-38] PER-GARMENT booking (the dry-clean drill-in) ─────────────
+  //
+  // Inc-36 deleted this picker, which quietly broke the founder's dry-clean catalog: they could set a Shirt at
+  // $5 and a Coat at $15 in the console, and the app would never show either — it asked "how many items?" and
+  // charged one flat rate. These tests exist so that cannot happen again.
+
+  describe('[Inc-38] per-garment cards drill into the garment picker', () => {
+    /** The Dry Cleaning card: the founder has nested 3 bookable garments under it. */
+    const GARMENT_CARD = {
+      serviceId: 'svc-dc',
+      serviceName: 'Dry Cleaning',
+      unit: PricingUnit.PER_ITEM,
+      kind: ItemKind.GARMENT,
+      cardId: 'card-dc',
+      garmentCount: 3,
+    };
+    const garmentProps = { navigation, route: { params: GARMENT_CARD } } as unknown as React.ComponentProps<typeof BookScreen>;
+
+    it('shows the founder’s garments at THEIR OWN prices — and no measure box', async () => {
+      const { findByText, getByText, getByTestId, queryByTestId } = render(<BookScreen {...garmentProps} />);
+
+      // The garments the founder entered, each at the price they set.
+      await findByText('Shirt');
+      getByText('Coat');
+      getByText('Pant');
+      // …each at the price the founder set (money() renders "$5.00 CAD").
+      expect(String(getByTestId('dryclean-price-svc-shirt').props.children)).toContain('5.00');
+      expect(String(getByTestId('dryclean-price-svc-coat').props.children)).toContain('15.00');
+      expect(String(getByTestId('dryclean-price-svc-pant').props.children)).toContain('7.00');
+
+      // The one-measure box is GONE for this card — "how many items?" would price a coat like a shirt.
+      expect(queryByTestId('measure-input')).toBeNull();
+    });
+
+    it('fetches only THIS card’s garments (a second garment card can never leak into this one)', async () => {
+      render(<BookScreen {...garmentProps} />);
+      await waitFor(() => expect(mockClient.getDrycleanCatalog).toHaveBeenCalledWith('card-dc'));
+    });
+
+    it('totals the REAL prices — 2 shirts + 1 coat = $25.00, not 3 × one flat rate', async () => {
+      const { findByLabelText, getByLabelText, getByTestId } = render(<BookScreen {...garmentProps} />);
+      const addShirt = await findByLabelText('Add one Shirt');
+      fireEvent.press(addShirt); // 1 × $5
+      fireEvent.press(getByLabelText('Add one Shirt')); // 2 × $5
+      fireEvent.press(getByLabelText('Add one Coat')); // 1 × $15
+
+      // 2×5 + 1×15 = 25. Under the flat per-item card this would have been 3 × the dry-clean rate.
+      expect(String(getByTestId('garment-total').props.children)).toContain('25.00');
+    });
+
+    it('books ONE LINE PER GARMENT, carrying each garment’s own service + quantity', async () => {
+      mockClient.book.mockResolvedValue({ id: 'order-9' });
+      const { findByLabelText, findByTestId, getByLabelText, getByTestId } = render(<BookScreen {...garmentProps} />);
+      fireEvent.press(await findByLabelText('Add one Shirt'));
+      fireEvent.press(getByLabelText('Add one Shirt'));
+      fireEvent.press(getByLabelText('Add one Coat'));
+      fireEvent.press(await findByTestId('slot-Morning'));
+      fireEvent.press(getByTestId('submit-booking'));
+
+      await waitFor(() => expect(mockClient.book).toHaveBeenCalled());
+      const dto = mockClient.book.mock.calls[0][0] as { items: Array<{ serviceId: string; estimatedMeasure?: number; kind: string }> };
+      // Each garment is its OWN line, referencing its OWN service — so the server prices a coat as a coat.
+      expect(dto.items).toHaveLength(2);
+      expect(dto.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ serviceId: 'svc-shirt', estimatedMeasure: 2, kind: ItemKind.GARMENT }),
+          expect.objectContaining({ serviceId: 'svc-coat', estimatedMeasure: 1, kind: ItemKind.GARMENT }),
+        ]),
+      );
+      // The card's own flat service is NOT what gets booked — the garments are.
+      expect(dto.items.some((i) => i.serviceId === 'svc-dc')).toBe(false);
+    });
+
+    it('removing the last of a garment drops its line entirely (no zero-quantity ghost line)', async () => {
+      mockClient.book.mockResolvedValue({ id: 'order-10' });
+      const { findByLabelText, findByTestId, getByLabelText, getByTestId } = render(<BookScreen {...garmentProps} />);
+      fireEvent.press(await findByLabelText('Add one Shirt'));
+      fireEvent.press(getByLabelText('Add one Coat'));
+      fireEvent.press(getByLabelText('Remove one Shirt')); // shirt back to 0
+      fireEvent.press(await findByTestId('slot-Morning'));
+      fireEvent.press(getByTestId('submit-booking'));
+
+      await waitFor(() => expect(mockClient.book).toHaveBeenCalled());
+      const dto = mockClient.book.mock.calls[0][0] as { items: Array<{ serviceId: string }> };
+      expect(dto.items).toHaveLength(1);
+      expect(dto.items[0]?.serviceId).toBe('svc-coat');
+    });
+
+    it('cannot book with nothing chosen — the button says what is missing', async () => {
+      const { findByTestId, getByTestId, getByText } = render(<BookScreen {...garmentProps} />);
+      fireEvent.press(await findByTestId('slot-Morning'));
+      expect(getByTestId('submit-booking').props.accessibilityState?.disabled).toBe(true);
+      getByText('Choose at least one garment'); // the button names what is missing
+    });
+
+    it('HONESTY: a per-garment card with NO garments says so — it never falls back to a measure box', async () => {
+      // The founder set the card up but hasn't listed garments yet. Falling back to "how many items?" would
+      // silently charge a coat like a shirt at a rate the customer never agreed to.
+      mockClient.getDrycleanCatalog.mockResolvedValue({ categories: [], currency: 'CAD', pricingAccountName: null });
+      const { findByTestId, queryByTestId } = render(<BookScreen {...garmentProps} />);
+      await findByTestId('no-garments');
+      expect(queryByTestId('measure-input')).toBeNull();
+      expect(queryByTestId('garment-total')).toBeNull();
+    });
+
+    it('a card with NO garments nested under it still uses the Inc-36 one-measure flow', async () => {
+      // The rug card (garmentCount undefined/0) — unchanged, and it must not fetch garments at all.
+      const { findByTestId, queryByTestId } = render(<BookScreen {...screenProps} />);
+      await findByTestId('measure-input');
+      expect(queryByTestId('no-garments')).toBeNull();
+      expect(mockClient.getDrycleanCatalog).not.toHaveBeenCalled();
     });
   });
 });

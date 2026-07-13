@@ -6,7 +6,8 @@ import { ItemKind, PricingModel, PricingUnit, type HomeServiceCardView, type Hom
 // (safe-area / icons / theme are handled by jest.setup + the useTheme() lightTheme fallback).
 const card = (over: Partial<HomeServiceCardView>): HomeServiceCardView => ({
   id: 'c', name: 'Svc', description: 'desc', features: ['A', 'B'], icon: 'wash-fold',
-  pricingModel: PricingModel.FIXED, unit: PricingUnit.PER_ITEM, priceFrom: null, currency: 'CAD', sortOrder: 1, serviceId: null, ...over,
+  pricingModel: PricingModel.FIXED, unit: PricingUnit.PER_ITEM, priceFrom: null, currency: 'CAD', sortOrder: 1, serviceId: null,
+  garmentCount: 0, ...over,
 });
 
 const mockClient = { getServiceMenu: jest.fn<Promise<HomeServiceMenuView>, []>() };
@@ -114,7 +115,7 @@ describe('HomeScreen service grid (Inc-21)', () => {
     expect(String(getByTestId('home-price-wf').props.children)).toMatch(/^from /);
     // …and the card now carries its backing service into Book (the focused checkout, not the dead end).
     fireEvent.press(getByTestId('home-service-wf'));
-    expect(mockNavigate).toHaveBeenCalledWith('Book', { serviceId: 'svc-wf', serviceName: 'Wash & Fold', unit: PricingUnit.PER_KG, kind: ItemKind.GARMENT });
+    expect(mockNavigate).toHaveBeenCalledWith('Book', { serviceId: 'svc-wf', serviceName: 'Wash & Fold', unit: PricingUnit.PER_KG, kind: ItemKind.GARMENT, cardId: 'wf', garmentCount: 0 });
   });
 
   it('[Inc-36] pull-to-refresh re-reads the catalog', async () => {
@@ -166,7 +167,7 @@ describe('HomeScreen service grid (Inc-21)', () => {
     });
     const { findByTestId } = render(<HomeScreen />);
     fireEvent.press(await findByTestId('home-service-wf'));
-    expect(mockNavigate).toHaveBeenCalledWith('Book', { serviceId: 'svc-wf-1', serviceName: 'Wash & Fold', unit: PricingUnit.PER_KG, kind: ItemKind.GARMENT });
+    expect(mockNavigate).toHaveBeenCalledWith('Book', { serviceId: 'svc-wf-1', serviceName: 'Wash & Fold', unit: PricingUnit.PER_KG, kind: ItemKind.GARMENT, cardId: 'wf', garmentCount: 0 });
   });
 
   it('[Inc-24] a priced PER_LB card shows "from $X" + "per lb"', async () => {

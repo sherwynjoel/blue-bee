@@ -232,6 +232,44 @@ describe('Dry-clean visual catalog e2e (Increment 17)', () => {
       expect(rows.every((r) => r.parentId !== null)).toBe(true);
     });
 
+    /**
+     * [Inc-38] The round-trip that Inc-36 broke and nobody caught: a founder adds a Shirt at $5 in the
+     * console, and the CUSTOMER APP must be able to find it and book it at that price. The app decides to
+     * drill into the garment picker purely from `garmentCount` on the Home card — it never checks for the
+     * words "dry cleaning" — so if the count is wrong or the picker is unscoped, the app silently falls back
+     * to "how many items?" and charges a $15 coat like a $5 shirt.
+     */
+    it('[Inc-38] the Home card reports its garmentCount, and the picker is scoped to THAT card', async () => {
+      const DRY_CLEANING = '5e000000-0000-4000-8000-000000000003'; // the seeded card the garments nest under
+      const WASH_FOLD = '5e000000-0000-4000-8000-000000000001'; // a card with NO garments under it
+
+      const home = (await get('/v1/catalog/home', 'rita').expect(200)).body;
+      const dc = home.cards.find((c: { id: string }) => c.id === DRY_CLEANING);
+      const wf = home.cards.find((c: { id: string }) => c.id === WASH_FOLD);
+
+      // The card the founder nested garments under says so — that flag alone is what makes the app drill in.
+      expect(dc.garmentCount).toBeGreaterThan(0);
+      // …and a card with none says zero, so it keeps the simple one-measure flow.
+      expect(wf.garmentCount).toBe(0);
+
+      // The picker scoped to that card returns ONLY that card's garments — every category is its child.
+      const scoped = (await get(`/v1/catalog/dryclean?cardId=${DRY_CLEANING}`, 'rita').expect(200)).body;
+      expect(scoped.categories.length).toBeGreaterThan(0);
+      const rows = await prisma.serviceCategory.findMany({
+        where: { id: { in: scoped.categories.map((c: { id: string }) => c.id) } },
+        select: { parentId: true },
+      });
+      expect(rows.every((r) => r.parentId === DRY_CLEANING)).toBe(true);
+
+      // …and the count the card advertises is exactly the number of garments the picker can actually book.
+      const bookable = scoped.categories.reduce((n: number, c: { items: unknown[] }) => n + c.items.length, 0);
+      expect(dc.garmentCount).toBe(bookable);
+
+      // A card with no garments nested under it returns an empty picker — never another card's garments.
+      const empty = (await get(`/v1/catalog/dryclean?cardId=${WASH_FOLD}`, 'rita').expect(200)).body;
+      expect(empty.categories).toHaveLength(0);
+    });
+
     it('an ITEM attached to a top-level card is surfaced in `uncategorized`, never silently dropped', async () => {
       const orphan = (await post('/v1/catalog/items', 'finance', { name: 'CAT E2E Orphan', price: 4, categoryId: WASH_AND_FOLD }).expect(201)).body;
 

@@ -123,6 +123,20 @@ export class CatalogService {
       // first rate entry. Null until then → the card is not yet bookable as a priced job.
       include: { services: { where: { active: true }, orderBy: { createdAt: 'asc' }, take: 1, select: { id: true } } },
     });
+    // [Inc-38] Which cards are priced PER GARMENT? A card is, exactly when the founder has nested bookable
+    // garments under it — active per-ITEM services inside its child categories (Dry Cleaning → Shirts → Shirt
+    // $5, Coat $15). We count them here so the APP never has to guess (no "is this the dry-cleaning card?"
+    // name/icon check anywhere): garmentCount > 0 ⇒ drill into the picker, 0 ⇒ the one-measure flow.
+    const garmentCats = await db.serviceCategory.findMany({
+      where: { active: true, parentId: { in: cards.map((c) => c.id) } },
+      select: { parentId: true, _count: { select: { services: { where: { active: true, unit: ServiceUnit.ITEM } } } } },
+    });
+    const garmentCount = new Map<string, number>();
+    for (const g of garmentCats) {
+      if (!g.parentId) continue;
+      garmentCount.set(g.parentId, (garmentCount.get(g.parentId) ?? 0) + g._count.services);
+    }
+
     const cardViews: HomeServiceCardView[] = cards.map((c) => ({
       id: c.id,
       name: c.name,
@@ -136,6 +150,7 @@ export class CatalogService {
       currency: c.currency ?? 'CAD',
       sortOrder: c.sortOrder,
       serviceId: c.services[0]?.id ?? null,
+      garmentCount: garmentCount.get(c.id) ?? 0,
     }));
     return { cards: cardViews, currency: 'CAD' };
   }
@@ -148,7 +163,7 @@ export class CatalogService {
    * base). Reuses `PricingService.resolveRate` — no client-side pricing. Top-level cards are the Home menu
    * (`listHomeMenu`), not this picker.
    */
-  async listDrycleanCatalog(principal: RequestPrincipal): Promise<DrycleanCatalogView> {
+  async listDrycleanCatalog(principal: RequestPrincipal, cardId?: string): Promise<DrycleanCatalogView> {
     const db = scopedPrisma(this.prisma, principal);
 
     // Effective pricing account: the caller's active corporate membership, else their own account.
@@ -161,8 +176,11 @@ export class CatalogService {
     const pricingAccountName = membership?.account.name ?? null;
 
     // Drill-in garment categories = child categories (a top-level Home card has parentId NULL).
+    // [Inc-38] `cardId` scopes the drill-in to the card the customer actually tapped. Without it we'd return
+    // EVERY nested category in the org, so the day a second card gets garments, one card's picker would show
+    // the other's garments. The app always passes it; omitted = every child category (the legacy shape).
     const categories = await db.serviceCategory.findMany({
-      where: { active: true, parentId: { not: null } },
+      where: { active: true, ...(cardId ? { parentId: cardId } : { parentId: { not: null } }) },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
         services: { where: { active: true, unit: ServiceUnit.ITEM }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] },

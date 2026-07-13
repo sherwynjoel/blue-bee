@@ -169,10 +169,22 @@ export function HomeScreen(): React.ReactElement {
               // [Inc-23] Carry the card's backing service into Book so the order references the right
               // service → pricingModel. A card with no backing service yet (rate unset) opens the general
               // composer (undefined param).
+              // [Inc-38] Carry the card id + its garment count too: a card with garments nested under it is
+              // priced PER GARMENT, so Book drills into the picker instead of asking for one measure. Which
+              // cards those are is the founder's catalog talking — never a name/icon check in the app.
               onPress={() =>
                 navigation.navigate(
                   'Book',
-                  cat.serviceId ? { serviceId: cat.serviceId, serviceName: cat.name, unit: cat.unit, kind: kindForCard(cat) } : undefined,
+                  cat.serviceId
+                    ? {
+                        serviceId: cat.serviceId,
+                        serviceName: cat.name,
+                        unit: cat.unit,
+                        kind: kindForCard(cat),
+                        cardId: cat.id,
+                        garmentCount: cat.garmentCount,
+                      }
+                    : undefined,
                 )
               }
             />

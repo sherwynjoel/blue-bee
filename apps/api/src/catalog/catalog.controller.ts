@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/rbac/decorators';
 import type { RequestPrincipal } from '../auth/rbac/types';
@@ -36,8 +36,11 @@ export class CatalogController {
   }
 
   @Get('catalog/dryclean')
-  @ApiOperation({ summary: 'The visual dry-clean garment picker (Dry Cleaning drill-in) — categories → items with a photo + a price resolved for the caller (corporate override or base). Increment 17.' })
-  dryclean(@CurrentUser() p: RequestPrincipal) {
-    return this.catalog.listDrycleanCatalog(p);
+  @ApiOperation({
+    summary:
+      'The visual garment picker for a per-garment card (the Dry Cleaning drill-in) — categories → items with a photo + a price resolved for the caller (corporate override or base). Increment 17; `cardId` scopes it to one Home card (Increment 38).',
+  })
+  dryclean(@CurrentUser() p: RequestPrincipal, @Query('cardId') cardId?: string) {
+    return this.catalog.listDrycleanCatalog(p, cardId);
   }
 }

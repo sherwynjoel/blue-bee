@@ -13,6 +13,14 @@ export type BookParams = {
   unit?: PricingUnit;
   kind?: ItemKind;
   preselectSiteId?: string;
+  /**
+   * [Inc-38] The tapped card's `ServiceCategory` id, and how many garments the founder nested under it.
+   * `garmentCount > 0` ⇒ Book drills into the garment picker (priced per garment: a $5 shirt and a $15 coat
+   * cost differently) and fetches that card's garments with `cardId`. Both additive — Book without them is
+   * unchanged (the Inc-36 one-measure flow).
+   */
+  cardId?: string;
+  garmentCount?: number;
 };
 
 /** The signed-in navigation stack (PRD §7A customer flows). */

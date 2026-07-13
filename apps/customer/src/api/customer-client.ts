@@ -118,10 +118,12 @@ export class CustomerApiClient extends ApiClient {
     return this.request('GET', '/catalog/home');
   }
 
-  /** [Inc-17] The visual dry-clean garment picker (Dry Cleaning drill-in) — categories → items with a photo +
-   *  a price the SERVER already resolved for this caller (corporate override or base). Used by the Book flow. */
-  getDrycleanCatalog(): Promise<DrycleanCatalogView> {
-    return this.request('GET', '/catalog/dryclean');
+  /** [Inc-17] The visual garment picker (the per-garment drill-in) — categories → items with a photo + a price
+   *  the SERVER already resolved for this caller (corporate override or base). Used by the Book flow.
+   *  [Inc-38] `cardId` scopes it to the Home card the customer tapped, so one card's picker can never show
+   *  another card's garments. */
+  getDrycleanCatalog(cardId?: string): Promise<DrycleanCatalogView> {
+    return this.request('GET', cardId ? `/catalog/dryclean?cardId=${encodeURIComponent(cardId)}` : '/catalog/dryclean');
   }
 
   // ───────────── orders (Increment 3) ─────────────

@@ -1,16 +1,25 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { ItemKind, PricingUnit, type CustomerSite, type PickupSlot, type PickupSlotsResult, type ServiceCatalogItem } from '@blue-bee/shared';
+import {
+  ItemKind,
+  PricingUnit,
+  type CustomerSite,
+  type DrycleanCatalogView,
+  type PickupSlot,
+  type PickupSlotsResult,
+  type ServiceCatalogItem,
+} from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { buildBookDto, newIdempotencyKey, slotToWindow, type DraftItem } from '../orders/booking';
-import { rangeText } from '../format';
+import { money, rangeText } from '../format';
 import { useTheme } from '../../theme';
 import { Button, Card, EmptyState, Text } from '../../components/ui';
 import { CorporatePricingNote } from '../components/CorporatePricing';
+import { DrycleanPicker } from '../components/DrycleanPicker';
 import { PickupSlotPicker } from '../components/PickupSlotPicker';
 
 /**
@@ -22,9 +31,15 @@ import { PickupSlotPicker } from '../components/PickupSlotPicker';
  * address + pickup window and books.
  *
  * Deliberately GONE (this is the simplification): the item-type chips (RUG/CARPET/BLIND/…), the service chip
- * list, the dry-clean garment sub-catalog picker, and the "Add" staging step. One service = one order line.
- * A customer can no longer reach a general composer — landing here without a service is a dead end that sends
- * them back to the grid (see the guard below), so the complexity cannot be re-entered by a stray navigation.
+ * list, and the "Add" staging step. A customer can no longer reach a general composer — landing here without a
+ * service is a dead end that sends them back to the grid (see the guard below), so the complexity cannot be
+ * re-entered by a stray navigation.
+ *
+ * [Inc-38] ONE exception, and it is the catalog's call, not a special case in code: a card with GARMENTS
+ * nested under it (`garmentCount > 0`) is priced PER GARMENT, so it drills into the picker instead of asking
+ * for a measure. Inc-36 removed that picker and it was wrong to: a $5 shirt and a $15 coat cannot share one
+ * "how many items?" box, and the founder's per-garment prices would never have reached a customer. Both flows
+ * end identically — address, pickup window, book — and the binding quote is still computed server-side.
  */
 export function BookScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Book'>): React.ReactElement {
   const { client, me } = useSession();
@@ -33,8 +48,21 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
   /** The tapped Home card. Its `serviceId` is what makes this screen focused — see the guard below. */
   const card = route?.params;
   const cardServiceId = card?.serviceId ?? null;
+  /**
+   * [Inc-38] PER-GARMENT mode. The founder nested bookable garments under this card (Dry Cleaning → Shirts →
+   * Shirt $5, Coat $15), so a single measure would be a lie: a shirt and a coat cannot cost the same. We drill
+   * into the picker and each garment becomes its own order line at its own price.
+   *
+   * This is the CATALOG deciding, not the app — `garmentCount` comes from the server. Nest garments under any
+   * card and it drills in; remove them and it returns to the one-measure flow. Nothing here knows the words
+   * "dry cleaning".
+   */
+  const garmentMode = (card?.garmentCount ?? 0) > 0;
 
   const [services, setServices] = useState<ServiceCatalogItem[]>([]);
+  const [garments, setGarments] = useState<DrycleanCatalogView | null>(null);
+  /** serviceId → quantity. One line per garment TYPE; the qty rides in `estimatedMeasure` (no parallel cart). */
+  const [qty, setQty] = useState<Record<string, number>>({});
   const [sites, setSites] = useState<CustomerSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -116,8 +144,16 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
     (async () => {
       try {
         // `getServices()` carries the backing service's baseRate — the rate the live estimate multiplies.
-        const [svc] = await Promise.all([client.getServices(), loadSites(card?.preselectSiteId)]);
+        // [Inc-38] In garment mode we also pull THIS card's garments. It is BLOCKING (like the slots read):
+        // without the garments there is nothing to book, so a failure must surface as a retryable error — we
+        // never fall back to a made-up measure flow or an empty picker that looks like "no garments exist".
+        const [svc, gar] = await Promise.all([
+          client.getServices(),
+          garmentMode && card?.cardId ? client.getDrycleanCatalog(card.cardId) : Promise.resolve(null),
+          loadSites(card?.preselectSiteId),
+        ]);
         setServices(svc.services);
+        setGarments(gar);
       } catch (e) {
         setLoadError(e instanceof ApiError ? e.message : 'Could not load the booking options.');
       } finally {
@@ -134,7 +170,7 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
         // degrade silently — no membership badge
       }
     })();
-  }, [client, loadSites, card?.preselectSiteId]);
+  }, [client, loadSites, card?.preselectSiteId, garmentMode, card?.cardId]);
 
   // [Inc-26] Re-read the address picker whenever Book regains focus (they may have just added an address).
   const firstFocus = useRef(true);
@@ -157,21 +193,56 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
   const rate = backingService ? Number(backingService.baseRate) : 0;
   const estimate = hasMeasure && rate > 0 ? estimateRange(measureValue * rate) : null;
 
+  // ── [Inc-38] garment mode: the +/− stepper IS the line list ──
+  const qtyFor = useCallback((serviceId: string) => qty[serviceId] ?? 0, [qty]);
+  const addGarment = useCallback((serviceId: string) => setQty((p) => ({ ...p, [serviceId]: (p[serviceId] ?? 0) + 1 })), []);
+  const removeGarment = useCallback(
+    (serviceId: string) =>
+      setQty((p) => {
+        const next = (p[serviceId] ?? 0) - 1;
+        if (next <= 0) {
+          const { [serviceId]: _drop, ...rest } = p;
+          return rest;
+        }
+        return { ...p, [serviceId]: next };
+      }),
+    [],
+  );
+  const garmentPieces = Object.values(qty).reduce((n, q) => n + q, 0);
+  /**
+   * The garment total is the SUM of the server-resolved price of each garment × its quantity — real prices the
+   * founder set (and already corporate-adjusted for this caller), never a client-invented figure. Unlike the
+   * weight/measure flow this is not a rough range: a shirt IS $5. It is still an estimate only in that the
+   * final quote is confirmed after intake, which is what the caveat below says.
+   */
+  const garmentTotal = garments
+    ? garments.categories.reduce(
+        (sum, cat) => sum + cat.items.reduce((s, it) => s + Number(it.price) * qtyFor(it.id), 0),
+        0,
+      )
+    : 0;
+  const canSubmit = garmentMode ? garmentPieces > 0 : hasMeasure;
+
   const submit = useCallback(async () => {
     if (!accountId) {
       setSubmitError('Your account is not set up for booking yet.');
       return;
     }
-    if (!cardServiceId || !hasMeasure || !pickupSlot) return; // the button is already disabled without these
+    if (!cardServiceId || !canSubmit || !pickupSlot) return; // the button is already disabled without these
     setSubmitting(true);
     setSubmitError(null);
     setOutOfArea(null);
     if (!idemKeyRef.current) idemKeyRef.current = newIdempotencyKey();
     // [Inc-19] Send the selected site's service point so the SERVER can geo-block (the app never decides).
     const selectedSite = sites.find((s) => s.id === siteId);
-    // One service = ONE order line, carrying the entered measure. The authoritative quote is computed
-    // server-side from what the DRIVER actually weighs/measures at pickup — this is only the booking intent.
-    const items: DraftItem[] = [{ kind: card?.kind ?? ItemKind.GARMENT, serviceId: cardServiceId, estimatedMeasure: measureValue }];
+    // [Inc-38] Per-garment: ONE line per garment TYPE, its quantity in `estimatedMeasure`, referencing the
+    // GARMENT's own service — so the server prices a coat as a coat and a shirt as a shirt. (This is the exact
+    // contract the pre-Inc-36 picker used; the quote path never changed.)
+    // Otherwise (Inc-36): one service = ONE order line carrying the entered measure. Either way the binding
+    // quote is computed server-side from what the driver actually weighs/counts at intake.
+    const items: DraftItem[] = garmentMode
+      ? Object.entries(qty).map(([serviceId, q]) => ({ kind: ItemKind.GARMENT, serviceId, estimatedMeasure: q }))
+      : [{ kind: card?.kind ?? ItemKind.GARMENT, serviceId: cardServiceId, estimatedMeasure: measureValue }];
     try {
       const dto = buildBookDto({
         accountId,
@@ -192,7 +263,7 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
     } finally {
       setSubmitting(false);
     }
-  }, [accountId, cardServiceId, hasMeasure, measureValue, card?.kind, siteId, sites, pickupSlot, client, navigation]);
+  }, [accountId, cardServiceId, canSubmit, measureValue, card?.kind, garmentMode, qty, siteId, sites, pickupSlot, client, navigation]);
 
   /**
    * [Inc-36] The guard that keeps the general composer unreachable. Every Home card carries a backing service,
@@ -243,49 +314,88 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
     >
       {corpAccountName ? <CorporatePricingNote accountName={corpAccountName} /> : null}
 
-      {/* ── the ONE measure + the live estimate ── */}
-      <Card title={card?.serviceName ? `Book ${card.serviceName}` : 'Book'}>
-        <Text testID="book-measure-help" variant="footnote" color="secondary" style={styles.help}>
-          {measureHelp(card?.unit)}
-        </Text>
-
-        <Text variant="subhead" weight="600" style={styles.sectionLabel}>
-          {measureLabel(card?.unit)}
-        </Text>
-        <View style={[styles.measureField, { backgroundColor: colors.surface, borderColor: colors.hairline, borderRadius: 12 }]}>
-          <TextInput
-            testID="measure-input"
-            value={measure}
-            onChangeText={setMeasure}
-            placeholder={measurePlaceholder(card?.unit)}
-            placeholderTextColor={colors.textTertiary}
-            keyboardType="decimal-pad"
-            style={{ flex: 1, color: colors.text, fontSize: 17, paddingVertical: 13 }}
-          />
-          <Text variant="subhead" weight="600" color="secondary">
-            {unitSuffix(card?.unit)}
+      {/* ── [Inc-38] PER-GARMENT: pick the garments, each at its own real price ── */}
+      {garmentMode ? (
+        <Card title={card?.serviceName ? `Book ${card.serviceName}` : 'Book'}>
+          <Text testID="book-garment-help" variant="footnote" color="secondary" style={styles.help}>
+            Choose the garments you’re sending. Each is priced individually.
           </Text>
-        </View>
 
-        {/* The estimate appears the moment a measure is typed — no "Add" tap. It is explicitly ROUGH: the
-            binding quote is computed server-side from the weight/measure the driver captures at pickup. */}
-        {estimate ? (
-          <View style={[styles.estimateBox, { backgroundColor: colors.azureTint }]}>
-            <View style={styles.estimateTop}>
-              <Feather name="tag" size={15} color={colors.azure} />
-              <Text variant="footnote" weight="600" color="azure" style={{ marginLeft: 6 }}>
-                Rough estimate
+          {garments && garments.categories.length > 0 ? (
+            <DrycleanPicker catalog={garments} qtyFor={qtyFor} onAdd={addGarment} onRemove={removeGarment} />
+          ) : (
+            /* The founder has a per-garment card but no garments the customer can book yet. We say exactly
+               that — we do NOT silently fall back to a measure field, which would price a coat like a shirt. */
+            <EmptyState
+              testID="no-garments"
+              icon="tag"
+              title="No garments listed yet"
+              body="This service is priced per garment and the list is still being set up. Please check back soon."
+            />
+          )}
+
+          {garmentPieces > 0 ? (
+            <View style={[styles.estimateBox, { backgroundColor: colors.azureTint }]}>
+              <View style={styles.estimateTop}>
+                <Feather name="tag" size={15} color={colors.azure} />
+                <Text variant="footnote" weight="600" color="azure" style={{ marginLeft: 6 }}>
+                  {garmentPieces === 1 ? '1 garment' : `${garmentPieces} garments`}
+                </Text>
+              </View>
+              <Text testID="garment-total" variant="title3" weight="700" color="azure" tabular style={{ marginTop: 4 }}>
+                {money(garmentTotal.toFixed(2), garments?.currency ?? 'CAD')}
+              </Text>
+              <Text testID="garment-total-caveat" variant="footnote" color="secondary" style={{ marginTop: 2 }}>
+                Your final quote is confirmed once we’ve checked the garments in.
               </Text>
             </View>
-            <Text testID="estimate" variant="title3" weight="700" color="azure" tabular style={{ marginTop: 4 }}>
-              {rangeText(estimate.low, estimate.high)}
-            </Text>
-            <Text testID="estimate-caveat" variant="footnote" color="secondary" style={{ marginTop: 2 }}>
-              {estimateCaveat(card?.unit)}
+          ) : null}
+        </Card>
+      ) : (
+        /* ── the ONE measure + the live estimate ── */
+        <Card title={card?.serviceName ? `Book ${card.serviceName}` : 'Book'}>
+          <Text testID="book-measure-help" variant="footnote" color="secondary" style={styles.help}>
+            {measureHelp(card?.unit)}
+          </Text>
+
+          <Text variant="subhead" weight="600" style={styles.sectionLabel}>
+            {measureLabel(card?.unit)}
+          </Text>
+          <View style={[styles.measureField, { backgroundColor: colors.surface, borderColor: colors.hairline, borderRadius: 12 }]}>
+            <TextInput
+              testID="measure-input"
+              value={measure}
+              onChangeText={setMeasure}
+              placeholder={measurePlaceholder(card?.unit)}
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="decimal-pad"
+              style={{ flex: 1, color: colors.text, fontSize: 17, paddingVertical: 13 }}
+            />
+            <Text variant="subhead" weight="600" color="secondary">
+              {unitSuffix(card?.unit)}
             </Text>
           </View>
-        ) : null}
-      </Card>
+
+          {/* The estimate appears the moment a measure is typed — no "Add" tap. It is explicitly ROUGH: the
+              binding quote is computed server-side from the weight/measure the driver captures at pickup. */}
+          {estimate ? (
+            <View style={[styles.estimateBox, { backgroundColor: colors.azureTint }]}>
+              <View style={styles.estimateTop}>
+                <Feather name="tag" size={15} color={colors.azure} />
+                <Text variant="footnote" weight="600" color="azure" style={{ marginLeft: 6 }}>
+                  Rough estimate
+                </Text>
+              </View>
+              <Text testID="estimate" variant="title3" weight="700" color="azure" tabular style={{ marginTop: 4 }}>
+                {rangeText(estimate.low, estimate.high)}
+              </Text>
+              <Text testID="estimate-caveat" variant="footnote" color="secondary" style={{ marginTop: 2 }}>
+                {estimateCaveat(card?.unit)}
+              </Text>
+            </View>
+          ) : null}
+        </Card>
+      )}
 
       {/* ── address ── */}
       {sites.length === 0 ? (
@@ -363,8 +473,10 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
       <Button
         testID="submit-booking"
         label={
-          !hasMeasure
-            ? missingMeasureLabel(card?.unit)
+          !canSubmit
+            ? garmentMode
+              ? 'Choose at least one garment'
+              : missingMeasureLabel(card?.unit)
             : !siteId
               ? 'Add an address to book'
               : !pickupSlot
@@ -374,7 +486,7 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
         icon="check"
         onPress={() => void submit()}
         busy={submitting}
-        disabled={submitting || !hasMeasure || !siteId || !pickupSlot}
+        disabled={submitting || !canSubmit || !siteId || !pickupSlot}
         style={{ marginTop: space.md }}
       />
 

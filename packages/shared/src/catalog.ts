@@ -249,6 +249,19 @@ export interface HomeServiceCardView {
    * null` is not yet bookable as a priced job (the app shows "Get a quote" / a drill-in).
    */
   serviceId: string | null;
+  /**
+   * [Inc-38] How many bookable GARMENTS the founder has nested under this card — i.e. active per-ITEM
+   * services inside this card's child categories (Dry Cleaning → Shirts/Outerwear → Shirt, Coat, Pant).
+   *
+   * `> 0` means the card is priced PER GARMENT, so the app drills into the garment picker
+   * (`GET /v1/catalog/dryclean?cardId=<this card>`) instead of asking for one measure — a shirt at $5 and a
+   * coat at $15 must not be charged the same. `0` means the Inc-36 one-measure flow (kg / lb / sqft / count).
+   *
+   * This is DATA, not a hardcoded rule: the app never checks for "dry cleaning" by name or icon. Nest
+   * garments under any card in the console and that card drills in; remove them and it goes back to one
+   * measure. The founder's catalog decides the flow.
+   */
+  garmentCount: number;
 }
 
 /** GET /v1/catalog/home — the customer Home service menu (the 8 top-level cards, active + sorted). */

@@ -1,5 +1,6 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import type { DrycleanCatalogView } from '@blue-bee/shared';
 import { DrycleanPicker } from './DrycleanPicker';
 
@@ -74,6 +75,38 @@ describe('DrycleanPicker (visual dry-clean picker)', () => {
   it('renders nothing when there are no categories (degrades cleanly)', () => {
     const { toJSON } = render(<DrycleanPicker catalog={catalog({ categories: [] })} qtyFor={() => 0} onAdd={jest.fn()} onRemove={jest.fn()} />);
     expect(toJSON()).toBeNull();
+  });
+
+  /**
+   * [Inc-39] It is a LIST, not a card gallery. The founder: *"can you make it a list rather than the
+   * catalogue? A list will be easier to skim."* A row keeps the name, the price and the stepper on ONE line,
+   * so 3 garments or 30 read identically. The photo stays as a thumbnail — it aids recognition, it just must
+   * not set the layout. Full-width rows, never a 50%-wide cell.
+   */
+  it('[Inc-39] renders each garment as a single full-width row — name, price and stepper on one line', () => {
+    const list = catalog({
+      categories: [category('cat-a', 'Shirts', 1, [item('item-a1', 'Shirt', 0), item('item-a2', 'Coat', 1)])],
+    });
+    const { getByTestId, getByLabelText } = render(<DrycleanPicker catalog={list} qtyFor={() => 0} onAdd={jest.fn()} onRemove={jest.fn()} />);
+
+    const row = getByTestId('dryclean-item-item-a1');
+    const flat = StyleSheet.flatten(row.props.style) as { width?: number | string; flexDirection?: string };
+    // A row, not a half-width grid cell.
+    expect(flat.flexDirection).toBe('row');
+    expect(flat.width).toBeUndefined();
+
+    // Everything the customer needs to decide is inside that one row.
+    expect(within(row).getByText('Shirt')).toBeTruthy();
+    expect(within(row).getByTestId('dryclean-price-item-a1')).toBeTruthy();
+    expect(getByLabelText('Add one Shirt')).toBeTruthy();
+  });
+
+  it('[Inc-39] does not name the service itself — the hosting screen already does', () => {
+    // The picker used to wrap itself in a Card titled "Dry cleaning", which then sat INSIDE the screen's
+    // "Book Dry Cleaning" card: a card in a card, naming the service twice — and hard-coding a name the
+    // founder owns.
+    const { queryByText } = render(<DrycleanPicker catalog={catalog()} qtyFor={() => 0} onAdd={jest.fn()} onRemove={jest.fn()} />);
+    expect(queryByText('Dry cleaning')).toBeNull();
   });
 
   // [Inc-24] The console's drag/arrow reorder persists sortOrder; the picker must render in THAT order.

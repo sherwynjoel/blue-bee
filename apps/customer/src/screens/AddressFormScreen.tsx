@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, View, type ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { CustomerSite } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
@@ -7,7 +7,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { useTheme } from '../../theme';
-import { Button, Card, IconBadge, Input, SkeletonCard, Text, fireHaptic } from '../../components/ui';
+import { Button, Card, Hero, IconBadge, Input, Row, SkeletonCard, Text, fireHaptic, type IconTone } from '../../components/ui';
 import {
   addressFormFromSite,
   buildCreateSiteDto,
@@ -26,8 +26,15 @@ import {
 /**
  * Add or edit a saved address (Increment 26) — the screen that unblocks onboarding: before this, a
  * customer with no site saw an empty picker in Book and could never create one.
- * [Royal restyle] Grouped Input card + the icon-in-tinted-circle motif for the default toggle and
- * coverage notice — the geocode/serviceability handling below is unchanged from Inc-26.
+ * [Royal restyle] Matches the "Pickup Address" reference: an info Hero, a grouped card of tinted-chip
+ * fields with inline valid checkmarks, a safe-data trust strip, and a Save Address CTA — composed from
+ * the frozen Input/IconBadge/Row/Hero primitives. The DTO only carries one free-text `address` line (the
+ * server geocodes it — see `packages/shared/src/sites.ts`), so the reference's separate City / Province /
+ * Postal Code / Country rows have no backing field; rather than fabricate inputs that write nowhere, the
+ * Street Address field's hint asks for those details inline. `unit`/`buzzer`/`notes`/`isDefault` are all
+ * real, wired fields, styled to the same motif.
+ *
+ * The geocode/serviceability handling below is unchanged from Inc-26.
  *
  * The SERVER resolves the address to a point and decides coverage; this screen only types text and
  * renders the answer. Three server outcomes are surfaced distinctly, because they need different actions:
@@ -174,8 +181,8 @@ export function AddressFormScreen({
       <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
         <View style={[styles.center, { padding: space.lg }]}>
           <Card style={styles.stateCard}>
-            <Feather name="alert-circle" size={26} color={colors.textTertiary} />
-            <Text testID="address-load-error" variant="body" color="danger" center style={{ marginTop: 10 }}>
+            <IconBadge icon="alert-circle" tone="danger" size={48} circle />
+            <Text testID="address-load-error" variant="body" color="danger" center style={{ marginTop: 14 }}>
               {loadError}
             </Text>
             <Button label="Go back" variant="outline" onPress={() => navigation.goBack()} style={{ marginTop: 16 }} />
@@ -226,78 +233,121 @@ export function AddressFormScreen({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Card>
-          <Input
+        {/* ─── Info hero — mirrors the Pickup Address reference banner ─── */}
+        <Hero>
+          <View style={styles.heroRow}>
+            <IconBadge icon="map-pin" tone="azure" size={48} circle />
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Text variant="headline" weight="700">
+                Accurate address helps us serve you better
+              </Text>
+              <Text variant="footnote" color="secondary" style={{ marginTop: 2 }}>
+                Please provide a detailed pickup location
+              </Text>
+            </View>
+          </View>
+        </Hero>
+
+        <Card style={{ marginTop: space.lg }}>
+          <AddressField
             testID="address-name"
-            label="Name"
+            label="Address label"
+            required
             icon="tag"
             placeholder="Home"
             value={values.name}
             onChangeText={(t) => set('name', t)}
             error={errors.name}
+            hint="Home, Work, or a nickname for this address."
             autoCapitalize="words"
             returnKeyType="next"
           />
-          <Input
+          <AddressField
             testID="address-line"
-            label="Street address"
+            label="Street Address"
+            required
             icon="map-pin"
             placeholder="100 Queen St W, Toronto, ON"
             value={values.address}
             onChangeText={(t) => set('address', t)}
             error={errors.address}
-            hint="We'll look this up to place your pickup."
+            hint="Include city, province and postal code — we'll look it up."
             autoCapitalize="words"
-            containerStyle={{ marginTop: space.md }}
+            style={{ marginTop: space.lg }}
           />
-          <View style={styles.pair}>
-            <Input
-              testID="address-unit"
-              label="Unit"
-              placeholder="12B"
-              value={values.unit}
-              onChangeText={(t) => set('unit', t)}
-              containerStyle={styles.pairItem}
-            />
-            <Input
-              testID="address-buzzer"
-              label="Buzzer"
-              placeholder="1204"
-              value={values.buzzer}
-              onChangeText={(t) => set('buzzer', t)}
-              containerStyle={styles.pairItemRight}
-            />
-          </View>
-          <Input
-            testID="address-notes"
-            label="Driver notes"
-            icon="info"
-            placeholder="Side door, leave with concierge"
-            value={values.notes}
-            onChangeText={(t) => set('notes', t)}
-            multiline
-            containerStyle={{ marginTop: space.md }}
+          <AddressField
+            testID="address-unit"
+            label="Apartment / Suite / Unit"
+            icon="home"
+            placeholder="12B"
+            value={values.unit}
+            onChangeText={(t) => set('unit', t)}
+            style={{ marginTop: space.lg }}
+          />
+          <AddressField
+            testID="address-buzzer"
+            label="Buzzer / Entry Code"
+            icon="hash"
+            placeholder="1204"
+            value={values.buzzer}
+            onChangeText={(t) => set('buzzer', t)}
+            style={{ marginTop: space.lg }}
           />
 
-          <View style={[styles.defaultRow, { borderTopColor: colors.hairline }]}>
-            <IconBadge icon="star" tone="honey" size={36} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text variant="subhead" weight="600">
-                Default address
-              </Text>
-              <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
-                Pre-selected when you book.
-              </Text>
+          <View style={{ marginTop: space.lg }}>
+            <FieldLabel label="Additional Instructions for Driver" />
+            <View style={styles.fieldRow}>
+              <IconBadge icon="file-text" tone="azure" size={40} style={styles.fieldIcon} />
+              <Input
+                testID="address-notes"
+                placeholder="E.g. Leave with doorman / floor 5"
+                value={values.notes}
+                onChangeText={(t) => set('notes', t.slice(0, 500))}
+                multiline
+                containerStyle={{ flex: 1 }}
+              />
             </View>
-            <Switch
-              testID="address-default"
-              value={values.isDefault}
-              onValueChange={(v) => {
-                fireHaptic('selection');
-                set('isDefault', v);
-              }}
-              trackColor={{ true: colors.azure }}
+            <Text variant="caption" color="tertiary" style={styles.counter}>
+              {values.notes.length}/500
+            </Text>
+          </View>
+
+          <View style={[styles.defaultDivider, { borderTopColor: colors.hairline }]}>
+            <Row
+              title="Default address"
+              subtitle="Pre-selected when you book."
+              icon="star"
+              iconTone="honey"
+              right={
+                <Switch
+                  testID="address-default"
+                  value={values.isDefault}
+                  onValueChange={(v) => {
+                    fireHaptic('selection');
+                    set('isDefault', v);
+                  }}
+                  trackColor={{ true: colors.azure }}
+                />
+              }
             />
+          </View>
+        </Card>
+
+        {/* ─── Trust banner — mirrors the reference "info is safe with us" strip ─── */}
+        <Card
+          style={[
+            styles.trustCard,
+            { backgroundColor: colors.successTint, borderColor: colors.successTint, marginTop: space.lg },
+          ]}
+        >
+          <IconBadge icon="shield" tone="success" size={44} circle />
+          <View style={{ flex: 1, marginLeft: 14 }}>
+            <Text variant="subhead" weight="700">
+              Your information is safe with us
+            </Text>
+            <Text variant="footnote" color="secondary" style={{ marginTop: 2 }}>
+              We use secure encryption to protect your data.
+            </Text>
           </View>
         </Card>
 
@@ -312,8 +362,8 @@ export function AddressFormScreen({
 
         <Button
           testID="address-save"
-          label={original ? 'Save changes' : 'Save address'}
-          icon="check"
+          label={original ? 'Save changes' : 'Save Address'}
+          icon="save"
           onPress={onSave}
           busy={saving}
           disabled={saving}
@@ -325,14 +375,100 @@ export function AddressFormScreen({
   );
 }
 
+/** Label row — matches the reference's "Label *" treatment (red asterisk only on truly required fields). */
+function FieldLabel({ label, required }: { label: string; required?: boolean }): React.ReactElement {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.fieldLabelRow}>
+      <Text variant="subhead" weight="500" color="secondary">
+        {label}
+      </Text>
+      {required ? (
+        <Text variant="subhead" weight="700" style={{ color: colors.danger, marginLeft: 3 }}>
+          *
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+interface AddressFieldProps {
+  testID: string;
+  label: string;
+  required?: boolean;
+  icon: React.ComponentProps<typeof Feather>['name'];
+  tone?: IconTone;
+  placeholder?: string;
+  value: string;
+  onChangeText: (t: string) => void;
+  error?: string | null;
+  hint?: string;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  returnKeyType?: 'next' | 'done';
+  style?: ViewStyle;
+}
+
+/**
+ * The Royal "tinted-chip + field" row from the reference render — a colour-coded IconBadge beside the
+ * input, with a trailing green check once the field carries a valid, non-empty value. Composed locally
+ * (not a components/ui change) from the frozen Input primitive, which has no chip/trailing-accessory
+ * slot of its own.
+ */
+function AddressField({
+  testID,
+  label,
+  required,
+  icon,
+  tone = 'azure',
+  placeholder,
+  value,
+  onChangeText,
+  error,
+  hint,
+  autoCapitalize,
+  returnKeyType,
+  style,
+}: AddressFieldProps): React.ReactElement {
+  const { colors } = useTheme();
+  const filled = value.trim().length > 0 && !error;
+  return (
+    <View style={style}>
+      <FieldLabel label={label} required={required} />
+      <View style={styles.fieldRow}>
+        <IconBadge icon={icon} tone={tone} size={40} style={styles.fieldIcon} />
+        <View style={{ flex: 1, position: 'relative' }}>
+          <Input
+            testID={testID}
+            placeholder={placeholder}
+            value={value}
+            onChangeText={onChangeText}
+            error={error}
+            hint={hint}
+            autoCapitalize={autoCapitalize}
+            returnKeyType={returnKeyType}
+            style={filled ? { paddingRight: 26 } : undefined}
+          />
+          {filled ? (
+            <Feather name="check-circle" size={18} color={colors.success} style={styles.fieldCheck} />
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   stateCard: { alignItems: 'center', paddingVertical: 28, alignSelf: 'stretch' },
-  pair: { flexDirection: 'row', marginTop: 12 },
-  pairItem: { flex: 1 },
-  pairItemRight: { flex: 1, marginLeft: 12 },
-  defaultRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth },
+  heroRow: { flexDirection: 'row', alignItems: 'center' },
+  fieldLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  fieldRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  fieldIcon: { marginRight: 10 },
+  fieldCheck: { position: 'absolute', right: 14, top: 16 },
+  counter: { textAlign: 'right', marginTop: 6 },
+  defaultDivider: { marginTop: 18, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth },
+  trustCard: { flexDirection: 'row', alignItems: 'center' },
   noticeHead: { flexDirection: 'row', alignItems: 'center' },
   errorBox: { flexDirection: 'row', alignItems: 'center', padding: 10 },
 });

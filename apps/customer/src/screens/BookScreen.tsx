@@ -17,7 +17,7 @@ import type { RootStackParamList } from '../navigation';
 import { buildBookDto, newIdempotencyKey, slotToWindow, type DraftItem } from '../orders/booking';
 import { money, rangeText } from '../format';
 import { useTheme } from '../../theme';
-import { Button, Card, EmptyState, Stepper, Text } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, IconBadge, Stepper, Text } from '../../components/ui';
 import { CorporatePricingNote } from '../components/CorporatePricing';
 import { DrycleanPicker } from '../components/DrycleanPicker';
 import { PickupSlotPicker } from '../components/PickupSlotPicker';
@@ -318,13 +318,19 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <Stepper steps={['Items', 'Schedule', 'Review']} current={bookStep} style={{ marginBottom: 4 }} />
+      <Stepper steps={['Schedule', 'Payment', 'Review']} current={bookStep} style={{ marginBottom: 4 }} />
 
       {corpAccountName ? <CorporatePricingNote accountName={corpAccountName} /> : null}
 
       {/* ── [Inc-38] PER-GARMENT: pick the garments, each at its own real price ── */}
       {garmentMode ? (
-        <Card title={card?.serviceName ? `Book ${card.serviceName}` : 'Book'}>
+        <Card>
+          <View style={styles.cardHeader}>
+            <IconBadge icon="shopping-bag" tone="azure" />
+            <Text variant="headline" weight="600" style={styles.cardHeaderTitle}>
+              {card?.serviceName ? `Book ${card.serviceName}` : 'Book'}
+            </Text>
+          </View>
           <Text testID="book-garment-help" variant="footnote" color="secondary" style={styles.help}>
             Choose the garments you’re sending. Each is priced individually.
           </Text>
@@ -361,7 +367,13 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
         </Card>
       ) : (
         /* ── the ONE measure + the live estimate ── */
-        <Card title={card?.serviceName ? `Book ${card.serviceName}` : 'Book'}>
+        <Card>
+          <View style={styles.cardHeader}>
+            <IconBadge icon="shopping-bag" tone="azure" />
+            <Text variant="headline" weight="600" style={styles.cardHeaderTitle}>
+              {card?.serviceName ? `Book ${card.serviceName}` : 'Book'}
+            </Text>
+          </View>
           <Text testID="book-measure-help" variant="footnote" color="secondary" style={styles.help}>
             {measureHelp(card?.unit)}
           </Text>
@@ -407,7 +419,13 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
 
       {/* ── address ── */}
       {sites.length === 0 ? (
-        <Card title="Pickup & delivery address">
+        <Card>
+          <View style={styles.cardHeader}>
+            <IconBadge icon="map-pin" tone="azure" />
+            <Text variant="headline" weight="600" style={styles.cardHeaderTitle}>
+              Pickup & delivery address
+            </Text>
+          </View>
           <EmptyState
             testID="no-addresses"
             icon="map-pin"
@@ -419,7 +437,13 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
           />
         </Card>
       ) : (
-        <Card title="Pickup & delivery address">
+        <Card>
+          <View style={styles.cardHeader}>
+            <IconBadge icon="map-pin" tone="azure" />
+            <Text variant="headline" weight="600" style={styles.cardHeaderTitle}>
+              Pickup & delivery address
+            </Text>
+          </View>
           {sites.map((s) => {
             const on = siteId === s.id;
             return (
@@ -434,9 +458,11 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
               >
-                <Feather name="map-pin" size={18} color={on ? colors.azure : colors.textTertiary} />
+                <View style={[styles.siteIconWrap, { backgroundColor: on ? colors.azure : colors.subtle }]}>
+                  <Feather name="map-pin" size={16} color={on ? colors.onAzure : colors.textTertiary} />
+                </View>
                 <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text variant="subhead" weight="600">
+                  <Text variant="subhead" weight="700">
                     {s.name}
                   </Text>
                   {s.address ? (
@@ -445,20 +471,33 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
                     </Text>
                   ) : null}
                 </View>
-                {on ? <Feather name="check-circle" size={18} color={colors.azure} /> : null}
+                {s.isDefault ? (
+                  <View style={styles.siteBadges}>
+                    <Badge label="Default" tone="azure" />
+                    {on ? (
+                      <View style={[styles.checkDot, { backgroundColor: colors.azure }]}>
+                        <Feather name="check" size={12} color={colors.onAzure} />
+                      </View>
+                    ) : null}
+                  </View>
+                ) : on ? (
+                  <Feather name="check-circle" size={18} color={colors.azure} />
+                ) : null}
               </Pressable>
             );
           })}
-          <Button
+          <Pressable
             testID="book-add-address"
-            label="Add another address"
-            icon="plus"
-            variant="ghost"
-            size="sm"
-            fullWidth={false}
             onPress={() => navigation.navigate('AddressForm', { returnTo: 'Book' })}
-            style={{ marginTop: 10 }}
-          />
+            style={[styles.addAddressBox, { borderColor: colors.azure }]}
+            accessibilityRole="button"
+            accessibilityLabel="Add another address"
+          >
+            <Feather name="plus" size={16} color={colors.azure} />
+            <Text variant="subhead" weight="600" color="azure" style={{ marginLeft: 8 }}>
+              Add another address
+            </Text>
+          </Pressable>
         </Card>
       )}
 
@@ -491,7 +530,7 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
                 ? 'Choose a pickup time'
                 : 'Book pickup'
         }
-        icon="check"
+        icon="arrow-right"
         onPress={() => void submit()}
         busy={submitting}
         disabled={submitting || !canSubmit || !siteId || !pickupSlot}
@@ -521,6 +560,18 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
           </Text>
         </View>
       ) : null}
+
+      <View style={styles.trustStrip}>
+        <IconBadge icon="shield" tone="success" size={36} />
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text variant="subhead" weight="700">
+            Safe. Reliable. On time.
+          </Text>
+          <Text variant="footnote" color="secondary" style={{ marginTop: 2 }}>
+            Your clothes are in good hands.
+          </Text>
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -620,7 +671,23 @@ const styles = StyleSheet.create({
   measureField: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, borderWidth: StyleSheet.hairlineWidth, minHeight: 52, gap: 8 },
   estimateBox: { borderRadius: 12, padding: 14, marginTop: 16 },
   estimateTop: { flexDirection: 'row', alignItems: 'center' },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  cardHeaderTitle: { marginLeft: 10, flex: 1 },
   siteRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 12, padding: 14, marginBottom: 8 },
+  siteIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  siteBadges: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  checkDot: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  addAddressBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 4,
+  },
   errorBox: { borderRadius: 12, padding: 12, marginTop: 12 },
   outOfAreaBox: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, borderWidth: 1, padding: 12, marginTop: 12 },
+  trustStrip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, paddingTop: 4 },
 });

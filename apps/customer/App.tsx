@@ -47,7 +47,7 @@ const ONBOARDED_KEY = 'royal.onboarded';
  *
  * [Inc-34] A 4th tab, **Refer**, is added (route name 'Refer' — net-new, nothing frozen navigates to it).
  */
-type TabParamList = { Home: undefined; Services: undefined; Orders: undefined; Settings: undefined; Refer: undefined };
+type TabParamList = { Home: undefined; Services: undefined; Orders: undefined; Settings: undefined; Refer: undefined; Pricing: undefined };
 type RootNavParamList = {
   Main: undefined;
   // [Inc-26] Book now takes params (a preselected site after adding an address). This list is the
@@ -59,7 +59,6 @@ type RootNavParamList = {
   Chat: { orderId: string };
   Pay: { orderId: string };
   Rate: { orderId: string };
-  Pricing: undefined;
   Addresses: undefined;
   AddressForm: { siteId?: string; returnTo?: 'Book' } | undefined;
 };
@@ -111,8 +110,10 @@ function OrdersTab(): React.ReactElement {
   return <OrdersScreen navigation={navigation} />;
 }
 
-/** [Inc-33/34] The Daylight bottom tab bar — Service · Orders · Profile · Refer. Book is the Service tab's
- *  primary action (no center FAB); Refer (Inc-34) invites friends (no reward — reward is deferred). */
+/** [Royal] The bottom dock — Home · Pricing · (Order + FAB) · Invite · Profile, per the reference. The
+ *  center FAB starts a new order (→ the Services picker). Route NAMES stay stable so frozen navigate()
+ *  calls resolve: 'Settings' is the Profile tab, 'Refer' is Invite; Services/Orders remain registered tab
+ *  routes (reached via the FAB and Home's "see all"), just without their own dock button. */
 function DaylightTabBar({ state, navigation }: BottomTabBarProps): React.ReactElement {
   const { colors, space } = useTheme();
   const insets = useSafeAreaInsets();
@@ -125,13 +126,27 @@ function DaylightTabBar({ state, navigation }: BottomTabBarProps): React.ReactEl
 
   return (
     <View style={[styles.tabBar, { backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
-      {/* 'Home' route → the Service catalogue tab; 'Settings' route → the Profile tab (route names kept
-          stable so the frozen screens' navigate() calls resolve — see TabParamList above). */}
       <TabButton icon="home" label="Home" active={active === 'Home'} onPress={() => go('Home')} />
-      <TabButton icon="grid" label="Services" active={active === 'Services'} onPress={() => go('Services')} />
-      <TabButton icon="package" label="Orders" active={active === 'Orders'} onPress={() => go('Orders')} />
+      <TabButton icon="dollar-sign" label="Pricing" active={active === 'Pricing'} onPress={() => go('Pricing')} />
+      <OrderFab onPress={() => go('Services')} />
+      <TabButton icon="gift" label="Invite" active={active === 'Refer'} onPress={() => go('Refer')} />
       <TabButton icon="user" label="Profile" active={active === 'Settings'} onPress={() => go('Settings')} />
-      <TabButton icon="user-plus" label="Refer" active={active === 'Refer'} onPress={() => go('Refer')} />
+    </View>
+  );
+}
+
+/** The center "+" Order action — an elevated royal-blue disc that rises above the dock. Not a tab route;
+ *  it starts a new order by jumping to the Services picker. */
+function OrderFab({ onPress }: { onPress: () => void }): React.ReactElement {
+  const { colors, elevation } = useTheme();
+  return (
+    <View style={styles.tabItem}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New order" style={[styles.fab, { backgroundColor: colors.azure }, elevation.e2]}>
+        <Feather name="plus" size={26} color={colors.onAzure} />
+      </Pressable>
+      <Text variant="caption" weight="600" style={{ color: colors.azure, marginTop: 4 }}>
+        Order
+      </Text>
     </View>
   );
 }
@@ -169,8 +184,10 @@ function MainTabs(): React.ReactElement {
       <Tab.Screen name="Orders" component={OrdersTab} options={{ title: 'My orders' }} />
       {/* Profile tab — route name stays 'Settings' (frozen), titled/labelled "Profile". */}
       <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Profile' }} />
-      {/* [Inc-34] Refer tab — invite friends (reward deferred; no reward copy). */}
+      {/* [Inc-34] Refer tab — invite friends (reward deferred; no reward copy). Labelled "Invite" in the dock. */}
       <Tab.Screen name="Refer" component={ReferScreen} options={{ title: 'Refer' }} />
+      {/* [Royal] Pricing is now a first-class dock tab (was a pushed route). Owns its own header. */}
+      <Tab.Screen name="Pricing" component={PricingScreen} options={{ headerShown: false }} />
     </Tab.Navigator>
   );
 }
@@ -216,7 +233,6 @@ function Root(): React.ReactElement {
     <RootStack.Navigator screenOptions={screenOptions(theme)}>
       <RootStack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
       <RootStack.Screen name="Book" component={BookScreen} options={{ title: 'Book a cleaning' }} />
-      <RootStack.Screen name="Pricing" component={PricingScreen} options={{ title: 'Pricing', headerLargeTitle: false }} />
       <RootStack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order', headerLargeTitle: false }} />
       <RootStack.Screen name="Track" component={TrackScreen} options={{ title: 'Track my truck', headerLargeTitle: false }} />
       <RootStack.Screen name="Chat" component={ChatScreen} options={{ title: 'Messages', headerLargeTitle: false }} />
@@ -274,4 +290,5 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  fab: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -20 },
 });

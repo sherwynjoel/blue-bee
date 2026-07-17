@@ -139,3 +139,92 @@ export function statusLabel(status: OrderStatus): string {
       return status.replace(/_/g, ' ').toLowerCase();
   }
 }
+
+// ─────────────────────── Customer-facing 4-stage collapse (Royal redesign) ───────────────────────
+// The customer must NOT see the internal plant statuses (scheduled/dry pickup, inspect-at-plant, quote
+// ready/approved, in-cleaning, QC…). Per the reference design, the customer's order tracker has exactly
+// FOUR stages: Order placed → Picked up → Out for delivery → Delivered. We collapse the server's granular
+// OrderStatus onto those four (with honest handling for on-hold / declined / no-work). Presentation only —
+// the status still comes from `order.status`, never invented. Use this everywhere the customer sees status;
+// `buildTimeline`/the 15-node spine above stays for any internal/ops surface that wants the full detail.
+
+export type CustomerStageIndex = 0 | 1 | 2 | 3;
+export const CUSTOMER_STAGE_LABELS = ['Order placed', 'Picked up', 'Out for delivery', 'Delivered'] as const;
+/** Tone key the customer status maps to (screen maps this to a Badge/IconBadge tone + timeline colour). */
+export type CustomerTone = 'active' | 'transit' | 'delivered' | 'exception' | 'hold';
+
+const CUSTOMER_STAGE_OF: Record<string, CustomerStageIndex> = {
+  [OrderStatus.REQUESTED]: 0,
+  [OrderStatus.SCHEDULED_PICKUP]: 0,
+  [OrderStatus.PICKUP_EN_ROUTE]: 0,
+  [OrderStatus.PICKED_UP]: 1,
+  [OrderStatus.INTAKE_INSPECTED]: 1,
+  [OrderStatus.DAMAGE_PREEXISTING_FLAGGED]: 1,
+  [OrderStatus.QUOTED]: 1,
+  [OrderStatus.QUOTE_APPROVED]: 1,
+  [OrderStatus.IN_CLEANING]: 1,
+  [OrderStatus.REWASH]: 1,
+  [OrderStatus.QC]: 1,
+  [OrderStatus.READY]: 1,
+  [OrderStatus.SCHEDULED_DELIVERY]: 2,
+  [OrderStatus.DELIVERY_EN_ROUTE]: 2,
+  [OrderStatus.DELIVERED]: 3,
+  [OrderStatus.INVOICED]: 3,
+  [OrderStatus.CLOSED]: 3,
+  [OrderStatus.CLAIM_OPENED]: 3,
+  [OrderStatus.CLAIM_RESOLVED]: 3,
+};
+
+export interface CustomerStatusView {
+  /** 0-3 stage for the 4-node tracker; null when the order ended early (declined / no work → no tracker). */
+  stageIndex: CustomerStageIndex | null;
+  /** The single pill label the customer sees (e.g. "Pickup scheduled", "Out for delivery"). */
+  label: string;
+  tone: CustomerTone;
+  onHold: boolean;
+  /** Honest note for exception/hold states, else null. */
+  note: string | null;
+  terminatedEarly: boolean;
+}
+
+function customerPillLabel(status: OrderStatus, stage: CustomerStageIndex): string {
+  if (status === OrderStatus.SCHEDULED_PICKUP) return 'Pickup scheduled';
+  if (status === OrderStatus.PICKUP_EN_ROUTE) return 'Pickup en route';
+  return CUSTOMER_STAGE_LABELS[stage];
+}
+
+/** Collapse a server OrderStatus (+ heldFrom for ON_HOLD) into the customer's 4-stage view. */
+export function customerStatus(status: OrderStatus, heldFrom?: OrderStatus | null): CustomerStatusView {
+  if (status === OrderStatus.QUOTE_DECLINED)
+    return { stageIndex: null, label: 'Quote declined', tone: 'exception', onHold: false, note: BRANCH_NOTES[OrderStatus.QUOTE_DECLINED] ?? null, terminatedEarly: true };
+  if (status === OrderStatus.CLOSED_NO_WORK)
+    return { stageIndex: null, label: 'Closed', tone: 'exception', onHold: false, note: BRANCH_NOTES[OrderStatus.CLOSED_NO_WORK] ?? null, terminatedEarly: true };
+
+  const onHold = status === OrderStatus.ON_HOLD;
+  const effective = onHold && heldFrom ? heldFrom : status;
+  const stageIndex = CUSTOMER_STAGE_OF[effective] ?? 0;
+
+  if (onHold) return { stageIndex, label: 'On hold', tone: 'hold', onHold: true, note: BRANCH_NOTES[OrderStatus.ON_HOLD] ?? null, terminatedEarly: false };
+
+  const tone: CustomerTone = stageIndex === 3 ? 'delivered' : stageIndex === 2 ? 'transit' : 'active';
+  return { stageIndex, label: customerPillLabel(effective, stageIndex), tone, onHold: false, note: BRANCH_NOTES[status] ?? null, terminatedEarly: false };
+}
+
+export interface CustomerTimeline {
+  /** Exactly 4 nodes (Placed → Picked up → Out for delivery → Delivered). */
+  steps: { label: string; state: StepState }[];
+  note: string | null;
+  terminatedEarly: boolean;
+  onHold: boolean;
+}
+
+/** The 4-node customer tracker (done/current/upcoming). Screens render this instead of the 15-node spine. */
+export function buildCustomerTimeline(status: OrderStatus, heldFrom?: OrderStatus | null): CustomerTimeline {
+  const v = customerStatus(status, heldFrom);
+  const anchor = v.stageIndex ?? 0;
+  const steps = CUSTOMER_STAGE_LABELS.map((label, i) => ({
+    label,
+    state: (i < anchor ? 'done' : i === anchor && !v.terminatedEarly ? 'current' : 'upcoming') as StepState,
+  }));
+  return { steps, note: v.note, terminatedEarly: v.terminatedEarly, onHold: v.onHold };
+}

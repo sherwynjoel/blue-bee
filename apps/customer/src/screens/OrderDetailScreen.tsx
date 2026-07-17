@@ -2,14 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { io } from 'socket.io-client';
-import { PhotoKind, WS_EVENTS, WS_NAMESPACES, type OrderWeightView } from '@blue-bee/shared';
+import { PhotoKind, WS_EVENTS, WS_NAMESPACES, type OrderStatus, type OrderWeightView } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useFocusEffect, type NavigationProp, type RouteProp } from '@react-navigation/native';
 import { useSession } from '../session/SessionProvider';
 import { API_BASE_URL } from '../config';
 import type { OrderDetail, ItemView } from '../api/types';
 import type { RootStackParamList } from '../navigation';
-import { StatusTimeline } from '../components/StatusTimeline';
+import { buildCustomerTimeline } from '../orders/timeline';
 import { CorporatePricingNote } from '../components/CorporatePricing';
 import { StarRating } from '../components/StarRating';
 import { hasActiveStop, preexistingDamageItems, quoteActionability } from '../orders/quote';
@@ -254,7 +254,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       </Pressable>
 
       <Card title="Progress">
-        <StatusTimeline status={order.status} heldFrom={order.heldFrom} />
+        <CustomerTimeline status={order.status} heldFrom={order.heldFrom} />
       </Card>
 
       {/* [Inc-32] Post-delivery rating. Once the order is delivered-or-later: the submitted score read-only,
@@ -537,6 +537,83 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
     </ScrollView>
   );
 }
+
+/**
+ * The customer-facing 4-node tracker (Order placed → Picked up → Out for delivery → Delivered), built
+ * from `buildCustomerTimeline` (§ orders/timeline.ts) — the server's granular status collapsed to what
+ * the customer should see, never invented client-side. Mirrors the app's established vertical-rail
+ * timeline language (checked/ringed/hollow nodes + connectors) with an honest note for on-hold/declined
+ * states. Kept local to this screen per the Royal convention for small presentational sub-components.
+ */
+function CustomerTimeline({ status, heldFrom }: { status: OrderStatus; heldFrom?: OrderStatus | null }): React.ReactElement {
+  const { colors, space } = useTheme();
+  const { steps, note, onHold } = buildCustomerTimeline(status, heldFrom);
+  const lastIdx = steps.length - 1;
+
+  return (
+    <View testID="status-timeline">
+      {steps.map((step, i) => {
+        const done = step.state === 'done';
+        const current = step.state === 'current';
+        const nodeColor = onHold && current ? colors.warning : colors.azure;
+        const nodeTint = onHold && current ? colors.warningTint : colors.azureTint;
+        const connectorColor = done ? colors.success : colors.hairline;
+
+        return (
+          <View key={step.label} style={timelineStyles.row}>
+            <View style={timelineStyles.rail}>
+              {done ? (
+                <View style={[timelineStyles.dotDone, { backgroundColor: colors.success }]}>
+                  <Feather name="check" size={11} color={colors.onAzure} />
+                </View>
+              ) : current ? (
+                <View style={[timelineStyles.ring, { borderColor: nodeColor, backgroundColor: nodeTint }]}>
+                  {onHold ? <Feather name="pause" size={10} color={nodeColor} /> : <View style={[timelineStyles.ringCore, { backgroundColor: nodeColor }]} />}
+                </View>
+              ) : (
+                <View style={[timelineStyles.dotUpcoming, { borderColor: colors.hairline, backgroundColor: colors.surface }]} />
+              )}
+              {i < lastIdx ? <View style={[timelineStyles.connector, { backgroundColor: connectorColor }]} /> : null}
+            </View>
+
+            <Text
+              variant="subhead"
+              weight={current ? '700' : done ? '500' : '400'}
+              color={current ? (onHold ? 'warning' : 'azure') : done ? 'primary' : 'tertiary'}
+              style={timelineStyles.label}
+            >
+              {step.label}
+            </Text>
+          </View>
+        );
+      })}
+
+      {note ? (
+        <View style={[timelineStyles.note, { backgroundColor: colors.warningTint, marginTop: space.md }]}>
+          <Feather name="info" size={15} color={colors.warning} style={{ marginTop: 1 }} />
+          <Text testID="timeline-note" variant="footnote" color="warning" style={timelineStyles.noteText}>
+            {note}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const TIMELINE_NODE = 22;
+
+const timelineStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'flex-start' },
+  rail: { width: TIMELINE_NODE, alignItems: 'center' },
+  dotDone: { width: TIMELINE_NODE, height: TIMELINE_NODE, borderRadius: TIMELINE_NODE / 2, alignItems: 'center', justifyContent: 'center' },
+  ring: { width: TIMELINE_NODE, height: TIMELINE_NODE, borderRadius: TIMELINE_NODE / 2, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
+  ringCore: { width: 8, height: 8, borderRadius: 4 },
+  dotUpcoming: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, marginVertical: (TIMELINE_NODE - 14) / 2 },
+  connector: { width: 2, flex: 1, minHeight: 20, marginVertical: 2 },
+  label: { marginLeft: 14, paddingTop: 2, paddingBottom: 14, flex: 1 },
+  note: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, padding: 12, gap: 8 },
+  noteText: { flex: 1, lineHeight: 18 },
+});
 
 function PhotoRow({ item, onZoom }: { item: ItemView; onZoom: (uri: string) => void }): React.ReactElement {
   const { colors } = useTheme();

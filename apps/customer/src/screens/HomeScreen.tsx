@@ -12,16 +12,16 @@ import { useTheme } from '../../theme';
 import { Button, Card, EmptyState, IconBadge, SkeletonCard, Text, fireHaptic } from '../../components/ui';
 
 /**
- * Home — the service grid (PRD §7A). A 2-up grid of the org's service categories, driven ENTIRELY by the
- * live catalog (`getServiceMenu` → `GET /v1/catalog/home`): each card is a category's icon → title → a plain
- * one-line description → a "from" price. Nothing here is hard-coded — `description`/`icon`/`unit`/`priceFrom`
- * and the backing `serviceId` all come from the server (founder-editable in the `/catalog` console). The card
- * degrades gracefully when a field is unset (missing copy omitted; unknown icon falls back; no price → an
- * honest "Get a quote").
+ * Home — the service grid (PRD §7A). A full-width BAR list of the org's service categories, driven
+ * ENTIRELY by the live catalog (`getServiceMenu` → `GET /v1/catalog/home`): each bar's icon → title →
+ * a plain one-line description → a "from" price, all come from the server
+ * (founder-editable in the `/catalog` console). Nothing here is hard-coded — a bar degrades gracefully
+ * when a field is unset (missing copy omitted; unknown icon falls back; no price → an honest
+ * "Get a quote").
  *
- * [Inc-36] The card's `serviceId` is what makes a tap open the FOCUSED single-measure checkout, so the grid
- * re-reads the catalog on focus + pull-to-refresh (see `load`): a stale copy would send `serviceId: undefined`
- * and dead-end the customer at "Choose a service".
+ * [Inc-36] The card's `serviceId` is what makes a tap open the FOCUSED single-measure checkout, so the
+ * list re-reads the catalog on focus + pull-to-refresh (see `load`): a stale copy would send
+ * `serviceId: undefined` and dead-end the customer at "Choose a service".
  */
 export function HomeScreen(): React.ReactElement {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
@@ -88,17 +88,22 @@ export function HomeScreen(): React.ReactElement {
 
   const firstName = me?.user.name ? me.user.name.split(' ')[0] : null;
   // [Inc-24] Render in the order the founder arranged in the console. The server already sorts by sortOrder;
-  // sorting here too makes the grid's order a pure function of sortOrder rather than of response order.
+  // sorting here too makes the list's order a pure function of sortOrder rather than of response order.
   const categories = [...(catalog?.cards ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const currency = catalog?.currency ?? 'CAD';
 
   const header = (
     <View style={[styles.headerWrap, { paddingTop: insets.top + 12 }]}>
       <Text variant="display" weight="700">
-        Our services
+        Our Services
       </Text>
-      <Text variant="subhead" color="secondary" style={{ marginTop: 4 }}>
-        {firstName ? `Hi ${firstName} — pick a service to get started.` : 'Pick a service to get started.'}
+      {/* [Royal] Decorative onboarding-style progress mark — pure chrome, no data behind it. */}
+      <View style={styles.progressRow} accessible={false} importantForAccessibility="no">
+        <View style={[styles.progressBar, { backgroundColor: colors.azure }]} />
+        <View style={[styles.progressDot, { backgroundColor: colors.azureTint }]} />
+      </View>
+      <Text variant="subhead" color="secondary" style={{ marginTop: 10 }}>
+        {firstName ? `Hi ${firstName} \u{1F44B} — pick a service to get started.` : 'Pick a service to get started.'}
       </Text>
       {/* [Inc-36] The Inc-33 "Book a pickup" button is GONE. Every bar below carries a backing service, so a
           tap always opens the focused checkout. [Royal] A quiet link into the read-only per-garment price list. */}
@@ -113,11 +118,11 @@ export function HomeScreen(): React.ReactElement {
         style={styles.pricingLink}
         hitSlop={8}
       >
-        <Feather name="tag" size={15} color={colors.azure} />
-        <Text variant="subhead" weight="600" style={{ color: colors.azure, marginLeft: 6 }}>
+        <Feather name="tag" size={14} color={colors.azure} />
+        <Text variant="footnote" weight="600" style={{ color: colors.azure, marginLeft: 6 }}>
           View full price list
         </Text>
-        <Feather name="chevron-right" size={16} color={colors.azure} />
+        <Feather name="chevron-right" size={14} color={colors.azure} />
       </Pressable>
     </View>
   );
@@ -173,61 +178,102 @@ export function HomeScreen(): React.ReactElement {
           <EmptyState icon="tag" title="No services yet" body="Our catalog is being set up. Check back soon." />
         </View>
       ) : (
-        <View style={styles.list}>
-          {categories.map((cat) => (
-            <ServiceBar
-              key={cat.id}
-              category={cat}
-              currency={currency}
-              // [Inc-23] Carry the card's backing service into Book so the order references the right
-              // service → pricingModel. A card with no backing service yet (rate unset) opens the general
-              // composer (undefined param).
-              // [Inc-38] Carry the card id + its garment count too: a card with garments nested under it is
-              // priced PER GARMENT, so Book drills into the picker instead of asking for one measure. Which
-              // cards those are is the founder's catalog talking — never a name/icon check in the app.
-              onPress={() =>
-                navigation.navigate(
-                  'Book',
-                  cat.serviceId
-                    ? {
-                        serviceId: cat.serviceId,
-                        serviceName: cat.name,
-                        unit: cat.unit,
-                        kind: kindForCard(cat),
-                        cardId: cat.id,
-                        garmentCount: cat.garmentCount,
-                      }
-                    : undefined,
-                )
-              }
-            />
-          ))}
-        </View>
+        <>
+          {/* [Royal] A decorative section eyebrow above the list — purely a heading treatment (dotted rules +
+              a sparkle mark either side), not a claim about grouping/taxonomy the catalog doesn't send. */}
+          <View style={styles.eyebrowRow}>
+            <View style={[styles.eyebrowLine, { borderColor: colors.azureTint }]} />
+            <Feather name="star" size={12} color={colors.azure} style={{ marginHorizontal: 8 }} />
+            <Text variant="subhead" weight="700">
+              All services
+            </Text>
+            <Feather name="star" size={12} color={colors.azure} style={{ marginHorizontal: 8 }} />
+            <View style={[styles.eyebrowLine, { borderColor: colors.azureTint }]} />
+          </View>
+          <View style={styles.list}>
+            {categories.map((cat) => (
+              <ServiceBar
+                key={cat.id}
+                category={cat}
+                currency={currency}
+                // [Inc-23] Carry the card's backing service into Book so the order references the right
+                // service → pricingModel. A card with no backing service yet (rate unset) opens the general
+                // composer (undefined param).
+                // [Inc-38] Carry the card id + its garment count too: a card with garments nested under it is
+                // priced PER GARMENT, so Book drills into the picker instead of asking for one measure. Which
+                // cards those are is the founder's catalog talking — never a name/icon check in the app.
+                onPress={() =>
+                  navigation.navigate(
+                    'Book',
+                    cat.serviceId
+                      ? {
+                          serviceId: cat.serviceId,
+                          serviceName: cat.name,
+                          unit: cat.unit,
+                          kind: kindForCard(cat),
+                          cardId: cat.id,
+                          garmentCount: cat.garmentCount,
+                        }
+                      : undefined,
+                  )
+                }
+              />
+            ))}
+          </View>
+          {/* [Royal] A static brand trust strip matching the render's closing banner. Copy is a fixed brand
+              tagline (no invented counts/ratings) — softened from the render's "100%" figure since that
+              specific number has no backing data source. */}
+          <View style={[styles.trustCard, { backgroundColor: colors.azureTint, borderColor: colors.hairline, borderRadius: 16 }]}>
+            <View style={styles.trustHalf}>
+              <IconBadge icon="shield" tone="azure" size={40} circle />
+              <View style={styles.trustText}>
+                <Text variant="subhead" weight="700">
+                  Trusted. Clean. Reliable.
+                </Text>
+                <Text variant="caption" color="secondary" style={{ marginTop: 2 }}>
+                  Quality service, on time, every time.
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.trustDivider, { backgroundColor: colors.hairline }]} />
+            <View style={styles.trustHalf}>
+              <Feather name="check-circle" size={22} color={colors.azure} />
+              <Text variant="subhead" weight="700" style={{ marginLeft: 10, flex: 1 }}>
+                Satisfaction Guaranteed
+              </Text>
+            </View>
+          </View>
+        </>
       )}
     </ScrollView>
   );
 }
 
-/** A semantic icon key → a Feather icon + a theme tint. Pure presentation; the founder sets the key in the
+/** A semantic icon key → a Feather icon + a theme tone. Pure presentation; the founder sets the key in the
  *  console. Unknown keys fall back to a neutral tile so a new service never renders broken. */
-type Tint = 'azure' | 'honey' | 'success';
+type Tone = 'azure' | 'honey' | 'success' | 'warning' | 'danger';
 /**
  * [Inc-24] Keyed by `CatalogIconKey` — the canonical icon keys in packages/shared, which the console's icon
  * PICKER offers. Typing it as a full `Record<CatalogIconKey, …>` means adding a key in shared fails this
  * app's typecheck until it is mapped here, so the console can never offer an icon the app cannot render.
+ *
+ * [Royal] Tones are spread across the full azure/warning/success/honey/danger set (not just azure/honey/
+ * success) so the list reads as the render's "distinct hue per row" motif — theme tones only, never a
+ * hardcoded hex. Where the render used a hue this system has no slot for (its purple "Rug Cleaning" chip),
+ * `danger` stands in as the closest available accent that still keeps every row visually distinct.
  */
-const CATEGORY_ICONS: Record<CatalogIconKey, { icon: React.ComponentProps<typeof Feather>['name']; tint: Tint }> = {
+const CATEGORY_ICONS: Record<CatalogIconKey, { icon: React.ComponentProps<typeof Feather>['name']; tint: Tone }> = {
   shirts: { icon: 'shopping-bag', tint: 'azure' },
   outerwear: { icon: 'cloud-snow', tint: 'success' },
   formalwear: { icon: 'award', tint: 'honey' },
-  'wash-fold': { icon: 'droplet', tint: 'azure' },
-  'wash-iron': { icon: 'feather', tint: 'honey' },
+  'wash-fold': { icon: 'shopping-bag', tint: 'azure' },
+  'wash-iron': { icon: 'feather', tint: 'warning' },
   'dry-clean': { icon: 'wind', tint: 'success' },
   iron: { icon: 'feather', tint: 'honey' },
   delicates: { icon: 'feather', tint: 'azure' },
   // [Inc-21] the specialty service cards (Feather has no furniture glyphs — closest recognisable shapes).
-  rug: { icon: 'square', tint: 'honey' },
-  carpet: { icon: 'grid', tint: 'success' },
+  rug: { icon: 'grid', tint: 'danger' },
+  carpet: { icon: 'square', tint: 'success' },
   sofa: { icon: 'box', tint: 'azure' },
   blinds: { icon: 'align-justify', tint: 'honey' },
 };
@@ -266,8 +312,15 @@ function priceFooter(category: HomeServiceCardView, currency: string): { quote: 
   return { quote: false, primary: amt, sub: null };
 }
 
-/** [Royal] A full-width service BAR (not a grid box) — icon chip · name + one-line description + price/quote,
- *  chevron. One scannable line per service; 3 services or 30 read the same way. */
+/** [Royal] A full-width service BAR matching the reference render: a tone-tinted circular icon chip, the
+ *  name + a one-line description, a thin vertical divider, then the price/"Get a quote" CTA + chevron —
+ *  all tinted to the row's tone. One scannable line per service; 3 services or 30 read the same way.
+ *
+ *  [Inc-36] The render's small value-prop chip ("Quick turnaround" etc.) is deliberately NOT wired to
+ *  `category.features` here: that field is the raw process-identifier list ("WASH", "TUMBLE-DRY", …)
+ *  Inc-36 explicitly stripped from the customer app (see HomeScreen.test.tsx) — piping it into a new chip
+ *  would silently resurrect the jargon that session removed. Showing it needs a real curated-copy field,
+ *  not this one; the plain description line carries the message honestly until then. */
 function ServiceBar({
   category,
   currency,
@@ -281,6 +334,7 @@ function ServiceBar({
   // A legacy/unknown icon key falls back to the neutral glyph rather than crashing the list.
   const look = (category.icon && isCatalogIconKey(category.icon) ? CATEGORY_ICONS[category.icon] : null) ?? { icon: 'grid' as const, tint: 'azure' as const };
   const footer = priceFooter(category, currency);
+  const onTint = toneOnTint(colors, look.tint);
 
   return (
     <Pressable
@@ -293,50 +347,71 @@ function ServiceBar({
       accessibilityLabel={`${category.name} — book`}
     >
       <View style={[styles.bar, elevation.e1, { backgroundColor: colors.surface, borderColor: colors.hairline, borderRadius: radius.card }]}>
-        <IconBadge icon={look.icon} tone={look.tint} size={48} />
+        <IconBadge icon={look.icon} tone={look.tint} size={56} circle />
         <View style={styles.barBody}>
           <Text variant="headline" weight="700" numberOfLines={1}>
             {category.name}
           </Text>
-          {/* [Inc-36] One plain line only — the process-identifier chips (`category.features`) stay in the
-              schema/console but the customer app doesn't render jargon. */}
           {category.description ? (
             <Text variant="footnote" color="secondary" numberOfLines={2} style={{ marginTop: 2 }}>
               {category.description}
             </Text>
           ) : null}
-          <View style={styles.priceLine}>
-            {footer.quote ? (
-              <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="secondary">
-                {footer.primary}
-              </Text>
-            ) : (
-              <>
-                <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="azure" tabular>
-                  {footer.primary}
-                </Text>
-                {footer.sub ? (
-                  <Text variant="caption" color="tertiary" style={{ marginLeft: 6 }}>
-                    {footer.sub}
-                  </Text>
-                ) : null}
-              </>
-            )}
-          </View>
         </View>
-        <Feather name="chevron-right" size={20} color={colors.textTertiary} />
+        <View style={[styles.vDivider, { backgroundColor: colors.hairline }]} />
+        <View style={styles.ctaCol}>
+          <View style={styles.ctaRow}>
+            <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color={look.tint} tabular={!footer.quote}>
+              {footer.primary}
+            </Text>
+            <Feather name="chevron-right" size={16} color={onTint} style={{ marginLeft: 2 }} />
+          </View>
+          {footer.sub ? (
+            <Text variant="caption" color="tertiary" style={{ marginTop: 2 }}>
+              {footer.sub}
+            </Text>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );
 }
 
+/** The legible on-tint foreground for a tone (dark shade of the hue in light mode, bright in dark mode) —
+ *  mirrors the same tokens `IconBadge`/`Badge` resolve to, used here for the CTA chevron. */
+function toneOnTint(colors: ReturnType<typeof useTheme>['colors'], tone: Tone): string {
+  switch (tone) {
+    case 'azure':
+      return colors.onAzureTint;
+    case 'honey':
+      return colors.onHoneyTint;
+    case 'success':
+      return colors.onSuccessTint;
+    case 'warning':
+      return colors.onWarningTint;
+    case 'danger':
+      return colors.onDangerTint;
+  }
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   headerWrap: { paddingHorizontal: 20, paddingBottom: 12 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  progressBar: { width: 64, height: 4, borderRadius: 2 },
+  progressDot: { width: 6, height: 6, borderRadius: 3, marginLeft: 6 },
   pricingLink: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, marginTop: 8, marginBottom: 16 },
+  eyebrowLine: { flex: 1, borderTopWidth: 1.5, borderStyle: 'dotted' },
   list: { paddingHorizontal: 20, gap: 12 },
   bar: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, padding: 14 },
   barBody: { flex: 1, marginHorizontal: 14 },
-  priceLine: { flexDirection: 'row', alignItems: 'baseline', marginTop: 8 },
+  vDivider: { width: 1, alignSelf: 'stretch', marginVertical: 4 },
+  ctaCol: { alignItems: 'flex-end', justifyContent: 'center', paddingLeft: 14, minWidth: 96 },
+  ctaRow: { flexDirection: 'row', alignItems: 'center' },
   stateCard: { marginHorizontal: 20, alignItems: 'center', paddingVertical: 28 },
+  trustCard: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, marginHorizontal: 20, marginTop: 20, padding: 16 },
+  trustHalf: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  trustText: { flex: 1, marginLeft: 12 },
+  trustDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
 });

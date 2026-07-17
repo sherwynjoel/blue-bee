@@ -1,11 +1,17 @@
 {
   "expo": {
-    "name": "Blue Bee",
+    "name": "Royal Cleaners",
     "slug": "blue-bee-customer",
     "scheme": "bluebee",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/brand/icon.png",
+    "splash": {
+      "image": "./assets/brand/royal-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -17,8 +23,8 @@
           "remote-notification",
           "remote-notification"
         ],
-        "NSCameraUsageDescription": "Blue Bee uses your camera so you can add before/after photos of your items to your order.",
-        "NSPhotoLibraryUsageDescription": "Blue Bee lets you attach photos from your library to your order."
+        "NSCameraUsageDescription": "Royal Cleaners uses your camera so you can add before/after photos of your items to your order.",
+        "NSPhotoLibraryUsageDescription": "Royal Cleaners lets you attach photos from your library to your order."
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -137,8 +143,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Blue Bee lets you attach photos of your items to your order.",
-          "cameraPermission": "Blue Bee uses your camera so you can add before/after photos of your items."
+          "photosPermission": "Royal Cleaners lets you attach photos of your items to your order.",
+          "cameraPermission": "Royal Cleaners uses your camera so you can add before/after photos of your items."
         }
       ],
       [

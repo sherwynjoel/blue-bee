@@ -9,7 +9,7 @@ import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { money } from '../format';
 import { useTheme } from '../../theme';
-import { Button, Card, EmptyState, SkeletonCard, Text, fireHaptic } from '../../components/ui';
+import { Button, Card, EmptyState, IconBadge, SkeletonCard, Text, fireHaptic } from '../../components/ui';
 
 /**
  * Home — the service grid (PRD §7A). A 2-up grid of the org's service categories, driven ENTIRELY by the
@@ -100,10 +100,25 @@ export function HomeScreen(): React.ReactElement {
       <Text variant="subhead" color="secondary" style={{ marginTop: 4 }}>
         {firstName ? `Hi ${firstName} — pick a service to get started.` : 'Pick a service to get started.'}
       </Text>
-      {/* [Inc-36] The Inc-33 "Book a pickup" button is GONE. It navigated to Book with no service, which is
-          the only way into the general composer (item-type chips + service chips + garment picker). The grid
-          below IS the picker: every card now carries a backing service, so a tap always opens the focused
-          single-measure checkout. */}
+      {/* [Inc-36] The Inc-33 "Book a pickup" button is GONE. Every bar below carries a backing service, so a
+          tap always opens the focused checkout. [Royal] A quiet link into the read-only per-garment price list. */}
+      <Pressable
+        testID="home-view-pricing"
+        onPress={() => {
+          fireHaptic('selection');
+          navigation.navigate('Pricing');
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="View full price list"
+        style={styles.pricingLink}
+        hitSlop={8}
+      >
+        <Feather name="tag" size={15} color={colors.azure} />
+        <Text variant="subhead" weight="600" style={{ color: colors.azure, marginLeft: 6 }}>
+          View full price list
+        </Text>
+        <Feather name="chevron-right" size={16} color={colors.azure} />
+      </Pressable>
     </View>
   );
 
@@ -111,11 +126,9 @@ export function HomeScreen(): React.ReactElement {
     return (
       <View style={[styles.screen, { backgroundColor: colors.canvas }]} testID="home-loading">
         {header}
-        <View style={styles.grid}>
+        <View style={styles.list}>
           {[0, 1, 2, 3].map((i) => (
-            <View key={i} style={styles.cell}>
-              <SkeletonCard />
-            </View>
+            <SkeletonCard key={i} />
           ))}
         </View>
       </View>
@@ -160,9 +173,9 @@ export function HomeScreen(): React.ReactElement {
           <EmptyState icon="tag" title="No services yet" body="Our catalog is being set up. Check back soon." />
         </View>
       ) : (
-        <View style={styles.grid}>
+        <View style={styles.list}>
           {categories.map((cat) => (
-            <ServiceCard
+            <ServiceBar
               key={cat.id}
               category={cat}
               currency={currency}
@@ -253,7 +266,9 @@ function priceFooter(category: HomeServiceCardView, currency: string): { quote: 
   return { quote: false, primary: amt, sub: null };
 }
 
-function ServiceCard({
+/** [Royal] A full-width service BAR (not a grid box) — icon chip · name + one-line description + price/quote,
+ *  chevron. One scannable line per service; 3 services or 30 read the same way. */
+function ServiceBar({
   category,
   currency,
   onPress,
@@ -263,87 +278,65 @@ function ServiceCard({
   onPress: () => void;
 }): React.ReactElement {
   const { colors, radius, elevation } = useTheme();
-  // A legacy/unknown icon key falls back to the neutral glyph rather than crashing the grid.
+  // A legacy/unknown icon key falls back to the neutral glyph rather than crashing the list.
   const look = (category.icon && isCatalogIconKey(category.icon) ? CATEGORY_ICONS[category.icon] : null) ?? { icon: 'grid' as const, tint: 'azure' as const };
-  const tint = {
-    azure: { bg: colors.azureTint, fg: colors.azure },
-    honey: { bg: colors.honeyTint, fg: colors.honey },
-    success: { bg: colors.successTint, fg: colors.success },
-  }[look.tint];
   const footer = priceFooter(category, currency);
 
   return (
-    <View style={styles.cell}>
-      <Pressable
-        testID={`home-service-${category.id}`}
-        onPress={() => {
-          fireHaptic('selection');
-          onPress();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`${category.name} — book`}
-      >
-        <View
-          style={[
-            styles.card,
-            elevation.e1,
-            { backgroundColor: colors.surface, borderColor: colors.hairline, borderRadius: radius.card },
-          ]}
-        >
-          <View style={styles.cardBody}>
-            <View style={[styles.iconCircle, { backgroundColor: tint.bg }]}>
-              <Feather name={look.icon} size={24} color={tint.fg} />
-            </View>
-            <Text variant="headline" weight="700" center numberOfLines={1} style={styles.title}>
-              {category.name}
+    <Pressable
+      testID={`home-service-${category.id}`}
+      onPress={() => {
+        fireHaptic('selection');
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${category.name} — book`}
+    >
+      <View style={[styles.bar, elevation.e1, { backgroundColor: colors.surface, borderColor: colors.hairline, borderRadius: radius.card }]}>
+        <IconBadge icon={look.icon} tone={look.tint} size={48} />
+        <View style={styles.barBody}>
+          <Text variant="headline" weight="700" numberOfLines={1}>
+            {category.name}
+          </Text>
+          {/* [Inc-36] One plain line only — the process-identifier chips (`category.features`) stay in the
+              schema/console but the customer app doesn't render jargon. */}
+          {category.description ? (
+            <Text variant="footnote" color="secondary" numberOfLines={2} style={{ marginTop: 2 }}>
+              {category.description}
             </Text>
-            {/* [Inc-36] One plain line only. The process-identifier chips (`category.features` — "WASH ·
-                TUMBLE-DRY · FOLDED") are no longer rendered: they read as jargon and added noise to what
-                should be a one-glance choice. The field stays in the schema/console; the customer app just
-                doesn't show it. */}
-            {category.description ? (
-              <Text variant="footnote" color="secondary" center numberOfLines={2} style={styles.desc}>
-                {category.description}
+          ) : null}
+          <View style={styles.priceLine}>
+            {footer.quote ? (
+              <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="secondary">
+                {footer.primary}
               </Text>
-            ) : null}
-          </View>
-          <View style={[styles.footer, { borderTopColor: colors.hairline, backgroundColor: colors.subtle }]}>
-            <View style={{ flex: 1 }}>
-              {footer.quote ? (
-                <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="secondary">
+            ) : (
+              <>
+                <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="azure" tabular>
                   {footer.primary}
                 </Text>
-              ) : (
-                <>
-                  <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="azure" tabular>
-                    {footer.primary}
+                {footer.sub ? (
+                  <Text variant="caption" color="tertiary" style={{ marginLeft: 6 }}>
+                    {footer.sub}
                   </Text>
-                  {footer.sub ? (
-                    <Text variant="caption" color="tertiary">
-                      {footer.sub}
-                    </Text>
-                  ) : null}
-                </>
-              )}
-            </View>
-            <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+                ) : null}
+              </>
+            )}
           </View>
         </View>
-      </Pressable>
-    </View>
+        <Feather name="chevron-right" size={20} color={colors.textTertiary} />
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   headerWrap: { paddingHorizontal: 20, paddingBottom: 12 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 14 },
-  cell: { width: '50%', paddingHorizontal: 6, marginBottom: 12 },
-  card: { borderWidth: 1, overflow: 'hidden' },
-  cardBody: { padding: 14, alignItems: 'center' },
-  iconCircle: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  title: { marginBottom: 2 },
-  desc: { minHeight: 36 },
-  footer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  pricingLink: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
+  list: { paddingHorizontal: 20, gap: 12 },
+  bar: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, padding: 14 },
+  barBody: { flex: 1, marginHorizontal: 14 },
+  priceLine: { flexDirection: 'row', alignItems: 'baseline', marginTop: 8 },
   stateCard: { marginHorizontal: 20, alignItems: 'center', paddingVertical: 28 },
 });

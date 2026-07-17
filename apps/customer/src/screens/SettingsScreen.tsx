@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { ApiError } from '@blue-bee/api-client';
 import type { UpdateProfileInput } from '@blue-bee/shared';
@@ -7,7 +7,7 @@ import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { useTheme } from '../../theme';
-import { Button, Card, Input, Text, fireHaptic } from '../../components/ui';
+import { Button, Card, Hero, IconBadge, Input, Row, SectionHeader, Text } from '../../components/ui';
 import { CorporatePricingSection } from '../components/CorporatePricing';
 import { LoginSecuritySection } from '../components/LoginSecurity';
 
@@ -19,6 +19,13 @@ import { LoginSecuritySection } from '../components/LoginSecurity';
  * (Inc-26), **Corporate** join-code pricing, **Sign out**, and the store-required two-step **Delete
  * account** (real `DELETE /v1/account`). No placeholder login-methods section yet — Inc-35 adds the
  * others. An edit here reflects in the console customer-360 (Inc-27), which reads the same `User` row.
+ *
+ * [Royal restyle] Gradient identity Hero (avatar initial + name + email/phone) up top, then a grouped
+ * colour-coded menu (Row + IconBadge) for the simple destinations. No "member since" / stat row: this
+ * screen's data (`me.user`) carries no numeric fields to show honestly — a credit balance lives on Home,
+ * not here, and nothing is invented to fill the space. A "Support" entry was in the reference brief, but
+ * the app has no real support channel wired up yet (no contact address, no screen, no nav target) — adding
+ * one here would mean fabricating a destination, so it's intentionally omitted pending that feature.
  */
 export function SettingsScreen(): React.ReactElement {
   const { me, client, logout, reloadMe } = useSession();
@@ -92,35 +99,41 @@ export function SettingsScreen(): React.ReactElement {
     }
   };
 
+  const onSignOut = (): void => {
+    if (deleting) return; // don't let a stray tap race the delete-account call in flight
+    void logout();
+  };
+
   const initial = (saved || dirty ? trimmedName : currentName)?.[0]?.toUpperCase() ?? '?';
+  // Whatever we actually know about the signed-in identity beyond the name — never fabricated.
+  const identityMeta = (saved || dirty ? trimmedEmail : currentEmail) || me?.user.phone || null;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.canvas }} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <Card>
+      {/* ── Identity hero — avatar initial + name + email/phone. ── */}
+      <Hero testID="settings-hero">
         <View style={styles.identity}>
-          <View style={[styles.avatar, { backgroundColor: colors.azureTint }]}>
+          <View style={[styles.avatar, { backgroundColor: colors.surface }]}>
             <Text variant="title2" weight="700" color="azure">
               {initial}
             </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text variant="caption" color="tertiary">
-              SIGNED IN AS
-            </Text>
-            <Text testID="settings-name" variant="title3" weight="700" style={{ marginTop: 2 }}>
+            <Text testID="settings-name" variant="title2" weight="700" numberOfLines={1}>
               {me?.user.name ?? '—'}
             </Text>
-            {/* Phone shows once, read-only, in the "Your details" card below (it is the login identity). */}
+            {identityMeta ? (
+              <Text variant="subhead" color="secondary" style={{ marginTop: 2 }} numberOfLines={1}>
+                {identityMeta}
+              </Text>
+            ) : null}
           </View>
         </View>
-      </Card>
+      </Hero>
 
-      {/* [Inc-33] Edit name + email. Phone is read-only (login identity). */}
-      <Card style={{ marginTop: space.lg }}>
-        <Text variant="headline" weight="700">
-          Your details
-        </Text>
-
+      {/* [Inc-33] Personal details — edit name + email inline. Phone is read-only (login identity). */}
+      <SectionHeader title="Personal details" style={{ marginTop: space.xxl, marginBottom: 10 }} />
+      <Card>
         <Input
           testID="profile-name-input"
           label="Name"
@@ -135,7 +148,6 @@ export function SettingsScreen(): React.ReactElement {
           autoCorrect={false}
           placeholder="Your name"
           returnKeyType="next"
-          containerStyle={{ marginTop: space.md }}
         />
 
         <Input
@@ -161,8 +173,8 @@ export function SettingsScreen(): React.ReactElement {
 
         {/* Phone — read-only; this is the login identity (Inc-35 adds other methods). */}
         <View style={[styles.phoneRow, { borderTopColor: colors.hairline }]}>
-          <Feather name="phone" size={16} color={colors.textTertiary} />
-          <View style={{ flex: 1, marginLeft: 10 }}>
+          <IconBadge icon="phone" tone="neutral" size={34} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
             <Text variant="subhead" weight="600" tabular>
               {me?.user.phone ?? '—'}
             </Text>
@@ -202,44 +214,34 @@ export function SettingsScreen(): React.ReactElement {
       {/* [Inc-35] Login & security — linked sign-in methods + set/change password + unlink. */}
       <LoginSecuritySection />
 
-      {/* [Inc-26] Saved addresses — add / edit / set default / remove. */}
-      <Card style={{ marginTop: space.lg }}>
-        <Pressable
+      {/* ── Account menu — saved addresses + sign out, the icon-in-circle grouped-row motif. ── */}
+      <SectionHeader title="Account" style={{ marginTop: space.lg, marginBottom: 10 }} />
+      <Card padding={0}>
+        {/* [Inc-26] Saved addresses — add / edit / set default / remove. */}
+        <Row
           testID="settings-addresses"
-          onPress={() => {
-            fireHaptic('selection');
-            navigation.navigate('Addresses');
-          }}
-          style={styles.navRow}
-          accessibilityRole="button"
-        >
-          <View style={[styles.navIcon, { backgroundColor: colors.azureTint }]}>
-            <Feather name="map-pin" size={17} color={colors.azure} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text variant="subhead" weight="600">
-              Addresses
-            </Text>
-            <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
-              Where we collect and deliver.
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={18} color={colors.textTertiary} />
-        </Pressable>
+          title="Saved addresses"
+          subtitle="Where we collect and deliver."
+          icon="map-pin"
+          iconTone="azure"
+          onPress={() => navigation.navigate('Addresses')}
+        />
+        <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline }}>
+          <Row testID="signout" title="Sign out" icon="log-out" iconTone="neutral" chevron={false} onPress={onSignOut} haptic="medium" />
+        </View>
       </Card>
-
-      <Button testID="signout" label="Sign out" icon="log-out" variant="outline" tone="neutral" onPress={() => void logout()} disabled={deleting} style={{ marginTop: space.lg }} haptic="medium" />
 
       <CorporatePricingSection />
 
+      {/* Delete account — a real, permanent, two-step DELETE /v1/account. */}
       <Card style={[styles.danger, { borderColor: colors.danger }]}>
         <View style={styles.dangerHead}>
-          <Feather name="alert-triangle" size={18} color={colors.danger} />
-          <Text variant="headline" weight="700" color="danger" style={{ marginLeft: 8 }}>
+          <IconBadge icon="alert-triangle" tone="danger" size={36} />
+          <Text variant="headline" weight="700" color="danger" style={{ marginLeft: 12 }}>
             Delete account
           </Text>
         </View>
-        <Text variant="footnote" color="secondary" style={{ marginTop: 8, lineHeight: 19 }}>
+        <Text variant="footnote" color="secondary" style={{ marginTop: 10, lineHeight: 19 }}>
           Permanently deletes your account and personal data (name, phone, devices, notifications). This
           cannot be undone. Past orders are kept as anonymized business records.
         </Text>
@@ -277,10 +279,8 @@ export function SettingsScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   container: { padding: 20, paddingBottom: 40 },
   identity: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  avatar: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   phoneRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth },
-  navRow: { flexDirection: 'row', alignItems: 'center' },
-  navIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   danger: { marginTop: 24 },
   dangerHead: { flexDirection: 'row', alignItems: 'center' },
   errorBox: { borderRadius: 10, padding: 12, marginTop: 12 },

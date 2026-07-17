@@ -7,7 +7,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { useTheme } from '../../theme';
-import { Button, Card, Input, SkeletonCard, Text, fireHaptic } from '../../components/ui';
+import { Button, Card, IconBadge, Input, SkeletonCard, Text, fireHaptic } from '../../components/ui';
 import {
   addressFormFromSite,
   buildCreateSiteDto,
@@ -26,6 +26,8 @@ import {
 /**
  * Add or edit a saved address (Increment 26) — the screen that unblocks onboarding: before this, a
  * customer with no site saw an empty picker in Book and could never create one.
+ * [Royal restyle] Grouped Input card + the icon-in-tinted-circle motif for the default toggle and
+ * coverage notice — the geocode/serviceability handling below is unchanged from Inc-26.
  *
  * The SERVER resolves the address to a point and decides coverage; this screen only types text and
  * renders the answer. Three server outcomes are surfaced distinctly, because they need different actions:
@@ -42,7 +44,7 @@ export function AddressFormScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'AddressForm'>): React.ReactElement {
   const { client } = useSession();
-  const { colors, space } = useTheme();
+  const { colors, space, radius } = useTheme();
   const editingSiteId = route.params?.siteId;
   const returnTo = route.params?.returnTo;
 
@@ -159,19 +161,26 @@ export function AddressFormScreen({
 
   if (loading) {
     return (
-      <ScrollView contentContainerStyle={{ padding: space.lg }}>
-        <SkeletonCard />
-      </ScrollView>
+      <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
+        <ScrollView contentContainerStyle={{ padding: space.lg }}>
+          <SkeletonCard />
+        </ScrollView>
+      </View>
     );
   }
 
   if (loadError) {
     return (
-      <View style={[styles.center, { padding: space.lg }]}>
-        <Text testID="address-load-error" variant="body" color="danger">
-          {loadError}
-        </Text>
-        <Button label="Go back" variant="outline" onPress={() => navigation.goBack()} style={{ marginTop: 12 }} />
+      <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
+        <View style={[styles.center, { padding: space.lg }]}>
+          <Card style={styles.stateCard}>
+            <Feather name="alert-circle" size={26} color={colors.textTertiary} />
+            <Text testID="address-load-error" variant="body" color="danger" center style={{ marginTop: 10 }}>
+              {loadError}
+            </Text>
+            <Button label="Go back" variant="outline" onPress={() => navigation.goBack()} style={{ marginTop: 16 }} />
+          </Card>
+        </View>
       </View>
     );
   }
@@ -179,138 +188,151 @@ export function AddressFormScreen({
   // The address is saved; it just isn't in a serviced area. Calm, terminal state — not the red error box.
   if (notice?.kind === 'out_of_area') {
     return (
-      <ScrollView contentContainerStyle={{ padding: space.lg }}>
-        <Card>
-          <View style={styles.noticeHead}>
-            <Feather name="map-pin" size={18} color={colors.textSecondary} />
-            <Text variant="headline" weight="700" style={{ marginLeft: 8 }}>
-              Outside our service area
+      <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
+        <ScrollView contentContainerStyle={{ padding: space.lg }}>
+          <Card>
+            <View style={styles.noticeHead}>
+              <IconBadge icon="map-pin" tone="neutral" size={40} />
+              <Text variant="headline" weight="700" style={{ marginLeft: 12, flex: 1 }}>
+                Outside our service area
+              </Text>
+            </View>
+            <Text testID="out-of-area" variant="body" color="secondary" style={{ marginTop: 12 }}>
+              {notice.message}
             </Text>
-          </View>
-          <Text testID="out-of-area" variant="body" color="secondary" style={{ marginTop: 8 }}>
-            {notice.message}
-          </Text>
-          {/* Only claim we recorded the address when the server actually returned a coverage-request id. */}
-          {notice.recorded ? (
-            <Text testID="coverage-recorded" variant="footnote" color="secondary" style={{ marginTop: 8 }}>
-              We've noted this address so we can tell you when we start serving it.
-            </Text>
-          ) : null}
-          <Button
-            testID="out-of-area-done"
-            label="Done"
-            onPress={() => navigation.goBack()}
-            style={{ marginTop: 16 }}
-            fullWidth
-          />
-        </Card>
-      </ScrollView>
+            {/* Only claim we recorded the address when the server actually returned a coverage-request id. */}
+            {notice.recorded ? (
+              <Text testID="coverage-recorded" variant="footnote" color="secondary" style={{ marginTop: 8 }}>
+                We've noted this address so we can tell you when we start serving it.
+              </Text>
+            ) : null}
+            <Button
+              testID="out-of-area-done"
+              label="Done"
+              onPress={() => navigation.goBack()}
+              style={{ marginTop: 18 }}
+              fullWidth
+            />
+          </Card>
+        </ScrollView>
+      </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: space.xl }} keyboardShouldPersistTaps="handled">
-      <Card>
-        <Input
-          testID="address-name"
-          label="Name"
-          icon="tag"
-          placeholder="Home"
-          value={values.name}
-          onChangeText={(t) => set('name', t)}
-          error={errors.name}
-          autoCapitalize="words"
-          returnKeyType="next"
-        />
-        <Input
-          testID="address-line"
-          label="Street address"
-          icon="map-pin"
-          placeholder="100 Queen St W, Toronto, ON"
-          value={values.address}
-          onChangeText={(t) => set('address', t)}
-          error={errors.address}
-          hint="We'll look this up to place your pickup."
-          autoCapitalize="words"
-          containerStyle={{ marginTop: 12 }}
-        />
-        <View style={styles.pair}>
+    <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
+      <ScrollView
+        contentContainerStyle={{ padding: space.lg, paddingBottom: space.huge }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Card>
           <Input
-            testID="address-unit"
-            label="Unit"
-            placeholder="12B"
-            value={values.unit}
-            onChangeText={(t) => set('unit', t)}
-            containerStyle={styles.pairItem}
+            testID="address-name"
+            label="Name"
+            icon="tag"
+            placeholder="Home"
+            value={values.name}
+            onChangeText={(t) => set('name', t)}
+            error={errors.name}
+            autoCapitalize="words"
+            returnKeyType="next"
           />
           <Input
-            testID="address-buzzer"
-            label="Buzzer"
-            placeholder="1204"
-            value={values.buzzer}
-            onChangeText={(t) => set('buzzer', t)}
-            containerStyle={styles.pairItemRight}
+            testID="address-line"
+            label="Street address"
+            icon="map-pin"
+            placeholder="100 Queen St W, Toronto, ON"
+            value={values.address}
+            onChangeText={(t) => set('address', t)}
+            error={errors.address}
+            hint="We'll look this up to place your pickup."
+            autoCapitalize="words"
+            containerStyle={{ marginTop: space.md }}
           />
-        </View>
-        <Input
-          testID="address-notes"
-          label="Driver notes"
-          icon="info"
-          placeholder="Side door, leave with concierge"
-          value={values.notes}
-          onChangeText={(t) => set('notes', t)}
-          multiline
-          containerStyle={{ marginTop: 12 }}
-        />
+          <View style={styles.pair}>
+            <Input
+              testID="address-unit"
+              label="Unit"
+              placeholder="12B"
+              value={values.unit}
+              onChangeText={(t) => set('unit', t)}
+              containerStyle={styles.pairItem}
+            />
+            <Input
+              testID="address-buzzer"
+              label="Buzzer"
+              placeholder="1204"
+              value={values.buzzer}
+              onChangeText={(t) => set('buzzer', t)}
+              containerStyle={styles.pairItemRight}
+            />
+          </View>
+          <Input
+            testID="address-notes"
+            label="Driver notes"
+            icon="info"
+            placeholder="Side door, leave with concierge"
+            value={values.notes}
+            onChangeText={(t) => set('notes', t)}
+            multiline
+            containerStyle={{ marginTop: space.md }}
+          />
 
-        <View style={[styles.defaultRow, { borderTopColor: colors.hairline }]}>
-          <View style={{ flex: 1 }}>
-            <Text variant="subhead" weight="600">
-              Default address
-            </Text>
-            <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
-              Pre-selected when you book.
+          <View style={[styles.defaultRow, { borderTopColor: colors.hairline }]}>
+            <IconBadge icon="star" tone="honey" size={36} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text variant="subhead" weight="600">
+                Default address
+              </Text>
+              <Text variant="footnote" color="secondary" style={{ marginTop: 1 }}>
+                Pre-selected when you book.
+              </Text>
+            </View>
+            <Switch
+              testID="address-default"
+              value={values.isDefault}
+              onValueChange={(v) => {
+                fireHaptic('selection');
+                set('isDefault', v);
+              }}
+              trackColor={{ true: colors.azure }}
+            />
+          </View>
+        </Card>
+
+        {saveError ? (
+          <View style={[styles.errorBox, { backgroundColor: colors.dangerTint, marginTop: space.md, borderRadius: radius.input }]}>
+            <Feather name="alert-circle" size={15} color={colors.danger} />
+            <Text testID="address-save-error" variant="footnote" color="danger" style={{ marginLeft: 8, flex: 1 }}>
+              {saveError}
             </Text>
           </View>
-          <Switch
-            testID="address-default"
-            value={values.isDefault}
-            onValueChange={(v) => {
-              fireHaptic('selection');
-              set('isDefault', v);
-            }}
-          />
-        </View>
-      </Card>
+        ) : null}
 
-      {saveError ? (
-        <View style={[styles.errorBox, { backgroundColor: colors.dangerTint, marginTop: 12 }]}>
-          <Text testID="address-save-error" variant="footnote" color="danger">
-            {saveError}
-          </Text>
-        </View>
-      ) : null}
-
-      <Button
-        testID="address-save"
-        label={original ? 'Save changes' : 'Save address'}
-        icon="check"
-        onPress={onSave}
-        busy={saving}
-        disabled={saving}
-        fullWidth
-        style={{ marginTop: 16 }}
-      />
-    </ScrollView>
+        <Button
+          testID="address-save"
+          label={original ? 'Save changes' : 'Save address'}
+          icon="check"
+          onPress={onSave}
+          busy={saving}
+          disabled={saving}
+          fullWidth
+          style={{ marginTop: space.lg }}
+        />
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  stateCard: { alignItems: 'center', paddingVertical: 28, alignSelf: 'stretch' },
   pair: { flexDirection: 'row', marginTop: 12 },
   pairItem: { flex: 1 },
   pairItemRight: { flex: 1, marginLeft: 12 },
   defaultRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth },
   noticeHead: { flexDirection: 'row', alignItems: 'center' },
-  errorBox: { borderRadius: 10, padding: 10 },
+  errorBox: { flexDirection: 'row', alignItems: 'center', padding: 10 },
 });

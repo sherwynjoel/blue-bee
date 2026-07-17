@@ -17,7 +17,7 @@ import type { RootStackParamList } from '../navigation';
 import { buildBookDto, newIdempotencyKey, slotToWindow, type DraftItem } from '../orders/booking';
 import { money, rangeText } from '../format';
 import { useTheme } from '../../theme';
-import { Button, Card, EmptyState, Text } from '../../components/ui';
+import { Button, Card, EmptyState, Stepper, Text } from '../../components/ui';
 import { CorporatePricingNote } from '../components/CorporatePricing';
 import { DrycleanPicker } from '../components/DrycleanPicker';
 import { PickupSlotPicker } from '../components/PickupSlotPicker';
@@ -223,6 +223,12 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
     : 0;
   const canSubmit = garmentMode ? garmentPieces > 0 : hasMeasure;
 
+  // [Royal] A 3-stage guided flow — Items → Schedule → Review — surfaced as a progress stepper. The stage is
+  // DERIVED from what's already completed (no extra state, no navigation-param change): the single-scroll flow
+  // and the "button names what's still missing" honesty pattern are preserved exactly.
+  const scheduled = !!siteId && !!pickupSlot;
+  const bookStep = !canSubmit ? 0 : !scheduled ? 1 : 2;
+
   const submit = useCallback(async () => {
     if (!accountId) {
       setSubmitError('Your account is not set up for booking yet.');
@@ -312,6 +318,8 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
+      <Stepper steps={['Items', 'Schedule', 'Review']} current={bookStep} style={{ marginBottom: 4 }} />
+
       {corpAccountName ? <CorporatePricingNote accountName={corpAccountName} /> : null}
 
       {/* ── [Inc-38] PER-GARMENT: pick the garments, each at its own real price ── */}

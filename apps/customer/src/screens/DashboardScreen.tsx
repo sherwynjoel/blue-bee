@@ -9,21 +9,16 @@ import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { money, orderRef, shortDate } from '../format';
 import { useTheme } from '../../theme';
-import { Button, Card, EmptyState, SkeletonCard, StatusPill, Text, fireHaptic } from '../../components/ui';
+import { Button, Card, EmptyState, Hero, IconBadge, SectionHeader, SkeletonCard, StatusPill, Text, fireHaptic, type IconTone } from '../../components/ui';
 
 /**
- * [Inc-37] Home — the customer's landing tab.
- *
- * Three sections, all LIVE (`GET /v1/home`):
- *   1. **What's new** — the founder's announcement cards, authored in the console. The app hard-codes NO
- *      marketing copy; an edit in the console appears here on the next focus/refresh.
- *   2. **My orders** — a real snapshot of their recent orders.
- *   3. **My account** — identity + their REAL credit balance (the SUM of an append-only ledger).
+ * [Inc-37] Home — the customer's landing tab. [Royal restyle] Gradient hero greeting + quick actions +
+ * the founder's "what's new" cards + recent orders + account/credit. Every section is still LIVE
+ * (`GET /v1/home`) and the data/refetch wiring below is unchanged from Inc-37.
  *
  * ⚑ HONESTY FIREWALL. The referral reward is rendered from `home.reward` — the founder's FUNDED config —
- * never from a block's free text and never hard-coded. If no reward is funded (`reward.enabled === false`),
- * this screen shows **no reward claim at all**: no "free credits", no amount, no balance row. We only ever
- * promise what the ledger can actually pay.
+ * never hard-coded. With no funded reward and no credit, no reward/credit row appears at all. Quick
+ * actions are pure navigation shortcuts (no invented data).
  */
 export function DashboardScreen(): React.ReactElement {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
@@ -88,13 +83,15 @@ export function DashboardScreen(): React.ReactElement {
   const firstName = me?.user.name ? me.user.name.split(' ')[0] : null;
 
   const header = (
-    <View style={[styles.headerWrap, { paddingTop: insets.top + 12 }]}>
-      <Text variant="display" weight="700">
-        {firstName ? `Hi ${firstName}` : 'Welcome'}
-      </Text>
-      <Text variant="subhead" color="secondary" style={{ marginTop: 4 }}>
-        Your laundry & specialty cleaning, in one place.
-      </Text>
+    <View style={{ paddingHorizontal: 20, paddingTop: insets.top + 12 }}>
+      <Hero testID="dashboard-hero">
+        <Text variant="title1" weight="700">
+          {firstName ? `Hi ${firstName} 👋` : 'Welcome 👋'}
+        </Text>
+        <Text variant="subhead" color="secondary" style={{ marginTop: 6 }}>
+          Fresh, clean, delivered to your door.
+        </Text>
+      </Hero>
     </View>
   );
 
@@ -141,15 +138,23 @@ export function DashboardScreen(): React.ReactElement {
     >
       {header}
 
-      {/* ─── 1. What's new — the FOUNDER's cards. No blocks authored ⇒ no promo area (never a placeholder). ─── */}
+      {/* ─── Quick actions — pure navigation shortcuts (no invented data). ─── */}
+      <View style={{ paddingHorizontal: 20, marginTop: space.lg }}>
+        <View style={styles.qaGrid}>
+          <QuickAction testID="qa-new-order" icon="shopping-bag" tone="azure" label="New order" onPress={() => navigation.navigate('Services')} />
+          <QuickAction testID="qa-pricing" icon="tag" tone="honey" label="Prices" onPress={() => navigation.navigate('Pricing')} />
+          <QuickAction testID="qa-orders" icon="package" tone="success" label="My orders" onPress={() => navigation.navigate('Orders')} />
+          <QuickAction testID="qa-refer" icon="gift" tone="warning" label="Invite" onPress={() => navigation.navigate('Refer')} />
+        </View>
+      </View>
+
+      {/* ─── What's new — the FOUNDER's cards. No blocks authored ⇒ no promo area (never a placeholder). ─── */}
       {blocks.length > 0 ? (
-        <View style={{ paddingHorizontal: 20, gap: 12 }}>
+        <View style={{ paddingHorizontal: 20, gap: 12, marginTop: space.lg }}>
           {blocks.map((b) => (
             <Card key={b.id} testID={`home-block-${b.id}`} style={{ backgroundColor: colors.azureTint, borderColor: colors.azureTint }}>
               <View style={styles.blockHead}>
-                <View style={[styles.blockIcon, { backgroundColor: colors.surface }]}>
-                  <Feather name={b.ctaTarget === 'refer' ? 'user-plus' : 'bell'} size={18} color={colors.azure} />
-                </View>
+                <IconBadge icon={b.ctaTarget === 'refer' ? 'user-plus' : 'bell'} tone="azure" size={36} />
                 <Text variant="headline" weight="700" style={{ flex: 1, marginLeft: 12 }}>
                   {b.title}
                 </Text>
@@ -157,8 +162,8 @@ export function DashboardScreen(): React.ReactElement {
               <Text variant="footnote" color="secondary" style={{ marginTop: 8, lineHeight: 19 }}>
                 {b.body}
               </Text>
-              {/* [Inc-37] The reward NUMBER is never taken from the block's free text — it comes from the
-                  founder's FUNDED config. With no funded reward this line simply does not exist. */}
+              {/* The reward NUMBER is never taken from the block's free text — it comes from the founder's
+                  FUNDED config. With no funded reward this line simply does not exist. */}
               {hasReward && b.ctaTarget === 'refer' ? (
                 <Text testID="home-reward-terms" variant="footnote" weight="600" color="azure" style={{ marginTop: 6 }}>
                   {`You earn ${money(reward.amount!, reward.currency)} credit when a friend you invite has their first order delivered.`}
@@ -180,17 +185,18 @@ export function DashboardScreen(): React.ReactElement {
         </View>
       ) : null}
 
-      {/* ─── 2. My orders ─── */}
+      {/* ─── My orders ─── */}
       <View style={{ paddingHorizontal: 20, marginTop: space.lg }}>
         <View style={styles.sectionHead}>
           <Text variant="title3" weight="700">
             My orders
           </Text>
           {orderCount > recentOrders.length ? (
-            <Pressable testID="home-see-all-orders" onPress={() => goTo('orders')} hitSlop={8}>
+            <Pressable testID="home-see-all-orders" onPress={() => goTo('orders')} hitSlop={8} style={styles.seeAll} accessibilityRole="button">
               <Text variant="footnote" weight="600" color="azure">
                 See all ({orderCount})
               </Text>
+              <Feather name="chevron-right" size={16} color={colors.azure} />
             </Pressable>
           ) : null}
         </View>
@@ -208,7 +214,7 @@ export function DashboardScreen(): React.ReactElement {
             />
           </Card>
         ) : (
-          <Card>
+          <Card padding={0}>
             {recentOrders.map((o, i) => (
               <Pressable
                 key={o.id}
@@ -238,12 +244,10 @@ export function DashboardScreen(): React.ReactElement {
         )}
       </View>
 
-      {/* ─── 3. My account — identity + the REAL credit balance ─── */}
+      {/* ─── My account — identity + the REAL credit balance ─── */}
       <View style={{ paddingHorizontal: 20, marginTop: space.lg }}>
-        <Text variant="title3" weight="700" style={{ marginBottom: 10 }}>
-          My account
-        </Text>
-        <Card>
+        <SectionHeader title="My account" style={{ marginBottom: 10 }} />
+        <Card padding={0}>
           <Pressable
             testID="home-account-row"
             onPress={() => {
@@ -252,9 +256,7 @@ export function DashboardScreen(): React.ReactElement {
             }}
             style={styles.acctRow}
           >
-            <View style={[styles.blockIcon, { backgroundColor: colors.azureTint }]}>
-              <Feather name="user" size={18} color={colors.azure} />
-            </View>
+            <IconBadge icon="user" tone="azure" size={36} />
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text variant="subhead" weight="600">
                 {account.name || '—'}
@@ -267,15 +269,13 @@ export function DashboardScreen(): React.ReactElement {
           </Pressable>
 
           {/*
-            [Inc-37] The credit row exists ONLY when the founder has funded a reward OR the customer actually
+            The credit row exists ONLY when the founder has funded a reward OR the customer actually
             holds a balance. With no reward and no credit there is nothing true to say, so we say nothing —
-            rather than showing a hard-coded "0 credits" that would be a stub and a hollow promise.
+            rather than a hard-coded "0 credits" that would be a hollow promise.
           */}
           {hasReward || credits.balance !== '0.00' ? (
             <View style={[styles.creditRow, { borderTopColor: colors.hairline }]}>
-              <View style={[styles.blockIcon, { backgroundColor: colors.successTint }]}>
-                <Feather name="gift" size={18} color={colors.success} />
-              </View>
+              <IconBadge icon="gift" tone="success" size={36} />
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text variant="caption" color="tertiary">
                   CREDIT BALANCE
@@ -293,14 +293,8 @@ export function DashboardScreen(): React.ReactElement {
           ) : null}
 
           {account.referralCode ? (
-            <Pressable
-              testID="home-invite-row"
-              onPress={() => goTo('refer')}
-              style={[styles.creditRow, { borderTopColor: colors.hairline }]}
-            >
-              <View style={[styles.blockIcon, { backgroundColor: colors.honeyTint }]}>
-                <Feather name="user-plus" size={18} color={colors.honey} />
-              </View>
+            <Pressable testID="home-invite-row" onPress={() => goTo('refer')} style={[styles.creditRow, { borderTopColor: colors.hairline }]}>
+              <IconBadge icon="user-plus" tone="honey" size={36} />
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text variant="subhead" weight="600">
                   Invite friends
@@ -318,14 +312,52 @@ export function DashboardScreen(): React.ReactElement {
   );
 }
 
+/** A quick-action tile — icon chip + label, a soft-elevated surface. Navigation only, no data. */
+function QuickAction({
+  icon,
+  tone,
+  label,
+  onPress,
+  testID,
+}: {
+  icon: React.ComponentProps<typeof Feather>['name'];
+  tone: IconTone;
+  label: string;
+  onPress: () => void;
+  testID?: string;
+}): React.ReactElement {
+  const { colors, radius, elevation } = useTheme();
+  return (
+    <Pressable
+      testID={testID}
+      onPress={() => {
+        fireHaptic('selection');
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={styles.qa}
+    >
+      <View style={[styles.qaInner, { backgroundColor: colors.surface, borderRadius: radius.card, borderColor: colors.hairline }, elevation.e1]}>
+        <IconBadge icon={icon} tone={tone} size={40} />
+        <Text variant="subhead" weight="600" style={{ marginTop: 10 }}>
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  headerWrap: { paddingHorizontal: 20, paddingBottom: 12 },
-  stateCard: { marginHorizontal: 20, alignItems: 'center', paddingVertical: 28 },
+  stateCard: { marginHorizontal: 20, marginTop: 8, alignItems: 'center', paddingVertical: 28 },
   blockHead: { flexDirection: 'row', alignItems: 'center' },
-  blockIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  qaGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 },
+  qa: { width: '48%' },
+  qaInner: { padding: 16, minHeight: 92, borderWidth: StyleSheet.hairlineWidth, justifyContent: 'center' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  orderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
-  acctRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
-  creditRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 14, marginTop: 14, borderTopWidth: StyleSheet.hairlineWidth },
+  seeAll: { flexDirection: 'row', alignItems: 'center' },
+  orderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },
+  acctRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },
+  creditRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderTopWidth: StyleSheet.hairlineWidth },
 });

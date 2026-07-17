@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { Feather } from '@expo/vector-icons';
 import { DefaultTheme, DarkTheme, NavigationContainer, useNavigation, type NavigationProp, type Theme as NavTheme } from '@react-navigation/native';
 import { createNativeStackNavigator, type NativeStackNavigationOptions } from '@react-navigation/native-stack';
@@ -23,11 +24,16 @@ import { SettingsScreen } from './src/screens/SettingsScreen';
 import { ReferScreen } from './src/screens/ReferScreen';
 import { AddressesScreen } from './src/screens/AddressesScreen';
 import { AddressFormScreen } from './src/screens/AddressFormScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { PricingScreen } from './src/screens/PricingScreen';
 import { navigationRef, openOrderTracking, type BookParams, type RootStackParamList } from './src/navigation';
 import { usePushDeepLinks } from './src/push/register';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config';
 import { ThemeProvider, useTheme, type Theme } from './theme';
-import { BeeMark, Text, fireHaptic } from './components/ui';
+import { Text, fireHaptic } from './components/ui';
+
+/** Per-device flag: the first-run onboarding carousel is shown once, then never again. */
+const ONBOARDED_KEY = 'royal.onboarded';
 
 /**
  * [Inc-33] The bottom-tab param list — the customer nav shell is now **Service · Orders · Profile** (the
@@ -53,6 +59,7 @@ type RootNavParamList = {
   Chat: { orderId: string };
   Pay: { orderId: string };
   Rate: { orderId: string };
+  Pricing: undefined;
   Addresses: undefined;
   AddressForm: { siteId?: string; returnTo?: 'Book' } | undefined;
 };
@@ -117,7 +124,7 @@ function DaylightTabBar({ state, navigation }: BottomTabBarProps): React.ReactEl
   };
 
   return (
-    <View style={[styles.tabBar, { backgroundColor: colors.surface, borderTopColor: colors.hairline, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
+    <View style={[styles.tabBar, { backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
       {/* 'Home' route → the Service catalogue tab; 'Settings' route → the Profile tab (route names kept
           stable so the frozen screens' navigate() calls resolve — see TabParamList above). */}
       <TabButton icon="home" label="Home" active={active === 'Home'} onPress={() => go('Home')} />
@@ -172,28 +179,44 @@ function MainTabs(): React.ReactElement {
 function Root(): React.ReactElement {
   const theme = useTheme();
   const { status } = useSession();
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   // A tapped geofence push deep-links to that order's tracking (scoped to the customer's own order).
   usePushDeepLinks(useCallback((orderId: string) => openOrderTracking(orderId), []));
 
-  if (status === 'loading') {
+  // First-run gate: read the per-device "seen onboarding" flag once. Fail open so a read error never
+  // traps a returning customer in the intro.
+  useEffect(() => {
+    let alive = true;
+    SecureStore.getItemAsync(ONBOARDED_KEY)
+      .then((v) => alive && setOnboarded(v === '1'))
+      .catch(() => alive && setOnboarded(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const completeOnboarding = useCallback(() => {
+    setOnboarded(true);
+    void SecureStore.setItemAsync(ONBOARDED_KEY, '1').catch(() => undefined);
+  }, []);
+
+  if (status === 'loading' || onboarded === null) {
     return (
-      <View style={[styles.splash, { backgroundColor: theme.colors.canvas }]}>
-        <BeeMark size={84} />
-        <Text variant="title2" weight="700" style={{ marginTop: 20 }}>
-          Blue Bee
-        </Text>
-        <ActivityIndicator style={{ marginTop: 16 }} color={theme.colors.azure} />
+      <View style={[styles.splash, { backgroundColor: theme.colors.surface }]}>
+        {/* The Royal crest (crown + basket wordmark) — the brand moment on the loading splash. */}
+        <Image source={require('./assets/brand/royal-logo.png')} style={styles.splashLogo} resizeMode="contain" accessibilityLabel="Royal Dry Cleaning & Laundry" />
+        <ActivityIndicator style={{ marginTop: 8 }} color={theme.colors.azure} />
       </View>
     );
   }
 
-  if (status === 'signedOut') return <LoginScreen />;
+  if (status === 'signedOut') return onboarded ? <LoginScreen /> : <OnboardingScreen onDone={completeOnboarding} />;
 
   return (
     <RootStack.Navigator screenOptions={screenOptions(theme)}>
       <RootStack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
       <RootStack.Screen name="Book" component={BookScreen} options={{ title: 'Book a cleaning' }} />
+      <RootStack.Screen name="Pricing" component={PricingScreen} options={{ title: 'Pricing', headerLargeTitle: false }} />
       <RootStack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order', headerLargeTitle: false }} />
       <RootStack.Screen name="Track" component={TrackScreen} options={{ title: 'Track my truck', headerLargeTitle: false }} />
       <RootStack.Screen name="Chat" component={ChatScreen} options={{ title: 'Messages', headerLargeTitle: false }} />
@@ -235,6 +258,20 @@ export default function App(): React.ReactElement {
 
 const styles = StyleSheet.create({
   splash: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, paddingHorizontal: 8 },
+  splashLogo: { width: 220, height: 220 },
+  // Floating card-like dock: rounded top corners + a soft upward shadow, no flush hairline (matches the reference).
+  tabBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingHorizontal: 8,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#0A2540',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 12,
+  },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

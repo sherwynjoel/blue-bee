@@ -52,3 +52,6 @@ Thumbs.db
 $RECYCLE.BIN/
 System Volume Information/
 LOST.DIR/
+
+# founder design renders (reference only, not app assets)
+blue-bee-reference-customer/

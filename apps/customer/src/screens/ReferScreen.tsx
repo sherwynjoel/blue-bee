@@ -6,10 +6,13 @@ import type { ReferralView, ReferralsView } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
 import { shortDate } from '../format';
 import { useTheme } from '../../theme';
-import { Button, Card, EmptyState, SkeletonCard, Text, fireHaptic } from '../../components/ui';
+import { Button, Card, EmptyState, Hero, IconBadge, SkeletonCard, Text, fireHaptic } from '../../components/ui';
 
 /**
- * [Inc-34] Refer tab — invite friends to Blue Bee with my personal code, and see who joined via it.
+ * [Inc-34] Refer tab — invite friends to Royal Dry Cleaning & Laundry with my personal code, and see
+ * who joined via it. [Royal restyle] Hero band carries the invite code + Share CTA; the joined list
+ * below follows the Dashboard "section header + Card padding=0 hairline rows" pattern. Data/refetch
+ * wiring, testIDs and states are unchanged from Inc-34.
  *
  * HONESTY FIREWALL: no reward is wired anywhere yet, so this screen invites and tracks WITHOUT stating or
  * implying any reward — no "earn/get $X", no credit balance, no bonus, no unbacked promise. It shows the
@@ -47,8 +50,8 @@ export function ReferScreen(): React.ReactElement {
     fireHaptic('selection');
     // Invite copy — friendly, reward-free. Includes the deep link only when the server actually has one.
     const message = referral.shareUrl
-      ? `Join me on Blue Bee for laundry & specialty cleaning — use my code ${referral.code}: ${referral.shareUrl}`
-      : `Join me on Blue Bee for laundry & specialty cleaning — use my invite code ${referral.code} when you sign up.`;
+      ? `Join me on Royal Dry Cleaning & Laundry for laundry & specialty cleaning — use my code ${referral.code}: ${referral.shareUrl}`
+      : `Join me on Royal Dry Cleaning & Laundry for laundry & specialty cleaning — use my invite code ${referral.code} when you sign up.`;
     try {
       await Share.share({ message });
     } catch {
@@ -56,12 +59,30 @@ export function ReferScreen(): React.ReactElement {
     }
   }, [referral]);
 
+  // Static brand head (icon + title/subtitle) — no remote data, safe to show in every state.
+  const heroHead = (
+    <View style={styles.head}>
+      <IconBadge icon="gift" tone="honey" size={40} />
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text variant="title2" weight="700">
+          Invite friends to Royal Dry Cleaning & Laundry
+        </Text>
+        <Text variant="subhead" color="secondary" style={{ marginTop: 4, lineHeight: 20 }}>
+          Share your code. When a friend signs up with it, you’ll see them below.
+        </Text>
+      </View>
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.canvas }]} testID="refer-loading">
-        <View style={{ padding: 20, gap: 16 }}>
-          <SkeletonCard />
-          <SkeletonCard />
+        <View style={{ padding: 20 }}>
+          <Hero testID="refer-hero">{heroHead}</Hero>
+          <View style={{ marginTop: space.lg, gap: 16 }}>
+            <SkeletonCard />
+            <SkeletonCard />
+          </View>
         </View>
       </View>
     );
@@ -70,6 +91,9 @@ export function ReferScreen(): React.ReactElement {
   if (error || !referral || !referrals) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
+        <View style={{ padding: 20 }}>
+          <Hero testID="refer-hero">{heroHead}</Hero>
+        </View>
         <Card style={styles.stateCard}>
           <Feather name="wifi-off" size={26} color={colors.textTertiary} />
           <Text variant="headline" weight="600" center style={{ marginTop: 10 }}>
@@ -90,23 +114,11 @@ export function ReferScreen(): React.ReactElement {
       contentContainerStyle={{ padding: 20, paddingBottom: space.huge }}
       showsVerticalScrollIndicator={false}
     >
-      {/* Invite card — code + share. No reward stated or implied. */}
-      <Card>
-        <View style={styles.head}>
-          <View style={[styles.iconCircle, { backgroundColor: colors.azureTint }]}>
-            <Feather name="user-plus" size={20} color={colors.azure} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text variant="headline" weight="700">
-              Invite friends to Blue Bee
-            </Text>
-            <Text variant="footnote" color="secondary" style={{ marginTop: 2, lineHeight: 18 }}>
-              Share your personal code. When a friend signs up with it, you’ll see them below.
-            </Text>
-          </View>
-        </View>
+      {/* Invite hero — code + share. No reward stated or implied. */}
+      <Hero testID="refer-hero">
+        {heroHead}
 
-        <View style={[styles.codeBox, { backgroundColor: colors.subtle, borderColor: colors.hairline }]}>
+        <View style={[styles.codeBox, { backgroundColor: colors.surface, borderColor: colors.hairline }]}>
           <Text variant="caption" color="tertiary">
             YOUR INVITE CODE
           </Text>
@@ -116,30 +128,36 @@ export function ReferScreen(): React.ReactElement {
         </View>
 
         <Button testID="refer-share" label="Share invite" icon="share-2" onPress={() => void onShare()} style={{ marginTop: 16 }} haptic="medium" />
-      </Card>
+      </Hero>
 
       {/* Joined list — who came in via my code. */}
-      <Card style={{ marginTop: space.lg }}>
-        <Text variant="headline" weight="700">
-          Friends who joined
-          <Text testID="refer-joined-count" variant="headline" weight="700" color="secondary">
-            {`  ${referrals.count}`}
+      <View style={{ marginTop: space.xxl }}>
+        <View style={styles.sectionHead}>
+          <Text variant="title3" weight="700">
+            Friends who joined
           </Text>
-        </Text>
+          <Text testID="refer-joined-count" variant="subhead" weight="700" color="secondary">
+            {referrals.count}
+          </Text>
+        </View>
 
         {referrals.joiners.length === 0 ? (
-          <View style={{ marginTop: 8 }}>
+          <Card>
             <EmptyState
               testID="refer-empty"
               icon="users"
               title="No one’s joined yet"
-              body="Share your code to invite friends to Blue Bee."
+              body="Share your code to invite friends to Royal Dry Cleaning & Laundry."
             />
-          </View>
+          </Card>
         ) : (
-          <View style={{ marginTop: 8 }}>
-            {referrals.joiners.map((j) => (
-              <View key={j.userId} testID={`refer-joiner-${j.userId}`} style={[styles.joinerRow, { borderTopColor: colors.hairline }]}>
+          <Card padding={0}>
+            {referrals.joiners.map((j, i) => (
+              <View
+                key={j.userId}
+                testID={`refer-joiner-${j.userId}`}
+                style={[styles.joinerRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline }]}
+              >
                 <View style={[styles.avatar, { backgroundColor: colors.azureTint }]}>
                   <Text variant="subhead" weight="700" color="azure">
                     {j.name.trim()?.[0]?.toUpperCase() ?? '?'}
@@ -155,19 +173,19 @@ export function ReferScreen(): React.ReactElement {
                 </View>
               </View>
             ))}
-          </View>
+          </Card>
         )}
-      </Card>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  stateCard: { marginHorizontal: 20, marginTop: 24, alignItems: 'center', paddingVertical: 28 },
+  stateCard: { marginHorizontal: 20, marginTop: 8, alignItems: 'center', paddingVertical: 28 },
   head: { flexDirection: 'row', alignItems: 'center' },
-  iconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   codeBox: { marginTop: 16, borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center' },
-  joinerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  joinerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },
   avatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
 });

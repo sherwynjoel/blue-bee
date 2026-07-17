@@ -17,7 +17,7 @@ import { isRateable } from '../orders/rating';
 import { capturePhotoToOrder, MediaCaptureError, type CaptureSource } from '../media/capture';
 import { money, orderRef, rangeText, shortDate } from '../format';
 import { useTheme } from '../../theme';
-import { Badge, Button, Card, KeyValue, Divider, Sheet, StatusPill, Text, fireHaptic } from '../../components/ui';
+import { Badge, Button, Card, KeyValue, Divider, IconBadge, Sheet, SkeletonCard, StatusPill, Text, fireHaptic } from '../../components/ui';
 
 type Nav = NavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'OrderDetail'>;
@@ -167,18 +167,24 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
 
   if (loading)
     return (
-      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
-        <ActivityIndicator testID="detail-loading" size="large" color={colors.azure} />
+      <View style={[styles.screen, { backgroundColor: colors.canvas }]} testID="detail-loading">
+        <View style={styles.loadingContent}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
       </View>
     );
   if (error || !order)
     return (
       <View style={[styles.center, { backgroundColor: colors.canvas }]}>
-        <Feather name="alert-circle" size={28} color={colors.danger} />
-        <Text variant="headline" weight="600" center style={{ marginTop: 12 }}>
-          {error ?? 'Order not found.'}
-        </Text>
-        <Button label="Try again" variant="outline" icon="refresh-cw" onPress={() => void load()} fullWidth={false} style={{ marginTop: 16 }} />
+        <Card style={styles.stateCard}>
+          <IconBadge icon="alert-circle" tone="danger" size={48} />
+          <Text variant="headline" weight="600" center style={{ marginTop: 14 }}>
+            {error ?? 'Order not found.'}
+          </Text>
+          <Button testID="detail-retry" label="Try again" variant="outline" icon="refresh-cw" onPress={() => void load()} fullWidth={false} style={{ marginTop: 16 }} />
+        </Card>
       </View>
     );
 
@@ -234,9 +240,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
         accessibilityLabel={unread > 0 ? `Messages, ${unread} unread` : 'Messages'}
       >
         <Card style={styles.chatCta}>
-          <View style={[styles.chatIcon, { backgroundColor: colors.subtle }]}>
-            <Feather name="message-circle" size={20} color={colors.azure} />
-          </View>
+          <IconBadge icon="message-circle" tone="azure" size={40} />
           <View style={{ flex: 1 }}>
             <Text variant="headline" weight="700">
               Messages
@@ -285,9 +289,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
         ) : (
           <Pressable testID="rate-cta" onPress={() => navigation.navigate('Rate', { orderId })} accessibilityRole="button" accessibilityLabel="Rate this order">
             <Card style={styles.chatCta}>
-              <View style={[styles.chatIcon, { backgroundColor: colors.subtle }]}>
-                <Feather name="star" size={20} color={colors.honey} />
-              </View>
+              <IconBadge icon="star" tone="honey" size={40} />
               <View style={{ flex: 1 }}>
                 <Text variant="headline" weight="700">
                   Rate this order
@@ -413,7 +415,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       ) : null}
 
       {damageItems.length > 0 ? (
-        <Card title="Pre-existing condition" titleAccessory={<Feather name="info" size={18} color={colors.warning} />}>
+        <Card title="Pre-existing condition" titleAccessory={<IconBadge icon="info" tone="warning" size={30} />}>
           <View style={[styles.damageNotice, { backgroundColor: colors.warningTint }]}>
             <Text testID="damage-notice" variant="footnote" color="warning" style={{ lineHeight: 19 }}>
               We noted some pre-existing wear during intake — nothing caused by us. Please review the photo below so we’re on the same page.
@@ -441,9 +443,12 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
             style={[styles.itemBlock, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline, paddingTop: 14 }]}
           >
             <View style={styles.itemHead}>
-              <Text variant="subhead" weight="600">
-                {it.kind}
-              </Text>
+              <View style={styles.itemHeadLeft}>
+                <IconBadge icon="package" tone="neutral" size={32} />
+                <Text variant="subhead" weight="600" style={{ marginLeft: 10 }}>
+                  {it.kind}
+                </Text>
+              </View>
               <Badge label={it.status.replace(/_/g, ' ').toLowerCase()} tone="neutral" />
             </View>
             <PhotoRow item={it} onZoom={setZoom} />
@@ -554,19 +559,22 @@ function PhotoRow({ item, onZoom }: { item: ItemView; onZoom: (uri: string) => v
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  loadingContent: { padding: 20, gap: 14 },
   content: { padding: 20, gap: 14, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
+  stateCard: { alignItems: 'center', paddingVertical: 28, width: '100%' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   trackCta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   trackIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   chatCta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  chatIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   approvedRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   paidRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginTop: 10 },
   damageNotice: { borderRadius: 12, padding: 12 },
   itemBlock: { marginBottom: 14 },
   itemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  itemHeadLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   photoStrip: { marginVertical: 8 },
   photo: { width: 96, height: 96, borderRadius: 12 },
   photoActions: { flexDirection: 'row', gap: 10, marginTop: 6 },

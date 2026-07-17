@@ -1,7 +1,7 @@
 import { Platform, type TextStyle, type ViewStyle } from 'react-native';
 
 /**
- * Daylight — the Blue Bee customer-app design system (premium, Apple-grade).
+ * Daylight — the Royal Dry Cleaning & Laundry customer-app design system (premium, Apple-grade).
  *
  * This is the LOCAL mirror of the Daylight tokens. The shared `packages/design-tokens` lands on
  * another branch; until then these exact values live here and are reconciled at merge. Light + dark
@@ -34,7 +34,7 @@ export interface ThemeColors {
   azure: string;
   /** Azure wash (selected chips, info cards, marker halo). */
   azureTint: string;
-  /** Brand accent — honey (the bee; destination, highlights). */
+  /** Brand accent — gold (the crown; destination, highlights, "needs your decision"). */
   honey: string;
   /** Honey wash. */
   honeyTint: string;
@@ -70,20 +70,23 @@ export interface ThemeColors {
   blurTint: 'light' | 'dark';
 }
 
+// Royal Dry Cleaning & Laundry brand: azure token now carries the crest's royal blue; honey now
+// carries the crown's gold. Token NAMES are kept (azure/honey) as semantic slots used across ~15 files —
+// only the values move — so nothing structural changes. Canvas is a cool light-grey so white cards lift.
 const light: ThemeColors = {
-  canvas: '#FBFCFE',
-  subtle: '#F4F7FB',
+  canvas: '#F4F6FB',
+  subtle: '#EAEFF7',
   surface: '#FFFFFF',
-  hairline: '#E5EAF1',
+  hairline: '#E4E9F2',
 
   text: '#0A2540',
   textSecondary: '#5A6B82',
   textTertiary: '#8A99AE',
 
-  azure: '#0B5FFF',
-  azureTint: '#E8F0FF',
-  honey: '#FFB020',
-  honeyTint: '#FFF6E6',
+  azure: '#1E50C8',
+  azureTint: '#E7ECFB',
+  honey: '#DDA82E',
+  honeyTint: '#FAF3DF',
 
   success: '#14B86A',
   successTint: '#E5F8EE',
@@ -95,7 +98,7 @@ const light: ThemeColors = {
   onAzure: '#FFFFFF',
   onHoney: '#3D2C00',
 
-  onAzureTint: '#0B5FFF',
+  onAzureTint: '#1E50C8',
   onSuccessTint: '#0A7C46',
   onWarningTint: '#8A5300',
   onDangerTint: '#C42A1F',
@@ -116,10 +119,10 @@ const dark: ThemeColors = {
   textSecondary: '#9DB0C9',
   textTertiary: '#6B7C96',
 
-  azure: '#3D8BFF',
-  azureTint: 'rgba(61,139,255,0.16)',
-  honey: '#FFC34D',
-  honeyTint: 'rgba(255,195,77,0.16)',
+  azure: '#5B87F5',
+  azureTint: 'rgba(91,135,245,0.18)',
+  honey: '#E8B84D',
+  honeyTint: 'rgba(232,184,77,0.16)',
 
   success: '#2DD583',
   successTint: 'rgba(45,213,131,0.16)',
@@ -129,13 +132,13 @@ const dark: ThemeColors = {
   dangerTint: 'rgba(255,97,104,0.16)',
 
   onAzure: '#FFFFFF',
-  onHoney: '#2A1E00',
+  onHoney: '#241A00',
 
-  onAzureTint: '#3D8BFF',
+  onAzureTint: '#5B87F5',
   onSuccessTint: '#2DD583',
   onWarningTint: '#FFC34D',
   onDangerTint: '#FF6168',
-  onHoneyTint: '#FFC34D',
+  onHoneyTint: '#E8B84D',
 
   scrim: 'rgba(0,0,0,0.6)',
   glass: 'rgba(20,27,45,0.72)',
@@ -215,17 +218,17 @@ export interface Elevation {
 const lightElevation: Elevation = {
   e1: {
     shadowColor: '#0A2540',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   e2: {
     shadowColor: '#0A2540',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowRadius: 20,
+    elevation: 6,
   },
   sheet: {
     shadowColor: '#0A2540',

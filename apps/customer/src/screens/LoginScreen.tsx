@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@blue-bee/api-client';
 import type { OAuthProvider } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
 import { getProviderIdToken, OAuthUnavailableError } from '../auth/oauth-native';
 import { useTheme } from '../../theme';
-import { BeeMark, Button, Input, Text } from '../../components/ui';
+import { Card, Hero, Button, Input, Text } from '../../components/ui';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- static asset require, matches App.tsx/OnboardingScreen.tsx
+const ROYAL_LOGO = require('../../assets/brand/royal-logo.png');
 
 type Mode = 'phone' | 'code' | 'email' | 'register' | 'forgot';
 
@@ -16,10 +20,14 @@ type Mode = 'phone' | 'code' | 'email' | 'register' | 'forgot';
  * server-side (dedupe by verified email). The provider token is verified SERVER-SIDE; the on-device
  * acquisition is wired in the EAS build (see `getProviderIdToken`). A `?ref=` deep link prefills the
  * signup referral code. No reward is implied anywhere (referral reward is deferred — Inc-34).
+ *
+ * [Royal restyle] The Blue Bee mark + wordmark are replaced by the Royal crest (crown + basket + "ROYAL
+ * DRY CLEANING & LAUNDRY" lockup) inside the same soft Hero band used on Dashboard, and every auth form
+ * now sits on an elevated Card — same primitives, same calls, same testIDs.
  */
 export function LoginScreen(): React.ReactElement {
   const { requestOtp, login, client, completeSignIn } = useSession();
-  const { colors, space } = useTheme();
+  const { colors, space, radius } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [mode, setMode] = useState<Mode>('phone');
@@ -180,32 +188,34 @@ export function LoginScreen(): React.ReactElement {
   return (
     <KeyboardAvoidingView style={[styles.flex, { backgroundColor: colors.canvas }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
-          <BeeMark size={72} />
-          <Text variant="display" weight="700" style={{ marginTop: space.lg }}>
-            Blue Bee
-          </Text>
-          <Text variant="subhead" color="secondary" center style={{ marginTop: 6 }}>
-            Specialty cleaning, tracked door to door.
-          </Text>
+          <Hero testID="login-hero" padding={28}>
+            <View style={styles.heroInner}>
+              {/* The crest PNG already carries the "ROYAL — Dry Cleaning & Laundry" wordmark, so no second text wordmark. */}
+              <Image source={ROYAL_LOGO} style={styles.logo} resizeMode="contain" accessibilityLabel="Royal Dry Cleaning & Laundry" />
+              <Text variant="subhead" color="secondary" center style={{ marginTop: space.md }}>
+                Specialty cleaning, tracked door to door.
+              </Text>
+            </View>
+          </Hero>
         </View>
 
         {mode === 'phone' && (
-          <View style={styles.form}>
+          <Card style={styles.form}>
             <Input testID="phone-input" label="Your phone number" icon="phone" value={phone} onChangeText={setPhone} placeholder="+1 416 555 0010" keyboardType="phone-pad" autoCapitalize="none" autoCorrect={false} returnKeyType="go" onSubmitEditing={() => phone.trim().length >= 8 && void sendCode()} />
             <Button testID="send-code" label="Send code" icon="arrow-right" onPress={sendCode} busy={busy} disabled={phone.trim().length < 8} />
             {orDivider}
             {providerButtons}
             <Button testID="go-email" label="Sign in with email" icon="mail" variant="ghost" tone="neutral" onPress={() => go('email')} disabled={busy} haptic="selection" />
-          </View>
+          </Card>
         )}
 
         {mode === 'code' && (
-          <View style={styles.form}>
+          <Card style={styles.form}>
             <Text variant="subhead" color="secondary">
               Enter the 6-digit code sent to{' '}
               <Text variant="subhead" weight="600">
@@ -214,7 +224,8 @@ export function LoginScreen(): React.ReactElement {
             </Text>
             <Input testID="code-input" value={code} onChangeText={setCode} placeholder="123456" keyboardType="number-pad" maxLength={6} textAlign="center" style={styles.codeInput} />
             {devCode ? (
-              <View style={[styles.devHint, { backgroundColor: colors.honeyTint }]}>
+              <View style={[styles.devHint, { backgroundColor: colors.honeyTint, borderRadius: radius.input }]}>
+                <Feather name="terminal" size={13} color={colors.onHoney} style={{ marginRight: 6 }} />
                 <Text variant="footnote" style={{ color: colors.onHoney }}>
                   Dev code: <Text variant="footnote" weight="700" mono style={{ color: colors.onHoney }}>{devCode}</Text>
                 </Text>
@@ -222,11 +233,11 @@ export function LoginScreen(): React.ReactElement {
             ) : null}
             <Button testID="verify" label="Verify & sign in" onPress={verify} busy={busy} disabled={code.trim().length !== 6} />
             <Button testID="go-phone" variant="ghost" tone="neutral" label="Use a different number" onPress={() => go('phone')} disabled={busy} haptic="selection" />
-          </View>
+          </Card>
         )}
 
         {mode === 'email' && (
-          <View style={styles.form}>
+          <Card style={styles.form}>
             <Input testID="email-input" label="Email" icon="mail" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} textContentType="emailAddress" />
             <Input testID="password-input" label="Password" icon="lock" value={password} onChangeText={setPassword} placeholder="Your password" secureTextEntry autoCapitalize="none" textContentType="password" />
             <Button testID="email-signin" label="Sign in" icon="arrow-right" onPress={emailSignIn} busy={busy} disabled={email.trim().length < 3 || password.length < 1} />
@@ -237,25 +248,22 @@ export function LoginScreen(): React.ReactElement {
             {orDivider}
             {providerButtons}
             <Button testID="go-phone" label="Use phone instead" icon="phone" variant="ghost" tone="neutral" onPress={() => go('phone')} disabled={busy} haptic="selection" />
-          </View>
+          </Card>
         )}
 
         {mode === 'register' && (
-          <View style={styles.form}>
+          <Card title="Create your account" style={styles.form}>
             <Input testID="name-input" label="Your name" icon="user" value={name} onChangeText={setName} placeholder="Alex Rivera" autoCapitalize="words" />
             <Input testID="email-input" label="Email" icon="mail" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} textContentType="emailAddress" />
             <Input testID="password-input" label="Password" icon="lock" value={password} onChangeText={setPassword} placeholder="At least 8 characters" secureTextEntry autoCapitalize="none" textContentType="newPassword" hint="At least 8 characters." />
             <Input testID="referral-input" label="Referral code (optional)" icon="user-plus" value={referralCode} onChangeText={setReferralCode} placeholder="From a friend’s invite" autoCapitalize="characters" autoCorrect={false} />
             <Button testID="register-submit" label="Create account" icon="arrow-right" onPress={registerEmail} busy={busy} disabled={name.trim().length < 1 || email.trim().length < 3 || password.length < 8} />
             <LinkText testID="go-email" label="Have an account? Sign in" onPress={() => go('email')} center />
-          </View>
+          </Card>
         )}
 
         {mode === 'forgot' && (
-          <View style={styles.form}>
-            <Text variant="headline" weight="700">
-              Reset your password
-            </Text>
+          <Card title="Reset your password" style={styles.form}>
             <Input testID="email-input" label="Email" icon="mail" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
             <Button testID="forgot-send" label={forgotSent ? 'Resend reset code' : 'Send reset code'} icon="send" variant={forgotSent ? 'outline' : 'solid'} onPress={forgotRequest} busy={busy} disabled={email.trim().length < 3} />
             {forgotSent && (
@@ -266,19 +274,21 @@ export function LoginScreen(): React.ReactElement {
               </>
             )}
             <Button testID="go-email" label="Back to sign in" variant="ghost" tone="neutral" onPress={() => go('email')} disabled={busy} haptic="selection" />
-          </View>
+          </Card>
         )}
 
         {info ? (
-          <View style={[styles.info, { backgroundColor: colors.azureTint }]}>
-            <Text testID="login-info" variant="footnote" color="azure" center>
+          <View style={[styles.banner, { backgroundColor: colors.azureTint, borderRadius: radius.input }]}>
+            <Feather name="info" size={14} color={colors.azure} style={{ marginRight: 6 }} />
+            <Text testID="login-info" variant="footnote" color="azure" style={styles.bannerText}>
               {info}
             </Text>
           </View>
         ) : null}
         {error ? (
-          <View style={[styles.error, { backgroundColor: colors.dangerTint }]}>
-            <Text testID="login-error" variant="footnote" color="danger" center>
+          <View style={[styles.banner, { backgroundColor: colors.dangerTint, borderRadius: radius.input }]}>
+            <Feather name="alert-circle" size={14} color={colors.danger} style={{ marginRight: 6 }} />
+            <Text testID="login-error" variant="footnote" color="danger" style={styles.bannerText}>
               {error}
             </Text>
           </View>
@@ -302,13 +312,15 @@ function LinkText({ testID, label, onPress, center }: { testID: string; label: s
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 },
-  hero: { alignItems: 'center', marginBottom: 28 },
-  form: { gap: 14 },
+  hero: { marginBottom: 24 },
+  heroInner: { alignItems: 'center' },
+  logo: { width: 120, height: 120 },
+  form: { gap: 14, marginTop: 4 },
   codeInput: { fontSize: 26, letterSpacing: 8, fontVariant: ['tabular-nums'] },
-  devHint: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  devHint: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 7 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 2 },
   line: { flex: 1, height: StyleSheet.hairlineWidth },
   linkRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  info: { borderRadius: 12, padding: 12, marginTop: 18 },
-  error: { borderRadius: 12, padding: 12, marginTop: 12 },
+  banner: { flexDirection: 'row', alignItems: 'center', padding: 12, marginTop: 16 },
+  bannerText: { flex: 1 },
 });

@@ -57,7 +57,7 @@ export async function registerForPush(client: CustomerApiClient): Promise<string
   if (!(await ensurePermission())) return null;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'Blue Bee',
+      name: 'Royal Cleaners',
       importance: Notifications.AndroidImportance.MAX,
     });
   }

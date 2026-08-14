@@ -57,14 +57,25 @@ cd "/Volumes/Gowtham/Blue Bee" && git worktree remove ../bluebee-integration
 
 **Remote:** `https://github.com/onskim/blue-bee.git`
 
-### ⚠️ Git state needs attention before handover
+### Git state — resolved 2026-08-12
 
-| Issue | Detail | Action |
+All of the below was outstanding when this audit began. It has since been committed, merged and pushed;
+recorded here so the next developer knows what moved and can verify it.
+
+| Issue (as found) | Detail | Resolution |
 |---|---|---|
-| **Unpushed work** | 3 commits on `feature/customer-ux` exist only on this drive: `ef3df1f` (Royal rebrand + full customer UX redesign), `029ee3a` (demo order seed), `d759f05` (reference-render match) | `git push -u origin feature/customer-ux` |
-| **Local `main` is stale** | Local `main` = `7d8297f` (Jul 1); `origin/main` = `99f68be` (Jul 13) — 33 commits behind | `git checkout main && git pull` |
-| **`feature/customer-ux` never merged** | It is the newest state of the customer app and is 3 commits ahead of `origin/main` | Merge to `main` after review |
-| **13 stale branches** | All other local/remote feature branches are fully merged into `origin/main` (0 unmerged commits each) | Safe to delete |
+| **Unpushed work** | 3 commits on `feature/customer-ux` existed only on this drive: `ef3df1f` (Royal rebrand + full customer UX redesign), `029ee3a` (demo order seed), `d759f05` (reference-render match) | ✅ Pushed to `origin/feature/customer-ux` |
+| **Local `main` was stale** | Local `main` = `7d8297f` (Jul 1); `origin/main` = `99f68be` (Jul 13) — 33 commits behind | ✅ Fast-forwarded to `origin/main` |
+| **`feature/customer-ux` never merged** | The newest state of the customer app, 3 commits ahead of `origin/main` | ✅ Merged into `main` as `90fa528` — clean automatic merge, no conflicts. Verified after merge: typecheck 10/10, customer 229/229 |
+| **13 stale branches** | All other local/remote feature branches are fully merged into `origin/main` (0 unmerged commits each) | ⬜ Still present — safe to delete at the new developer's discretion |
+
+**`main` is now `90fa528` and `origin/main` matches it exactly.** Nothing is left on the drive alone.
+
+> **Note on review.** The merge was performed at the founder's explicit request, so the customer-app UX
+> redesign reached `main` **without a second pair of eyes on the diff**. It is presentation-only by
+> construction — the frozen frontend↔backend contract (`src/api`, `src/session`, `src/navigation` param
+> shapes, `src/push`, `src/config`) is untouched, and the full suite passes — but the incoming developer
+> should still read `d759f05` and `ef3df1f` before building on them.
 
 ---
 

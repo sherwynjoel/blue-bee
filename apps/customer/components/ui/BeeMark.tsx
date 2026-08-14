@@ -10,8 +10,12 @@ export interface BeeMarkProps {
 }
 
 /**
- * The Blue Bee logomark — an azure squircle cradling a honey bee. The brand's two signature colors in
- * one mark; used on the splash and the login hero ("the bee moment").
+ * The Royal logomark — a royal-blue squircle crowned in gold. The brand's two signature colors in one
+ * compact mark, used wherever a small brand glyph fits. The full crest (crown + basket) ships as an
+ * image asset (assets/brand/royal-logo.png) for the splash, login hero, onboarding and app icon.
+ *
+ * The component name stays `BeeMark` (it is the app-wide brand-glyph slot, imported in several places
+ * and asserted in tests); only what it draws changed — bee → crown — during the Royal rebrand.
  */
 export function BeeMark({ size = 72, style }: BeeMarkProps): React.ReactElement {
   const { colors, elevation } = useTheme();
@@ -30,7 +34,7 @@ export function BeeMark({ size = 72, style }: BeeMarkProps): React.ReactElement 
         style,
       ]}
     >
-      <MaterialCommunityIcons name="bee" size={size * 0.58} color={colors.honey} />
+      <MaterialCommunityIcons name="crown" size={size * 0.54} color={colors.honey} />
     </View>
   );
 }

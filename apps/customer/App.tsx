@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { Feather } from '@expo/vector-icons';
 import { DefaultTheme, DarkTheme, NavigationContainer, useNavigation, type NavigationProp, type Theme as NavTheme } from '@react-navigation/native';
 import { createNativeStackNavigator, type NativeStackNavigationOptions } from '@react-navigation/native-stack';
@@ -23,11 +24,16 @@ import { SettingsScreen } from './src/screens/SettingsScreen';
 import { ReferScreen } from './src/screens/ReferScreen';
 import { AddressesScreen } from './src/screens/AddressesScreen';
 import { AddressFormScreen } from './src/screens/AddressFormScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { PricingScreen } from './src/screens/PricingScreen';
 import { navigationRef, openOrderTracking, type BookParams, type RootStackParamList } from './src/navigation';
 import { usePushDeepLinks } from './src/push/register';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config';
 import { ThemeProvider, useTheme, type Theme } from './theme';
-import { BeeMark, Text, fireHaptic } from './components/ui';
+import { Text, fireHaptic } from './components/ui';
+
+/** Per-device flag: the first-run onboarding carousel is shown once, then never again. */
+const ONBOARDED_KEY = 'royal.onboarded';
 
 /**
  * [Inc-33] The bottom-tab param list — the customer nav shell is now **Service · Orders · Profile** (the
@@ -41,7 +47,7 @@ import { BeeMark, Text, fireHaptic } from './components/ui';
  *
  * [Inc-34] A 4th tab, **Refer**, is added (route name 'Refer' — net-new, nothing frozen navigates to it).
  */
-type TabParamList = { Home: undefined; Services: undefined; Orders: undefined; Settings: undefined; Refer: undefined };
+type TabParamList = { Home: undefined; Services: undefined; Orders: undefined; Settings: undefined; Refer: undefined; Pricing: undefined };
 type RootNavParamList = {
   Main: undefined;
   // [Inc-26] Book now takes params (a preselected site after adding an address). This list is the
@@ -104,8 +110,10 @@ function OrdersTab(): React.ReactElement {
   return <OrdersScreen navigation={navigation} />;
 }
 
-/** [Inc-33/34] The Daylight bottom tab bar — Service · Orders · Profile · Refer. Book is the Service tab's
- *  primary action (no center FAB); Refer (Inc-34) invites friends (no reward — reward is deferred). */
+/** [Royal] The bottom dock — Home · Pricing · (Order + FAB) · Invite · Profile, per the reference. The
+ *  center FAB starts a new order (→ the Services picker). Route NAMES stay stable so frozen navigate()
+ *  calls resolve: 'Settings' is the Profile tab, 'Refer' is Invite; Services/Orders remain registered tab
+ *  routes (reached via the FAB and Home's "see all"), just without their own dock button. */
 function DaylightTabBar({ state, navigation }: BottomTabBarProps): React.ReactElement {
   const { colors, space } = useTheme();
   const insets = useSafeAreaInsets();
@@ -117,14 +125,28 @@ function DaylightTabBar({ state, navigation }: BottomTabBarProps): React.ReactEl
   };
 
   return (
-    <View style={[styles.tabBar, { backgroundColor: colors.surface, borderTopColor: colors.hairline, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
-      {/* 'Home' route → the Service catalogue tab; 'Settings' route → the Profile tab (route names kept
-          stable so the frozen screens' navigate() calls resolve — see TabParamList above). */}
+    <View style={[styles.tabBar, { backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
       <TabButton icon="home" label="Home" active={active === 'Home'} onPress={() => go('Home')} />
-      <TabButton icon="grid" label="Services" active={active === 'Services'} onPress={() => go('Services')} />
-      <TabButton icon="package" label="Orders" active={active === 'Orders'} onPress={() => go('Orders')} />
+      <TabButton icon="dollar-sign" label="Pricing" active={active === 'Pricing'} onPress={() => go('Pricing')} />
+      <OrderFab onPress={() => go('Services')} />
+      <TabButton icon="gift" label="Invite" active={active === 'Refer'} onPress={() => go('Refer')} />
       <TabButton icon="user" label="Profile" active={active === 'Settings'} onPress={() => go('Settings')} />
-      <TabButton icon="user-plus" label="Refer" active={active === 'Refer'} onPress={() => go('Refer')} />
+    </View>
+  );
+}
+
+/** The center "+" Order action — an elevated royal-blue disc that rises above the dock. Not a tab route;
+ *  it starts a new order by jumping to the Services picker. */
+function OrderFab({ onPress }: { onPress: () => void }): React.ReactElement {
+  const { colors, elevation } = useTheme();
+  return (
+    <View style={styles.tabItem}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New order" style={[styles.fab, { backgroundColor: colors.azure }, elevation.e2]}>
+        <Feather name="plus" size={26} color={colors.onAzure} />
+      </Pressable>
+      <Text variant="caption" weight="600" style={{ color: colors.azure, marginTop: 4 }}>
+        Order
+      </Text>
     </View>
   );
 }
@@ -162,8 +184,10 @@ function MainTabs(): React.ReactElement {
       <Tab.Screen name="Orders" component={OrdersTab} options={{ title: 'My orders' }} />
       {/* Profile tab — route name stays 'Settings' (frozen), titled/labelled "Profile". */}
       <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Profile' }} />
-      {/* [Inc-34] Refer tab — invite friends (reward deferred; no reward copy). */}
+      {/* [Inc-34] Refer tab — invite friends (reward deferred; no reward copy). Labelled "Invite" in the dock. */}
       <Tab.Screen name="Refer" component={ReferScreen} options={{ title: 'Refer' }} />
+      {/* [Royal] Pricing is now a first-class dock tab (was a pushed route). Owns its own header. */}
+      <Tab.Screen name="Pricing" component={PricingScreen} options={{ headerShown: false }} />
     </Tab.Navigator>
   );
 }
@@ -172,23 +196,38 @@ function MainTabs(): React.ReactElement {
 function Root(): React.ReactElement {
   const theme = useTheme();
   const { status } = useSession();
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   // A tapped geofence push deep-links to that order's tracking (scoped to the customer's own order).
   usePushDeepLinks(useCallback((orderId: string) => openOrderTracking(orderId), []));
 
-  if (status === 'loading') {
+  // First-run gate: read the per-device "seen onboarding" flag once. Fail open so a read error never
+  // traps a returning customer in the intro.
+  useEffect(() => {
+    let alive = true;
+    SecureStore.getItemAsync(ONBOARDED_KEY)
+      .then((v) => alive && setOnboarded(v === '1'))
+      .catch(() => alive && setOnboarded(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const completeOnboarding = useCallback(() => {
+    setOnboarded(true);
+    void SecureStore.setItemAsync(ONBOARDED_KEY, '1').catch(() => undefined);
+  }, []);
+
+  if (status === 'loading' || onboarded === null) {
     return (
-      <View style={[styles.splash, { backgroundColor: theme.colors.canvas }]}>
-        <BeeMark size={84} />
-        <Text variant="title2" weight="700" style={{ marginTop: 20 }}>
-          Blue Bee
-        </Text>
-        <ActivityIndicator style={{ marginTop: 16 }} color={theme.colors.azure} />
+      <View style={[styles.splash, { backgroundColor: theme.colors.surface }]}>
+        {/* The Royal crest (crown + basket wordmark) — the brand moment on the loading splash. */}
+        <Image source={require('./assets/brand/royal-logo.png')} style={styles.splashLogo} resizeMode="contain" accessibilityLabel="Royal Dry Cleaning & Laundry" />
+        <ActivityIndicator style={{ marginTop: 8 }} color={theme.colors.azure} />
       </View>
     );
   }
 
-  if (status === 'signedOut') return <LoginScreen />;
+  if (status === 'signedOut') return onboarded ? <LoginScreen /> : <OnboardingScreen onDone={completeOnboarding} />;
 
   return (
     <RootStack.Navigator screenOptions={screenOptions(theme)}>
@@ -235,6 +274,21 @@ export default function App(): React.ReactElement {
 
 const styles = StyleSheet.create({
   splash: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, paddingHorizontal: 8 },
+  splashLogo: { width: 220, height: 220 },
+  // Floating card-like dock: rounded top corners + a soft upward shadow, no flush hairline (matches the reference).
+  tabBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingHorizontal: 8,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#0A2540',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 12,
+  },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  fab: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', marginTop: -20 },
 });

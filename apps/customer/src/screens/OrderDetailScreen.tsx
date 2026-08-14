@@ -2,14 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { io } from 'socket.io-client';
-import { PhotoKind, WS_EVENTS, WS_NAMESPACES, type OrderWeightView } from '@blue-bee/shared';
+import { PhotoKind, WS_EVENTS, WS_NAMESPACES, type OrderStatus, type OrderWeightView } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 import { useFocusEffect, type NavigationProp, type RouteProp } from '@react-navigation/native';
 import { useSession } from '../session/SessionProvider';
 import { API_BASE_URL } from '../config';
 import type { OrderDetail, ItemView } from '../api/types';
 import type { RootStackParamList } from '../navigation';
-import { StatusTimeline } from '../components/StatusTimeline';
+import { buildCustomerTimeline } from '../orders/timeline';
 import { CorporatePricingNote } from '../components/CorporatePricing';
 import { StarRating } from '../components/StarRating';
 import { hasActiveStop, preexistingDamageItems, quoteActionability } from '../orders/quote';
@@ -17,7 +17,7 @@ import { isRateable } from '../orders/rating';
 import { capturePhotoToOrder, MediaCaptureError, type CaptureSource } from '../media/capture';
 import { money, orderRef, rangeText, shortDate } from '../format';
 import { useTheme } from '../../theme';
-import { Badge, Button, Card, KeyValue, Divider, Sheet, StatusPill, Text, fireHaptic } from '../../components/ui';
+import { Badge, Button, Card, KeyValue, Divider, IconBadge, Sheet, SkeletonCard, StatusPill, Text, fireHaptic } from '../../components/ui';
 
 type Nav = NavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'OrderDetail'>;
@@ -167,18 +167,24 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
 
   if (loading)
     return (
-      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
-        <ActivityIndicator testID="detail-loading" size="large" color={colors.azure} />
+      <View style={[styles.screen, { backgroundColor: colors.canvas }]} testID="detail-loading">
+        <View style={styles.loadingContent}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
       </View>
     );
   if (error || !order)
     return (
       <View style={[styles.center, { backgroundColor: colors.canvas }]}>
-        <Feather name="alert-circle" size={28} color={colors.danger} />
-        <Text variant="headline" weight="600" center style={{ marginTop: 12 }}>
-          {error ?? 'Order not found.'}
-        </Text>
-        <Button label="Try again" variant="outline" icon="refresh-cw" onPress={() => void load()} fullWidth={false} style={{ marginTop: 16 }} />
+        <Card style={styles.stateCard}>
+          <IconBadge icon="alert-circle" tone="danger" size={48} />
+          <Text variant="headline" weight="600" center style={{ marginTop: 14 }}>
+            {error ?? 'Order not found.'}
+          </Text>
+          <Button testID="detail-retry" label="Try again" variant="outline" icon="refresh-cw" onPress={() => void load()} fullWidth={false} style={{ marginTop: 16 }} />
+        </Card>
       </View>
     );
 
@@ -234,9 +240,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
         accessibilityLabel={unread > 0 ? `Messages, ${unread} unread` : 'Messages'}
       >
         <Card style={styles.chatCta}>
-          <View style={[styles.chatIcon, { backgroundColor: colors.subtle }]}>
-            <Feather name="message-circle" size={20} color={colors.azure} />
-          </View>
+          <IconBadge icon="message-circle" tone="azure" size={40} />
           <View style={{ flex: 1 }}>
             <Text variant="headline" weight="700">
               Messages
@@ -250,7 +254,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       </Pressable>
 
       <Card title="Progress">
-        <StatusTimeline status={order.status} heldFrom={order.heldFrom} />
+        <CustomerTimeline status={order.status} heldFrom={order.heldFrom} />
       </Card>
 
       {/* [Inc-32] Post-delivery rating. Once the order is delivered-or-later: the submitted score read-only,
@@ -285,9 +289,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
         ) : (
           <Pressable testID="rate-cta" onPress={() => navigation.navigate('Rate', { orderId })} accessibilityRole="button" accessibilityLabel="Rate this order">
             <Card style={styles.chatCta}>
-              <View style={[styles.chatIcon, { backgroundColor: colors.subtle }]}>
-                <Feather name="star" size={20} color={colors.honey} />
-              </View>
+              <IconBadge icon="star" tone="honey" size={40} />
               <View style={{ flex: 1 }}>
                 <Text variant="headline" weight="700">
                   Rate this order
@@ -413,7 +415,7 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
       ) : null}
 
       {damageItems.length > 0 ? (
-        <Card title="Pre-existing condition" titleAccessory={<Feather name="info" size={18} color={colors.warning} />}>
+        <Card title="Pre-existing condition" titleAccessory={<IconBadge icon="info" tone="warning" size={30} />}>
           <View style={[styles.damageNotice, { backgroundColor: colors.warningTint }]}>
             <Text testID="damage-notice" variant="footnote" color="warning" style={{ lineHeight: 19 }}>
               We noted some pre-existing wear during intake — nothing caused by us. Please review the photo below so we’re on the same page.
@@ -441,9 +443,12 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
             style={[styles.itemBlock, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline, paddingTop: 14 }]}
           >
             <View style={styles.itemHead}>
-              <Text variant="subhead" weight="600">
-                {it.kind}
-              </Text>
+              <View style={styles.itemHeadLeft}>
+                <IconBadge icon="package" tone="neutral" size={32} />
+                <Text variant="subhead" weight="600" style={{ marginLeft: 10 }}>
+                  {it.kind}
+                </Text>
+              </View>
               <Badge label={it.status.replace(/_/g, ' ').toLowerCase()} tone="neutral" />
             </View>
             <PhotoRow item={it} onZoom={setZoom} />
@@ -533,6 +538,83 @@ export function OrderDetailScreen({ navigation, route }: { navigation: Nav; rout
   );
 }
 
+/**
+ * The customer-facing 4-node tracker (Order placed → Picked up → Out for delivery → Delivered), built
+ * from `buildCustomerTimeline` (§ orders/timeline.ts) — the server's granular status collapsed to what
+ * the customer should see, never invented client-side. Mirrors the app's established vertical-rail
+ * timeline language (checked/ringed/hollow nodes + connectors) with an honest note for on-hold/declined
+ * states. Kept local to this screen per the Royal convention for small presentational sub-components.
+ */
+function CustomerTimeline({ status, heldFrom }: { status: OrderStatus; heldFrom?: OrderStatus | null }): React.ReactElement {
+  const { colors, space } = useTheme();
+  const { steps, note, onHold } = buildCustomerTimeline(status, heldFrom);
+  const lastIdx = steps.length - 1;
+
+  return (
+    <View testID="status-timeline">
+      {steps.map((step, i) => {
+        const done = step.state === 'done';
+        const current = step.state === 'current';
+        const nodeColor = onHold && current ? colors.warning : colors.azure;
+        const nodeTint = onHold && current ? colors.warningTint : colors.azureTint;
+        const connectorColor = done ? colors.success : colors.hairline;
+
+        return (
+          <View key={step.label} style={timelineStyles.row}>
+            <View style={timelineStyles.rail}>
+              {done ? (
+                <View style={[timelineStyles.dotDone, { backgroundColor: colors.success }]}>
+                  <Feather name="check" size={11} color={colors.onAzure} />
+                </View>
+              ) : current ? (
+                <View style={[timelineStyles.ring, { borderColor: nodeColor, backgroundColor: nodeTint }]}>
+                  {onHold ? <Feather name="pause" size={10} color={nodeColor} /> : <View style={[timelineStyles.ringCore, { backgroundColor: nodeColor }]} />}
+                </View>
+              ) : (
+                <View style={[timelineStyles.dotUpcoming, { borderColor: colors.hairline, backgroundColor: colors.surface }]} />
+              )}
+              {i < lastIdx ? <View style={[timelineStyles.connector, { backgroundColor: connectorColor }]} /> : null}
+            </View>
+
+            <Text
+              variant="subhead"
+              weight={current ? '700' : done ? '500' : '400'}
+              color={current ? (onHold ? 'warning' : 'azure') : done ? 'primary' : 'tertiary'}
+              style={timelineStyles.label}
+            >
+              {step.label}
+            </Text>
+          </View>
+        );
+      })}
+
+      {note ? (
+        <View style={[timelineStyles.note, { backgroundColor: colors.warningTint, marginTop: space.md }]}>
+          <Feather name="info" size={15} color={colors.warning} style={{ marginTop: 1 }} />
+          <Text testID="timeline-note" variant="footnote" color="warning" style={timelineStyles.noteText}>
+            {note}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const TIMELINE_NODE = 22;
+
+const timelineStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'flex-start' },
+  rail: { width: TIMELINE_NODE, alignItems: 'center' },
+  dotDone: { width: TIMELINE_NODE, height: TIMELINE_NODE, borderRadius: TIMELINE_NODE / 2, alignItems: 'center', justifyContent: 'center' },
+  ring: { width: TIMELINE_NODE, height: TIMELINE_NODE, borderRadius: TIMELINE_NODE / 2, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
+  ringCore: { width: 8, height: 8, borderRadius: 4 },
+  dotUpcoming: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, marginVertical: (TIMELINE_NODE - 14) / 2 },
+  connector: { width: 2, flex: 1, minHeight: 20, marginVertical: 2 },
+  label: { marginLeft: 14, paddingTop: 2, paddingBottom: 14, flex: 1 },
+  note: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, padding: 12, gap: 8 },
+  noteText: { flex: 1, lineHeight: 18 },
+});
+
 function PhotoRow({ item, onZoom }: { item: ItemView; onZoom: (uri: string) => void }): React.ReactElement {
   const { colors } = useTheme();
   const photos = item.photos.filter((p) => p.downloadUrl);
@@ -554,19 +636,22 @@ function PhotoRow({ item, onZoom }: { item: ItemView; onZoom: (uri: string) => v
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  loadingContent: { padding: 20, gap: 14 },
   content: { padding: 20, gap: 14, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
+  stateCard: { alignItems: 'center', paddingVertical: 28, width: '100%' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   trackCta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   trackIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   chatCta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  chatIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   approvedRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   paidRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginTop: 10 },
   damageNotice: { borderRadius: 12, padding: 12 },
   itemBlock: { marginBottom: 14 },
   itemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  itemHeadLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   photoStrip: { marginVertical: 8 },
   photo: { width: 96, height: 96, borderRadius: 12 },
   photoActions: { flexDirection: 'row', gap: 10, marginTop: 6 },

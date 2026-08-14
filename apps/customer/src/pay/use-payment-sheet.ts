@@ -20,7 +20,7 @@ export function usePresentPayment(): (args: { clientSecret: string; merchantName
     async ({ clientSecret, merchantName }) => {
       const init = await initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
-        merchantDisplayName: merchantName ?? 'Blue Bee',
+        merchantDisplayName: merchantName ?? 'Royal Cleaners',
         allowsDelayedPaymentMethods: false,
       });
       if (init.error) return { outcome: 'failed', error: init.error.message };

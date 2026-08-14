@@ -33,6 +33,9 @@ export type RootStackParamList = {
   /** [Inc-37] The Refer tab. Typed here (it was tab-only) because Home's block CTAs now navigate to it. */
   Refer: undefined;
   Orders: undefined;
+  /** [Royal] Read-only per-garment dry-cleaning price catalogue. Net-new route — additive, nothing frozen
+   *  changes shape; existing screens keep resolving exactly as before. */
+  Pricing: undefined;
   Book: BookParams | undefined;
   OrderDetail: { orderId: string };
   Track: { orderId: string };

@@ -40,7 +40,7 @@ export function TrackMap({ vehicle, arrived }: { vehicle: VehiclePosition | null
             testID="vehicle-marker"
             coordinate={{ latitude: vehicle.lat, longitude: vehicle.lng }}
             anchor={{ x: 0.5, y: 0.5 }}
-            title="Your Blue Bee driver"
+            title="Your Royal driver"
           >
             <VehicleMarker heading={vehicle.heading} color={arrived ? colors.success : colors.azure} onColor={colors.onAzure} />
           </Marker>

@@ -45,6 +45,16 @@ docs                                        — PRD, visual blueprint, market in
 - **TypeScript strict** everywhere; share types via `packages/shared` — never redefine an enum in two places.
 - **API conventions** (PRD §11.1): versioned (`/v1`), idempotency keys on mutations, cursor pagination, problem+json errors, OpenAPI published for app teams.
 
+## UI screen rule (React Native + Radon)
+Whenever you build or edit ANY UI screen:
+1. Ensure the app is running in the **Radon simulator**.
+2. Implement the change.
+3. Call the Radon MCP **`view_screenshot`** tool to capture the result.
+4. Compare it against the target design/screenshot and fix any **spacing, alignment, color, or overflow** issues.
+5. Report the task done **only after the screenshot matches**.
+
+**Never mark a UI task complete without a screenshot check.**
+
 ## Build order — Phase 1 MVP (specialty). Full checklist in `BUILD-PLAN.md`
 Anchor first: digitize the specialty trade end-to-end (**book → track → custody → deliver → bill**) with the **Route → Stop → Scan → POD + live tracking** backbone that Phase 2 (care homes/hotels) reuses. Do **not** build Phase 2/3 features yet (resident clothing, par/linen, RFID, consumer wash-fold) — the data model leaves room; the MVP ignores them (PRD §14.1).
 

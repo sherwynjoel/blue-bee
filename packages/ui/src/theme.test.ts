@@ -1,6 +1,15 @@
 import { renderHook } from '@testing-library/react-native';
-import { light as dtLight, dark as dtDark } from '@blue-bee/design-tokens';
-import { useTheme, buildTheme, toneColors, HIT_SLOP, MIN_TARGET, type ThemeColors } from './theme';
+import { light as dtLight, dark as dtDark, space as dtSpace, radius as dtRadius } from '@blue-bee/design-tokens';
+import {
+  useTheme,
+  buildTheme,
+  toneColors,
+  HIT_SLOP,
+  MIN_TARGET,
+  space as rnSpace,
+  radius as rnRadius,
+  type ThemeColors,
+} from './theme';
 
 describe('theme (packages/ui) — reconciled field names & design-tokens colors', () => {
   it('sources colors from @blue-bee/design-tokens (light + dark), not a local copy', () => {
@@ -64,5 +73,37 @@ describe('theme (packages/ui) — reconciled field names & design-tokens colors'
     expect(result.current.isDark).toBe(false);
     expect(result.current.colors).toEqual(dtLight);
     expect(result.current.type.headline).toBeDefined();
+  });
+});
+
+/**
+ * Drift guard: packages/ui keeps RN-shaped `space`/`radius` scales (semantic keys) rather than importing
+ * design-tokens' web-shaped ones (numeric / t-shirt keys) — a deliberate, defensible split (see the
+ * task-2 report). These scales are NOT unified into one source yet, so this suite fails the moment the
+ * shared numeric values silently diverge, forcing a conscious reconciliation instead of a quiet drift.
+ */
+describe('scale drift guard — packages/ui RN scales vs @blue-bee/design-tokens', () => {
+  it('space: every RN semantic token matches its design-tokens numeric-key equivalent', () => {
+    // key mapping worked out during the Task 2 investigation (RN semantic -> design-tokens numeric step)
+    expect(rnSpace.xs).toBe(dtSpace[1]); // 4
+    expect(rnSpace.sm).toBe(dtSpace[2]); // 8
+    expect(rnSpace.md).toBe(dtSpace[3]); // 12
+    expect(rnSpace.lg).toBe(dtSpace[4]); // 16
+    expect(rnSpace.xl).toBe(dtSpace[5]); // 20
+    expect(rnSpace.xxl).toBe(dtSpace[6]); // 24
+    expect(rnSpace.xxxl).toBe(dtSpace[8]); // 32
+    expect(rnSpace.huge).toBe(dtSpace[10]); // 40
+  });
+
+  it('radius: RN tokens that have a design-tokens equivalent match it', () => {
+    expect(rnRadius.sm).toBe(dtRadius.sm); // 10
+    expect(rnRadius.input).toBe(dtRadius.md); // 12
+    expect(rnRadius.card).toBe(dtRadius.lg); // 16
+    expect(rnRadius.pill).toBe(dtRadius.pill); // 999
+    // RN-only radii with NO design-tokens counterpart (nothing to assert against): `button: 14` and
+    // `sheet: 24` — design-tokens has no matching token today. If design-tokens ever grows equivalents,
+    // add assertions here.
+    expect(rnRadius.button).toBe(14);
+    expect(rnRadius.sheet).toBe(24);
   });
 });

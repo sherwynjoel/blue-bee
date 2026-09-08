@@ -31,9 +31,11 @@ const ACCT = 'ac340000-0000-4000-8000-0000000000a1';
 const R = 'ac340000-0000-4000-8000-0000000000f1'; // referrer
 const N1 = 'ac340000-0000-4000-8000-0000000000c1'; // joins via R's code (gets attributed)
 const N2 = 'ac340000-0000-4000-8000-0000000000c2'; // used for self / unknown / malformed (never attributed)
+const N3 = 'ac340000-0000-4000-8000-0000000000c3'; // concurrency probe — code-mint race only, never attributed
 const ROLE_R = 'ac340000-0000-4000-8000-0000000000e1';
 const ROLE_N1 = 'ac340000-0000-4000-8000-0000000000e2';
 const ROLE_N2 = 'ac340000-0000-4000-8000-0000000000e3';
+const ROLE_N3 = 'ac340000-0000-4000-8000-0000000000e4';
 
 const R_NAME = 'Inc34 Referrer';
 const OWNER_PHONE = '+14165550001';
@@ -70,9 +72,9 @@ describe('Referral e2e — codes, attribution, row-scope, console (Inc-34)', () 
     const tokens = app.get(TokenService);
     const principals = app.get(PrincipalService);
 
-    await prisma.userRole.deleteMany({ where: { userId: { in: [R, N1, N2] } } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: [R, N1, N2] } } });
-    await prisma.user.updateMany({ where: { referredByUserId: { in: [R, N1, N2] } }, data: { referredByUserId: null } });
+    await prisma.userRole.deleteMany({ where: { userId: { in: [R, N1, N2, N3] } } });
+    await prisma.refreshToken.deleteMany({ where: { userId: { in: [R, N1, N2, N3] } } });
+    await prisma.user.updateMany({ where: { referredByUserId: { in: [R, N1, N2, N3] } }, data: { referredByUserId: null } });
     await prisma.account.upsert({
       where: { id: ACCT },
       update: {},
@@ -81,6 +83,7 @@ describe('Referral e2e — codes, attribution, row-scope, console (Inc-34)', () 
     await makeCustomer(R, ROLE_R, R_NAME, '+14165558811');
     await makeCustomer(N1, ROLE_N1, 'Inc34 Joiner One', '+14165558812');
     await makeCustomer(N2, ROLE_N2, 'Inc34 Joiner Two', '+14165558813');
+    await makeCustomer(N3, ROLE_N3, 'Inc34 Concurrency Probe', '+14165558814');
 
     const sign = async (userId: string): Promise<string> => {
       const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
@@ -90,17 +93,18 @@ describe('Referral e2e — codes, attribution, row-scope, console (Inc-34)', () 
     token.R = await sign(R);
     token.N1 = await sign(N1);
     token.N2 = await sign(N2);
+    token.N3 = await sign(N3);
     const owner = await prisma.user.findFirstOrThrow({ where: { phone: OWNER_PHONE } });
     const ownerRoles = await principals.loadGrants(owner.id);
     token.owner = tokens.signAccess(owner, ownerRoles, await principals.deriveScope(ownerRoles));
   }, 60000);
 
   afterAll(async () => {
-    await prisma.userRole.deleteMany({ where: { userId: { in: [R, N1, N2] } } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: [R, N1, N2] } } });
-    await prisma.user.updateMany({ where: { referredByUserId: { in: [R, N1, N2] } }, data: { referredByUserId: null } });
-    // R + N2 never acted → hard-delete. N1 is an audit actor (REFERRAL_ATTRIBUTED) → neutralize in place.
-    await prisma.user.deleteMany({ where: { id: { in: [R, N2] } } });
+    await prisma.userRole.deleteMany({ where: { userId: { in: [R, N1, N2, N3] } } });
+    await prisma.refreshToken.deleteMany({ where: { userId: { in: [R, N1, N2, N3] } } });
+    await prisma.user.updateMany({ where: { referredByUserId: { in: [R, N1, N2, N3] } }, data: { referredByUserId: null } });
+    // R + N2 + N3 never acted → hard-delete. N1 is an audit actor (REFERRAL_ATTRIBUTED) → neutralize in place.
+    await prisma.user.deleteMany({ where: { id: { in: [R, N2, N3] } } });
     await prisma.user
       .update({ where: { id: N1 }, data: { status: 'SUSPENDED', email: null, phone: null, referralCode: null, referredByUserId: null, name: 'Inc34 referral e2e (retired)' } })
       .catch(() => undefined);
@@ -122,6 +126,26 @@ describe('Referral e2e — codes, attribution, row-scope, console (Inc-34)', () 
 
     const n1 = await get('/v1/account/referral', 'N1').expect(200);
     expect(n1.body.code).not.toBe(a.body.code); // unique per user
+  });
+
+  it('is concurrency-safe: two CONCURRENT first-mints for the same user converge on ONE code (no clash row)', async () => {
+    // Reset to an unminted state so every run of this test (including manual repeats) fires a genuine
+    // race, not a read of an already-stable code from a previous run.
+    await prisma.user.update({ where: { id: N3 }, data: { referralCode: null } });
+
+    const [a, b] = await Promise.all([get('/v1/account/referral', 'N3'), get('/v1/account/referral', 'N3')]);
+    // both succeed (one mints; the other either races the updateMany — losing 0-row-affected and reading
+    // back the winner's code — or reads the already-set code): never a 500, never two different codes.
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(a.body.code).toBe(b.body.code); // a lost race would have produced a different code
+    expect(isReferralCodeShape(a.body.code)).toBe(true);
+
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: N3 } });
+    expect(row.referralCode).toBe(a.body.code);
+    // Globally unique: the concurrent mint never left behind a second row (this user or any other) with
+    // this code — i.e. the P2002-collision retry in `ensureCode` never had to paper over a duplicate.
+    expect(await prisma.user.count({ where: { referralCode: a.body.code } })).toBe(1);
   });
 
   it('captures attribution ONCE (immutable) and NEVER errors on self / unknown / malformed', async () => {

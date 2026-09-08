@@ -34,6 +34,7 @@ const RES_IN = { acct: 'ce000000-0000-4000-8000-000000000010', uid: 'ce000000-00
 const RES_OUT = { acct: 'ce000000-0000-4000-8000-000000000020', uid: 'ce000000-0000-4000-8000-000000000021', rid: 'ce000000-0000-4000-8000-000000000022', phone: '+14165559211' };
 const MEMBER = { acct: 'ce000000-0000-4000-8000-000000000030', uid: 'ce000000-0000-4000-8000-000000000031', rid: 'ce000000-0000-4000-8000-000000000032', phone: '+14165559212' };
 const OTHER = { acct: 'ce000000-0000-4000-8000-000000000040', uid: 'ce000000-0000-4000-8000-000000000041', rid: 'ce000000-0000-4000-8000-000000000042', phone: '+14165559213' };
+const MEMBER2 = { acct: 'ce000000-0000-4000-8000-000000000050', uid: 'ce000000-0000-4000-8000-000000000051', rid: 'ce000000-0000-4000-8000-000000000052', phone: '+14165559214' }; // concurrency probe — redeem race only
 
 // Geo: corp A downtown; corp B ~25 km NE (so an in-A point never matches B).
 const P_A = { lng: -79.40, lat: 43.65 };
@@ -54,12 +55,13 @@ const PHONES = {
   resOut: RES_OUT.phone,
   member: MEMBER.phone,
   other: OTHER.phone,
+  member2: MEMBER2.phone,
 };
 
 async function seedFixture(prisma: PrismaClient): Promise<void> {
   await prisma.service.upsert({ where: { id: SVC_LB }, update: {}, create: { id: SVC_LB, orgId: ORG1, vertical: 'WASHFOLD', name: 'CORP E2E wash&fold (per lb)', unit: 'LB', baseRate: '2.5000' } });
   await prisma.service.upsert({ where: { id: SVC_ITEM }, update: {}, create: { id: SVC_ITEM, orgId: ORG1, vertical: 'SPECIALTY', name: 'CORP E2E dry clean (per item)', unit: 'ITEM', baseRate: '12.0000' } });
-  for (const r of [RES_IN, RES_OUT, MEMBER, OTHER]) {
+  for (const r of [RES_IN, RES_OUT, MEMBER, OTHER, MEMBER2]) {
     await prisma.account.upsert({ where: { id: r.acct }, update: {}, create: { id: r.acct, orgId: ORG1, type: 'RESIDENTIAL', name: `CORP E2E resident ${r.phone}` } });
     await prisma.user.upsert({ where: { id: r.uid }, update: { phone: r.phone }, create: { id: r.uid, orgId: ORG1, name: `CORP E2E ${r.phone}`, phone: r.phone, authProviders: ['phone'], status: 'ACTIVE' } });
     await prisma.userRole.upsert({ where: { id: r.rid }, update: {}, create: { id: r.rid, orgId: ORG1, userId: r.uid, role: 'RESIDENTIAL_CUSTOMER', scope: 'ACCOUNT', scopeId: r.acct } });
@@ -260,6 +262,28 @@ describe('Corporate pricing e2e (Increment 15 — corporate accounts + rate card
       await prisma.account.update({ where: { id: corpB }, data: { joinCodeExpiresAt: new Date(Date.now() - 1000) } });
       const res = await post('/v1/corporate/redeem', 'resOut', { code: codeB }).expect(400);
       expect(res.body.error ?? res.body.title).toContain('join_code_expired');
+    });
+
+    it('is concurrency-safe: two CONCURRENT redeems of the same code by the same user → exactly one ACTIVE membership, no 500', async () => {
+      // Reset so every run (including manual repeats) fires a genuine race against a truly-unredeemed
+      // user, not a short-circuited "already a member" read from a previous run.
+      await prisma.corporateMembership.deleteMany({ where: { userId: MEMBER2.uid, accountId: corpA } });
+
+      const [a, b] = await Promise.all([
+        post('/v1/corporate/redeem', 'member2', { code: codeA }),
+        post('/v1/corporate/redeem', 'member2', { code: codeA }),
+      ]);
+      // Both succeed — `redeem`'s upsert on the userId_accountId unique key is atomic (Postgres
+      // INSERT..ON CONFLICT DO UPDATE), so a concurrent double-redeem never throws unhandled P2002.
+      expect(a.status).toBe(200);
+      expect(b.status).toBe(200);
+      expect(
+        await prisma.corporateMembership.count({ where: { userId: MEMBER2.uid, accountId: corpA } }),
+      ).toBe(1); // never two rows for the same (user, account)
+      const row = await prisma.corporateMembership.findUniqueOrThrow({
+        where: { userId_accountId: { userId: MEMBER2.uid, accountId: corpA } },
+      });
+      expect(row).toMatchObject({ status: 'ACTIVE', source: 'JOIN_CODE', joinCodeUsed: codeA });
     });
   });
 

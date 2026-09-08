@@ -112,6 +112,21 @@ describe('Ratings e2e — Increment 32 (/v1/orders/:id/rating + CSAT analytics �
     expect((await prisma.rating.findUnique({ where: { orderId } }))!.score).toBe(4); // unchanged
   });
 
+  it('is concurrency-safe: two CONCURRENT creates on the SAME order → exactly one Rating row, no 500', async () => {
+    const orderId = await makeOrder(ACCOUNT_A, OrderStatus.DELIVERED);
+    // No Idempotency-Key on either call — this exercises the real DB unique-constraint (P2002) race in
+    // RatingsService.create, not the Idempotency-Key reservation dedupe (already covered above).
+    const [a, b] = await Promise.all([
+      post(`/v1/orders/${orderId}/rating`, 'rita', { score: 5 }),
+      post(`/v1/orders/${orderId}/rating`, 'rita', { score: 1 }),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([201, 409]); // exactly one winner, one P2002→409 loser — never a 500
+    const loser = a.status === 409 ? a : b;
+    expect(loser.body.title).toBe(RATING_ERRORS.RATING_ALREADY_EXISTS);
+    expect(await prisma.rating.count({ where: { orderId } })).toBe(1); // never two rows
+  });
+
   // ───────────────────────── PATCH — original submitter only ─────────────────────────
 
   it('the original submitter may PATCH; a non-submitter may not (403 not_yours)', async () => {

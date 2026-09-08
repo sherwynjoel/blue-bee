@@ -344,11 +344,11 @@ export function SettingsScreen(): React.ReactElement {
           <Card testID="settings-stats" style={{ marginTop: space.md }}>
             <View style={styles.statStrip}>
               <View style={styles.statCell}>
-                <StatTile icon="package" iconTone="azure" value={String(stats.orderCount)} label="Total orders" />
+                <StatTile icon="package" tone="azure" card={false} value={String(stats.orderCount)} label="Total orders" />
               </View>
               <View style={[styles.statDivider, { backgroundColor: colors.hairline }]} />
               <View style={styles.statCell}>
-                <StatTile icon="gift" iconTone="success" value={money(stats.balance, stats.currency)} label="Credits" emphasize />
+                <StatTile icon="gift" tone="success" card={false} value={money(stats.balance, stats.currency)} label="Credits" emphasize />
               </View>
             </View>
           </Card>

@@ -3,7 +3,7 @@ import { Animated, Pressable, StyleSheet, View, type StyleProp, type ViewStyle }
 import { Feather } from '@expo/vector-icons';
 import { useTheme, usePressScale } from '../../theme';
 import { fireHaptic, type HapticKind } from './haptics';
-import { Text } from './Text';
+import { Text } from '@blue-bee/ui';
 
 export interface RowProps {
   title: string;

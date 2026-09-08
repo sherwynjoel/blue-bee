@@ -18,6 +18,12 @@
       ],
       "@blue-bee/api-client": [
         "../../packages/api-client/src/index.ts"
+      ],
+      "@blue-bee/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@blue-bee/design-tokens": [
+        "../../packages/design-tokens/src/index.ts"
       ]
     }
   },

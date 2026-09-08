@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View, type DimensionValue, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme, useReducedMotion } from '../../theme';
-import { Card } from './Card';
+import { Card } from '@blue-bee/ui';
 
 export interface SkeletonProps {
   width?: DimensionValue;

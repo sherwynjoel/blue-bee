@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTheme } from '../../theme';
-import { Text } from './Text';
+import { Text } from '@blue-bee/ui';
 
 export interface KeyValueProps {
   label: string;

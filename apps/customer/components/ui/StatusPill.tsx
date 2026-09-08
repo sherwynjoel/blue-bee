@@ -1,7 +1,7 @@
 import React from 'react';
 import { OrderStatus } from '@blue-bee/shared';
 import { statusLabel } from '../../src/orders/timeline';
-import { Badge, type BadgeTone } from './Badge';
+import { Badge, type BadgeTone } from '@blue-bee/ui';
 
 /**
  * Maps an order status to a Daylight tone — the customer's at-a-glance read of "good / in motion /

@@ -1,16 +1,23 @@
-export { Text } from './Text';
-export type { UITextProps, TextColor } from './Text';
-export { Button } from './Button';
-export type { ButtonProps, ButtonTone, ButtonVariant, ButtonSize } from './Button';
-export { Card } from './Card';
-export type { CardProps } from './Card';
+// The overlapping primitives (Text/Button/Card/Badge/Input/StatTile) now come from the shared
+// @blue-bee/ui package — the ONE canonical, Royal-Dry-Cleaning-branded source shared with driver/owner.
+// Re-exported through this barrel so every existing `from '../../components/ui'` call site is unchanged.
+export { Text, Button, Card, Badge, Input, StatTile } from '@blue-bee/ui';
+export type {
+  TextProps,
+  TextColor,
+  ButtonProps,
+  ButtonTone,
+  ButtonVariant,
+  ButtonSize,
+  CardProps,
+  BadgeProps,
+  BadgeTone,
+  InputProps,
+  StatTileProps,
+} from '@blue-bee/ui';
 export { Row } from './Row';
 export type { RowProps } from './Row';
-export { Badge } from './Badge';
-export type { BadgeProps, BadgeTone } from './Badge';
 export { StatusPill, statusTone } from './StatusPill';
-export { Input } from './Input';
-export type { InputProps } from './Input';
 export { Skeleton, SkeletonCard } from './Skeleton';
 export { EmptyState } from './EmptyState';
 export type { EmptyStateProps } from './EmptyState';
@@ -28,7 +35,5 @@ export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
 export { Stepper } from './Stepper';
 export type { StepperProps } from './Stepper';
-export { StatTile } from './StatTile';
-export type { StatTileProps } from './StatTile';
 export { Hero } from './Hero';
 export type { HeroProps } from './Hero';

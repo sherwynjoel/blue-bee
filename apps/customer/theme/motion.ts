@@ -1,61 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated } from 'react-native';
-import { motion } from './theme';
+import { useEffect, useRef } from 'react';
+import { Animated } from 'react-native';
+import { useTheme, useReducedMotion, usePressScale } from '@blue-bee/ui';
 
 /**
  * Daylight motion helpers on RN's built-in `Animated` (no extra native deps). Every helper degrades to
  * a static, instantly-settled state when the OS "Reduce Motion" setting is on — so animation is always
  * an enhancement, never required for the UI to make sense.
+ *
+ * `useReducedMotion` and `usePressScale` are the shared implementations from `@blue-bee/ui` (identical to
+ * customer's former local copies) — re-exported here so existing `import … from '../theme'` call sites keep
+ * working. `useEntrance` and `usePulse` are customer-only (booking-flow list stagger + the live-marker
+ * pulse) and stay local; they read the `motion` spring/timing constants from the shared `useTheme()`.
  */
 
-/** Live OS "Reduce Motion" preference (with change subscription). */
-export function useReducedMotion(): boolean {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    let mounted = true;
-    // Guard the result shape: some environments (jest) return undefined rather than a Promise.
-    const probe = AccessibilityInfo.isReduceMotionEnabled?.();
-    if (probe && typeof (probe as Promise<boolean>).then === 'function') {
-      (probe as Promise<boolean>).then((v) => mounted && setReduce(!!v)).catch(() => undefined);
-    }
-    const sub = AccessibilityInfo.addEventListener?.('reduceMotionChanged', (v: boolean) => setReduce(!!v));
-    return () => {
-      mounted = false;
-      sub?.remove?.();
-    };
-  }, []);
-  return reduce;
-}
-
-/**
- * Press-scale feedback for primary controls (scale → .97 on press, spring back on release). Returns a
- * `transform` to spread onto an `Animated.View` plus the press handlers. No-op under reduced motion.
- */
-export function usePressScale(enabled = true): {
-  scale: Animated.Value;
-  transform: { scale: Animated.Value }[];
-  onPressIn: () => void;
-  onPressOut: () => void;
-} {
-  const reduce = useReducedMotion();
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const onPressIn = useCallback(() => {
-    if (reduce || !enabled) return;
-    Animated.spring(scale, { toValue: motion.pressScale, ...motion.springPress }).start();
-  }, [reduce, enabled, scale]);
-
-  const onPressOut = useCallback(() => {
-    if (reduce || !enabled) return;
-    Animated.spring(scale, { toValue: 1, ...motion.springPress }).start();
-  }, [reduce, enabled, scale]);
-
-  return { scale, transform: [{ scale }], onPressIn, onPressOut };
-}
+export { useReducedMotion, usePressScale };
 
 /** Entrance fade + lift for list/card items, staggered by index. Settled instantly under reduced motion. */
-export function useEntrance(index = 0): { opacity: Animated.Value; transform: { translateY: Animated.AnimatedInterpolation<number> }[] } {
+export function useEntrance(index = 0): {
+  opacity: Animated.Value;
+  transform: { translateY: Animated.AnimatedInterpolation<number> }[];
+} {
   const reduce = useReducedMotion();
+  const { motion } = useTheme();
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -72,7 +38,7 @@ export function useEntrance(index = 0): { opacity: Animated.Value; transform: { 
     });
     anim.start();
     return () => anim.stop();
-  }, [reduce, index, progress]);
+  }, [reduce, index, progress, motion]);
 
   return {
     opacity: progress,

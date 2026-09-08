@@ -29,7 +29,7 @@ import { PricingScreen } from './src/screens/PricingScreen';
 import { navigationRef, openOrderTracking, type BookParams, type RootStackParamList } from './src/navigation';
 import { usePushDeepLinks } from './src/push/register';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config';
-import { ThemeProvider, useTheme, type Theme } from './theme';
+import { useTheme, type Theme } from './theme';
 import { Text, fireHaptic } from './components/ui';
 
 /** Per-device flag: the first-run onboarding carousel is shown once, then never again. */
@@ -260,14 +260,12 @@ function Shell(): React.ReactElement {
 export default function App(): React.ReactElement {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        {/* PaymentSheet (Increment 12): the publishable (non-secret) test key; the card never touches our API. */}
-        <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
-          <SessionProvider>
-            <Shell />
-          </SessionProvider>
-        </StripeProvider>
-      </ThemeProvider>
+      {/* PaymentSheet (Increment 12): the publishable (non-secret) test key; the card never touches our API. */}
+      <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
+        <SessionProvider>
+          <Shell />
+        </SessionProvider>
+      </StripeProvider>
     </SafeAreaProvider>
   );
 }

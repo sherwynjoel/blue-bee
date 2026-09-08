@@ -322,7 +322,7 @@ function Tab({ label, icon, active, onPress }: { label: string; icon: FeatherNam
 function TrustTile({ value, label, icon, tone }: { value: string; label: string; icon: FeatherName; tone: 'azure' | 'success' | 'warning' | 'honey' }): React.ReactElement {
   return (
     <Card padding={12} style={styles.trustCard}>
-      <StatTile value={value} label={label} icon={icon} iconTone={tone} style={{ alignItems: 'center' }} />
+      <StatTile value={value} label={label} icon={icon} tone={tone} card={false} style={{ alignItems: 'center' }} />
     </Card>
   );
 }

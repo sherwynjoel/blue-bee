@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
-import { Text } from './Text';
+import { Text } from '@blue-bee/ui';
 
 export interface SheetProps {
   visible: boolean;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { useTheme } from '../../theme';
+import { useTheme, useGlass } from '../../theme';
 
 export interface GlassProps {
   children: React.ReactNode;
@@ -20,6 +20,7 @@ export interface GlassProps {
  */
 export function Glass({ children, intensity = 24, style, radius, testID }: GlassProps): React.ReactElement {
   const { colors, radius: r } = useTheme();
+  const { glass, blurTint } = useGlass();
   const cornerRadius = radius ?? r.card;
   // Android's BlurView support is uneven; lean on the translucent fill there for a reliable result.
   const blurIntensity = Platform.OS === 'android' ? Math.min(intensity, 16) : intensity;
@@ -28,8 +29,8 @@ export function Glass({ children, intensity = 24, style, radius, testID }: Glass
     <View testID={testID} style={[{ borderRadius: cornerRadius, overflow: 'hidden' }, style]}>
       <BlurView
         intensity={blurIntensity}
-        tint={colors.blurTint}
-        style={[StyleSheet.absoluteFill, { backgroundColor: colors.glass }]}
+        tint={blurTint}
+        style={[StyleSheet.absoluteFill, { backgroundColor: glass }]}
       />
       <View style={[styles.border, { borderColor: colors.hairline, borderRadius: cornerRadius }]} pointerEvents="none" />
       {children}

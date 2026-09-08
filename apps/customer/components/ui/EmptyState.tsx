@@ -2,8 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../theme';
-import { Text } from './Text';
-import { Button } from './Button';
+import { Button, Text } from '@blue-bee/ui';
 
 export interface EmptyStateProps {
   icon?: React.ComponentProps<typeof Feather>['name'];

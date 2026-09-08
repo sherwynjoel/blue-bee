@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../theme';
-import { Text } from './Text';
+import { Text } from '@blue-bee/ui';
 
 export interface StepperProps {
   /** Ordered step labels (e.g. ["Schedule", "Review", "Confirm"]). */

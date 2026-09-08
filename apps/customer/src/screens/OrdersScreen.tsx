@@ -284,14 +284,15 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
             {/* Stats strip: Total / Completed / In Progress. */}
             <Card style={styles.statsCard} testID="orders-stats">
               <View style={styles.statsRow}>
-                <StatTile testID="stat-total" value={String(total)} label="Total Orders" icon="package" iconTone="azure" style={styles.statTile} />
+                <StatTile testID="stat-total" value={String(total)} label="Total Orders" icon="package" tone="azure" card={false} style={styles.statTile} />
                 <View style={[styles.statDivider, { backgroundColor: colors.hairline }]} />
                 <StatTile
                   testID="stat-completed"
                   value={String(completedCount)}
                   label="Completed"
                   icon="calendar"
-                  iconTone="success"
+                  tone="success"
+                  card={false}
                   emphasize={completedCount > 0}
                   style={styles.statTile}
                 />
@@ -301,7 +302,8 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
                   value={String(inProgressCount)}
                   label="In Progress"
                   icon="clock"
-                  iconTone="warning"
+                  tone="warning"
+                  card={false}
                   emphasize={inProgressCount > 0}
                   style={styles.statTile}
                 />

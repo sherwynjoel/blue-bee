@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  typecheck-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - run: npx turbo run typecheck
+      - run: npx turbo run lint
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - run: npm run test:api-safe
+      - run: npx jest --runInBand
+        working-directory: apps/driver
+      - run: npx jest --runInBand
+        working-directory: apps/customer
+      - run: npx jest --runInBand
+        working-directory: apps/owner
+      - run: npx jest --runInBand
+        working-directory: apps/web
+      - run: npx jest --runInBand
+        working-directory: packages/api-client
+      - run: npx jest --runInBand
+        working-directory: packages/design-tokens

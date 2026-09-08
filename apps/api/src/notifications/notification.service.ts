@@ -63,6 +63,93 @@ export class NotificationService {
     }
   }
 
+  /**
+   * The shared (recipient × channel) decide → render → enqueue loop every dispatch* method drives.
+   * Extracted because dispatchOne/dispatchPayment/dispatchRateRequest previously reimplemented this
+   * identically three times — a future policy change had to be applied in three places, easy to miss one.
+   */
+  private async dispatchToRecipients(params: {
+    orgId: string;
+    eventType: string;
+    channels: CommsChannel[];
+    recipients: RecipientUser[];
+    urgent: boolean;
+    sourceType: string;
+    sourceId: string;
+    dedupeKeyFor: (userId: string, channel: CommsChannel) => string;
+    renderContextFor: (recipient: RecipientUser) => Record<string, unknown> & { orderRef: string };
+    payloadExtrasFor?: (recipient: RecipientUser) => Record<string, unknown>;
+    drainKickFailureLabel: string;
+  }): Promise<void> {
+    const now = new Date();
+    let anyDue = false;
+
+    for (const r of params.recipients) {
+      const pref = await this.preferences.load(params.orgId, r.userId);
+      for (const channel of params.channels) {
+        const decision = decideChannel(
+          pref,
+          channel,
+          params.urgent,
+          now,
+          this.config.quietHours.policy,
+          this.config.quietHours.defaultTimezone,
+        );
+        const rendered = renderTemplate(params.eventType, channel, {
+          appName: this.config.appName,
+          ...params.renderContextFor(r),
+        });
+        const addresses = await this.addressesFor(params.orgId, channel, r);
+
+        let status: NotificationStatus = NotificationStatus.PENDING;
+        let scheduledFor: Date | null = null;
+        let lastError: string | null = null;
+        let dueNow = false;
+        if (decision.action === 'suppress') {
+          status = NotificationStatus.SUPPRESSED;
+          lastError = decision.reason;
+        } else if (addresses.length === 0) {
+          status = NotificationStatus.SUPPRESSED;
+          lastError = 'no destination address for channel';
+        } else if (decision.action === 'defer') {
+          scheduledFor = decision.scheduledFor;
+        } else {
+          dueNow = true;
+        }
+
+        const insertedId = await this.insertOnce({
+          orgId: params.orgId,
+          userId: r.userId,
+          eventType: params.eventType,
+          channel,
+          status,
+          urgent: params.urgent,
+          sourceType: params.sourceType,
+          sourceId: params.sourceId,
+          dedupeKey: params.dedupeKeyFor(r.userId, channel),
+          scheduledFor,
+          lastError,
+          payload: {
+            recipients: addresses,
+            subject: rendered.subject,
+            title: rendered.title,
+            body: rendered.body,
+            eventType: params.eventType,
+            ...(params.payloadExtrasFor?.(r) ?? {}),
+          },
+        });
+        if (insertedId && dueNow) anyDue = true;
+      }
+    }
+
+    if (anyDue && this.config.retry.kickOnDispatch) {
+      void this.processor.drainDue().catch((err) => {
+        const reason = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`${params.drainKickFailureLabel} drain kick failed: ${reason}`);
+      });
+    }
+  }
+
   private async dispatchOne(orgId: string, ev: GeofenceNotification): Promise<void> {
     if (!ev.orderId) return; // no order ⇒ no owning customer to notify
     const eventType =
@@ -77,79 +164,20 @@ export class NotificationService {
     const orderRef = shortOrderRef(ev.orderId);
     const etaMinutes = etaSecondsToMinutes(ev.etaSeconds);
     const urgent = this.config.urgentEventTypes.has(eventType);
-    const now = new Date();
-    let anyDue = false;
 
-    for (const r of recipients) {
-      const pref = await this.preferences.load(orgId, r.userId);
-      for (const channel of channels) {
-        const decision = decideChannel(
-          pref,
-          channel,
-          urgent,
-          now,
-          this.config.quietHours.policy,
-          this.config.quietHours.defaultTimezone,
-        );
-        const rendered = renderTemplate(eventType, channel, {
-          appName: this.config.appName,
-          driverName,
-          orderRef,
-          etaMinutes,
-        });
-        const addresses = await this.addressesFor(orgId, channel, r);
-
-        // Decide the row's enqueue state. Opt-out / quiet-hours-suppress / no-address ⇒ SUPPRESSED
-        // (a durable audit trail); quiet-hours-defer ⇒ PENDING held until the window ends; else
-        // PENDING due now (and queued for the inline first attempt).
-        let status: NotificationStatus = NotificationStatus.PENDING;
-        let scheduledFor: Date | null = null;
-        let lastError: string | null = null;
-        let dueNow = false;
-        if (decision.action === 'suppress') {
-          status = NotificationStatus.SUPPRESSED;
-          lastError = decision.reason;
-        } else if (addresses.length === 0) {
-          status = NotificationStatus.SUPPRESSED;
-          lastError = 'no destination address for channel';
-        } else if (decision.action === 'defer') {
-          status = NotificationStatus.PENDING;
-          scheduledFor = decision.scheduledFor;
-        } else {
-          status = NotificationStatus.PENDING;
-          dueNow = true;
-        }
-
-        const insertedId = await this.insertOnce({
-          orgId,
-          userId: r.userId,
-          eventType,
-          channel,
-          status,
-          urgent,
-          sourceType: 'GeofenceEvent',
-          sourceId: ev.geofenceEventId,
-          dedupeKey: `${ev.geofenceEventId}:${r.userId}:${channel}`,
-          scheduledFor,
-          lastError,
-          // `orderId` is persisted so the PUSH transport can deep-link a tapped notification to the
-          // owning order's tracking screen (Increment 11); SMS/email ignore it.
-          payload: { recipients: addresses, subject: rendered.subject, title: rendered.title, body: rendered.body, eventType, orderId: ev.orderId },
-        });
-        if (insertedId && dueNow) anyDue = true;
-      }
-    }
-
-    // Sending is OFF the request thread: we only ENQUEUE here (fast, DB-only, bounded), then kick a
-    // one-off drain in the BACKGROUND so a transport call can never add latency to POST
-    // /locations:batch. The drain claims each row atomically (no double-send) and is the sole sender
-    // (the prod NOTIF_RETRY_SCAN_MS scan is the same path). Fire-and-forget — the kick never throws.
-    if (anyDue && this.config.retry.kickOnDispatch) {
-      void this.processor.drainDue().catch((err) => {
-        const reason = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`notification drain kick failed: ${reason}`);
-      });
-    }
+    await this.dispatchToRecipients({
+      orgId,
+      eventType,
+      channels,
+      recipients,
+      urgent,
+      sourceType: 'GeofenceEvent',
+      sourceId: ev.geofenceEventId,
+      dedupeKeyFor: (userId, channel) => `${ev.geofenceEventId}:${userId}:${channel}`,
+      renderContextFor: () => ({ driverName, orderRef, etaMinutes }),
+      payloadExtrasFor: () => ({ orderId: ev.orderId }),
+      drainKickFailureLabel: 'notification',
+    });
   }
 
   /** Channel destination addresses for a recipient: phone (SMS), email (EMAIL), push tokens (PUSH). */
@@ -216,11 +244,9 @@ export class NotificationService {
   async dispatchPayment(input: {
     orgId: string;
     eventType: string;
-    /** Durable dedup source row id (uuid) — the Payment or Dispute id. */
     sourceType: 'Payment' | 'Dispute';
     sourceId: string;
     orderId: string | null;
-    /** Account fallback for resolving customer recipients when there is no order (invoice-level pay). */
     accountId?: string | null;
     recipientScope: 'customer' | 'staff';
     amount?: string | null;
@@ -243,76 +269,20 @@ export class NotificationService {
 
       const orderRef = input.orderId ? shortOrderRef(input.orderId) : `#${input.sourceId.slice(0, 8)}`;
       const urgent = this.config.urgentEventTypes.has(input.eventType);
-      const now = new Date();
-      let anyDue = false;
 
-      for (const r of recipients) {
-        const pref = await this.preferences.load(input.orgId, r.userId);
-        for (const channel of channels) {
-          const decision = decideChannel(
-            pref,
-            channel,
-            urgent,
-            now,
-            this.config.quietHours.policy,
-            this.config.quietHours.defaultTimezone,
-          );
-          const rendered = renderTemplate(input.eventType, channel, {
-            appName: this.config.appName,
-            orderRef,
-            amount: input.amount,
-            currency: input.currency,
-            reason: input.reason,
-          });
-          const addresses = await this.addressesFor(input.orgId, channel, r);
-
-          let status: NotificationStatus = NotificationStatus.PENDING;
-          let scheduledFor: Date | null = null;
-          let lastError: string | null = null;
-          let dueNow = false;
-          if (decision.action === 'suppress') {
-            status = NotificationStatus.SUPPRESSED;
-            lastError = decision.reason;
-          } else if (addresses.length === 0) {
-            status = NotificationStatus.SUPPRESSED;
-            lastError = 'no destination address for channel';
-          } else if (decision.action === 'defer') {
-            scheduledFor = decision.scheduledFor;
-          } else {
-            dueNow = true;
-          }
-
-          const insertedId = await this.insertOnce({
-            orgId: input.orgId,
-            userId: r.userId,
-            eventType: input.eventType,
-            channel,
-            status,
-            urgent,
-            sourceType: input.sourceType,
-            sourceId: input.sourceId,
-            dedupeKey: `${input.sourceId}:${input.eventType}:${r.userId}:${channel}`,
-            scheduledFor,
-            lastError,
-            payload: {
-              recipients: addresses,
-              subject: rendered.subject,
-              title: rendered.title,
-              body: rendered.body,
-              eventType: input.eventType,
-              orderId: input.orderId,
-            },
-          });
-          if (insertedId && dueNow) anyDue = true;
-        }
-      }
-
-      if (anyDue && this.config.retry.kickOnDispatch) {
-        void this.processor.drainDue().catch((err) => {
-          const reason = err instanceof Error ? err.message : String(err);
-          this.logger.warn(`payment notification drain kick failed: ${reason}`);
-        });
-      }
+      await this.dispatchToRecipients({
+        orgId: input.orgId,
+        eventType: input.eventType,
+        channels,
+        recipients,
+        urgent,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        dedupeKeyFor: (userId, channel) => `${input.sourceId}:${input.eventType}:${userId}:${channel}`,
+        renderContextFor: () => ({ orderRef, amount: input.amount, currency: input.currency, reason: input.reason }),
+        payloadExtrasFor: () => ({ orderId: input.orderId }),
+        drainKickFailureLabel: `payment notification (${input.eventType} ${input.sourceId})`,
+      });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       this.logger.warn(`payment notification dispatch failed (${input.eventType} ${input.sourceId}): ${reason}`);
@@ -339,63 +309,20 @@ export class NotificationService {
 
       const orderRef = shortOrderRef(orderId);
       const urgent = this.config.urgentEventTypes.has(eventType);
-      const now = new Date();
-      let anyDue = false;
 
-      for (const r of recipients) {
-        const pref = await this.preferences.load(orgId, r.userId);
-        for (const channel of channels) {
-          const decision = decideChannel(
-            pref,
-            channel,
-            urgent,
-            now,
-            this.config.quietHours.policy,
-            this.config.quietHours.defaultTimezone,
-          );
-          const rendered = renderTemplate(eventType, channel, { appName: this.config.appName, orderRef });
-          const addresses = await this.addressesFor(orgId, channel, r);
-
-          let status: NotificationStatus = NotificationStatus.PENDING;
-          let scheduledFor: Date | null = null;
-          let lastError: string | null = null;
-          let dueNow = false;
-          if (decision.action === 'suppress') {
-            status = NotificationStatus.SUPPRESSED;
-            lastError = decision.reason;
-          } else if (addresses.length === 0) {
-            status = NotificationStatus.SUPPRESSED;
-            lastError = 'no destination address for channel';
-          } else if (decision.action === 'defer') {
-            scheduledFor = decision.scheduledFor;
-          } else {
-            dueNow = true;
-          }
-
-          const insertedId = await this.insertOnce({
-            orgId,
-            userId: r.userId,
-            eventType,
-            channel,
-            status,
-            urgent,
-            sourceType: 'Order',
-            sourceId: orderId,
-            dedupeKey: `${orderId}:${eventType}:${r.userId}:${channel}`,
-            scheduledFor,
-            lastError,
-            payload: { recipients: addresses, subject: rendered.subject, title: rendered.title, body: rendered.body, eventType, orderId },
-          });
-          if (insertedId && dueNow) anyDue = true;
-        }
-      }
-
-      if (anyDue && this.config.retry.kickOnDispatch) {
-        void this.processor.drainDue().catch((err) => {
-          const reason = err instanceof Error ? err.message : String(err);
-          this.logger.warn(`rate-request notification drain kick failed: ${reason}`);
-        });
-      }
+      await this.dispatchToRecipients({
+        orgId,
+        eventType,
+        channels,
+        recipients,
+        urgent,
+        sourceType: 'Order',
+        sourceId: orderId,
+        dedupeKeyFor: (userId, channel) => `${orderId}:${eventType}:${userId}:${channel}`,
+        renderContextFor: () => ({ orderRef }),
+        payloadExtrasFor: () => ({ orderId }),
+        drainKickFailureLabel: `rate-request notification (order ${orderId})`,
+      });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       this.logger.warn(`rate-request notification dispatch failed (order ${orderId}): ${reason}`);

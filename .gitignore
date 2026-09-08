@@ -55,3 +55,6 @@ LOST.DIR/
 
 # founder design renders (reference only, not app assets)
 blue-bee-reference-customer/
+
+# subagent-driven-development scratch workspace (ledgers, briefs, review packages — not build output)
+.superpowers/

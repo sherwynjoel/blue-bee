@@ -6,7 +6,8 @@ import type { RouteDetail, RouteStopView } from '../api/types';
 import { useAsync } from '../useAsync';
 import { shortTime } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
-import { Badge, EmptyState, Row, Text, useTheme, type Tone } from '../components/kit';
+import { Badge, Text, useTheme, type Tone } from '@blue-bee/ui';
+import { EmptyState, Row } from '../components/kit';
 import type { RootStackParamList } from '../navigation';
 
 type Nav = NavigationProp<RootStackParamList>;
@@ -47,12 +48,12 @@ export function RouteDetailScreen({ navigation, route }: { navigation: Nav; rout
   return (
     <FlatList
       testID="route-detail"
-      style={{ flex: 1, backgroundColor: t.color.canvas }}
-      contentContainerStyle={{ padding: t.spacing.lg, flexGrow: 1 }}
+      style={{ flex: 1, backgroundColor: t.colors.canvas }}
+      contentContainerStyle={{ padding: t.space.lg, flexGrow: 1 }}
       data={stops}
       keyExtractor={(s) => s.id}
       ListHeaderComponent={
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: t.spacing.md }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: t.space.md }}>
           <Text variant="title1">Route</Text>
           <Badge tone="azure">{data.status}</Badge>
         </View>
@@ -70,8 +71,8 @@ function StopRow({ item, onPress }: { item: RouteStopView; onPress?: () => void 
   return (
     <Row testID={`stop-${item.id}`} onPress={onPress} chevron={!!onPress} style={{ marginBottom: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <View style={{ width: 38, height: 38, borderRadius: t.radius.input, backgroundColor: t.color.azureTint, alignItems: 'center', justifyContent: 'center' }}>
-          <Text variant="headline" color={t.color.azure} mono tabular>
+        <View style={{ width: 38, height: 38, borderRadius: t.radius.input, backgroundColor: t.colors.azureTint, alignItems: 'center', justifyContent: 'center' }}>
+          <Text variant="headline" color={t.colors.azure} mono tabular>
             {item.seq}
           </Text>
         </View>
@@ -80,7 +81,7 @@ function StopRow({ item, onPress }: { item: RouteStopView; onPress?: () => void 
             {item.kind}
             {item.site?.name ? ` · ${item.site.name}` : ''}
           </Text>
-          <Text variant="footnote" color={t.color.textFaint} style={{ marginTop: 2 }}>
+          <Text variant="footnote" color={t.colors.textTertiary} style={{ marginTop: 2 }}>
             {item.eta ? `ETA ${shortTime(item.eta)}` : item.completedAt ? `Done ${shortTime(item.completedAt)}` : 'No ETA'}
             {item.exceptionReason ? ` · ${item.exceptionReason}` : ''}
           </Text>

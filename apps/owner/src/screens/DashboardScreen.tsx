@@ -5,7 +5,8 @@ import { useSession } from '../session/SessionProvider';
 import { useAsync } from '../useAsync';
 import { money, percent, shortTime } from '../format';
 import { ErrorBox } from '../components/ui';
-import { Badge, Button, Icon, Row, Screen, Skeleton, Stat, Text, useTheme, type FeatherName, type Tone } from '../components/kit';
+import { Badge, Button, StatTile, Text, useTheme, type Tone } from '@blue-bee/ui';
+import { Icon, Row, Screen, Skeleton, type FeatherName } from '../components/kit';
 import type { RootStackParamList } from '../navigation';
 
 type Nav = NavigationProp<RootStackParamList>;
@@ -31,28 +32,28 @@ export function DashboardScreen({ navigation }: { navigation: Nav }): React.Reac
   if (error && !data) return <ErrorBox message={error} onRetry={reload} />;
 
   return (
-    <Screen scroll testID="dashboard" refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={t.color.azure} />}>
+    <Screen scroll testID="dashboard" refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={t.colors.azure} />}>
       {me?.org?.name ? (
-        <Text variant="footnote" color={t.color.textMuted} style={{ marginBottom: 6 }}>
+        <Text variant="footnote" color={t.colors.textSecondary} style={{ marginBottom: 6 }}>
           {me.org.name}
         </Text>
       ) : null}
-      <Text variant="title1" style={{ marginBottom: t.spacing.lg }}>
+      <Text variant="title1" style={{ marginBottom: t.space.lg }}>
         Today
       </Text>
 
       {data ? (
         <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: t.spacing.md }}>
-            <Tile><Stat testID="kpi-orders" label="Orders today" value={String(data.ordersToday)} /></Tile>
-            <Tile><Stat label="In flight" value={String(data.activeOrders)} tone="azure" /></Tile>
-            <Tile><Stat label="Completed today" value={String(data.completedToday)} tone="success" /></Tile>
-            <Tile><Stat label="On-time" value={percent(data.onTimePercent)} /></Tile>
-            <Tile><Stat testID="kpi-collected" label="Collected today" value={money(data.collectedToday, data.currency)} tone="success" /></Tile>
-            <Tile><Stat label="GMV approved today" value={money(data.revenueToday, data.currency)} /></Tile>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: t.space.md }}>
+            <Tile><StatTile testID="kpi-orders" label="Orders today" value={String(data.ordersToday)} /></Tile>
+            <Tile><StatTile label="In flight" value={String(data.activeOrders)} tone="azure" emphasize /></Tile>
+            <Tile><StatTile label="Completed today" value={String(data.completedToday)} tone="success" emphasize /></Tile>
+            <Tile><StatTile label="On-time" value={percent(data.onTimePercent)} /></Tile>
+            <Tile><StatTile testID="kpi-collected" label="Collected today" value={money(data.collectedToday, data.currency)} tone="success" emphasize /></Tile>
+            <Tile><StatTile label="GMV approved today" value={money(data.revenueToday, data.currency)} /></Tile>
           </View>
 
-          <View style={{ height: t.spacing.lg }} />
+          <View style={{ height: t.space.lg }} />
 
           <NavRow
             testID="nav-fleet"
@@ -79,16 +80,16 @@ export function DashboardScreen({ navigation }: { navigation: Nav }): React.Reac
             onPress={() => navigation.navigate('Exceptions')}
           />
 
-          <Text variant="caption" color={t.color.textFaint} center style={{ marginTop: t.spacing.lg }}>
+          <Text variant="caption" color={t.colors.textTertiary} center style={{ marginTop: t.space.lg }}>
             Updated {shortTime(data.generatedAt)} · {data.timezone}
           </Text>
         </>
       ) : null}
 
-      <View style={{ height: t.spacing.xl }} />
-      <Button testID="settings" label="Settings" onPress={() => navigation.navigate('Settings')} variant="secondary" icon="settings" fullWidth />
-      <View style={{ height: t.spacing.md }} />
-      <Button testID="signout" label="Sign out" onPress={() => void logout()} variant="ghost" icon="log-out" fullWidth />
+      <View style={{ height: t.space.xl }} />
+      <Button testID="settings" label="Settings" onPress={() => navigation.navigate('Settings')} tone="neutral" variant="outline" size="md" icon="settings" fullWidth />
+      <View style={{ height: t.space.md }} />
+      <Button testID="signout" label="Sign out" onPress={() => void logout()} variant="ghost" size="md" icon="log-out" fullWidth />
     </Screen>
   );
 }
@@ -119,14 +120,14 @@ function NavRow({
   const hasCount = count != null && count > 0;
   const dotTone: Tone = alert ? 'danger' : 'azure';
   return (
-    <Row testID={testID} onPress={onPress} chevron={!hasCount} style={{ marginBottom: t.spacing.md }}>
+    <Row testID={testID} onPress={onPress} chevron={!hasCount} style={{ marginBottom: t.space.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: t.color.subtle, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={icon} size={20} color={alert ? t.color.dangerInk : t.color.azure} />
+        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: t.colors.subtle, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name={icon} size={20} color={alert ? t.colors.onDangerTint : t.colors.azure} />
         </View>
         <View style={{ flex: 1 }}>
           <Text variant="headline">{title}</Text>
-          <Text variant="footnote" color={t.color.textMuted} style={{ marginTop: 2 }}>
+          <Text variant="footnote" color={t.colors.textSecondary} style={{ marginTop: 2 }}>
             {subtitle}
           </Text>
         </View>
@@ -141,18 +142,18 @@ function DashboardSkeleton(): React.ReactElement {
   return (
     <Screen scroll>
       <Skeleton width="35%" height={12} style={{ marginBottom: 10 }} />
-      <Skeleton width="40%" height={28} style={{ marginBottom: t.spacing.lg }} />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: t.spacing.md }}>
+      <Skeleton width="40%" height={28} style={{ marginBottom: t.space.lg }} />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: t.space.md }}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} style={{ width: '47.8%', flexGrow: 1, height: 92, borderRadius: t.radius.card, backgroundColor: t.color.surface, borderWidth: 1, borderColor: t.color.hairline, padding: t.spacing.lg, justifyContent: 'center', gap: 10 }}>
+          <View key={i} style={{ width: '47.8%', flexGrow: 1, height: 92, borderRadius: t.radius.card, backgroundColor: t.colors.surface, borderWidth: 1, borderColor: t.colors.hairline, padding: t.space.lg, justifyContent: 'center', gap: 10 }}>
             <Skeleton width="50%" height={24} />
             <Skeleton width="70%" height={10} />
           </View>
         ))}
       </View>
-      <View style={{ height: t.spacing.lg }} />
+      <View style={{ height: t.space.lg }} />
       {Array.from({ length: 3 }).map((_, i) => (
-        <View key={i} style={{ height: 72, borderRadius: t.radius.card, backgroundColor: t.color.surface, borderWidth: 1, borderColor: t.color.hairline, marginBottom: t.spacing.md, padding: t.spacing.lg, justifyContent: 'center', gap: 8 }}>
+        <View key={i} style={{ height: 72, borderRadius: t.radius.card, backgroundColor: t.colors.surface, borderWidth: 1, borderColor: t.colors.hairline, marginBottom: t.space.md, padding: t.space.lg, justifyContent: 'center', gap: 8 }}>
           <Skeleton width="45%" height={14} />
           <Skeleton width="75%" height={10} />
         </View>

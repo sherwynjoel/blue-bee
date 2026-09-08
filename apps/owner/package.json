@@ -16,6 +16,7 @@
   "dependencies": {
     "@blue-bee/api-client": "*",
     "@blue-bee/shared": "*",
+    "@blue-bee/ui": "*",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
     "expo": "~51.0.39",

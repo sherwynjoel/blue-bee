@@ -6,7 +6,8 @@ import { useSession } from '../session/SessionProvider';
 import { useAsync } from '../useAsync';
 import { money, timeAgo } from '../format';
 import { EmptyState, ErrorBox, Loading } from '../components/ui';
-import { Badge, Row, Segmented, Text, useTheme, type FeatherName, type Tone } from '../components/kit';
+import { Badge, Text, useTheme, type Tone } from '@blue-bee/ui';
+import { Row, Segmented, type FeatherName } from '../components/kit';
 import type { RootStackParamList } from '../navigation';
 
 type Nav = NavigationProp<RootStackParamList>;
@@ -75,18 +76,18 @@ export function ExceptionsScreen({ navigation }: { navigation: Nav }): React.Rea
   return (
     <FlatList
       testID="exceptions-list"
-      style={{ flex: 1, backgroundColor: t.color.canvas }}
-      contentContainerStyle={{ padding: t.spacing.lg }}
+      style={{ flex: 1, backgroundColor: t.colors.canvas }}
+      contentContainerStyle={{ padding: t.space.lg }}
       data={filtered}
       keyExtractor={(e) => `${e.kind}:${e.id}`}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={t.color.azure} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={t.colors.azure} />}
       ListHeaderComponent={
-        <View style={{ marginBottom: t.spacing.md }}>
+        <View style={{ marginBottom: t.space.md }}>
           <Segmented options={FILTERS} value={filter} onChange={setFilter} />
         </View>
       }
       ListEmptyComponent={
-        <Text variant="subhead" color={t.color.textMuted} center style={{ marginTop: t.spacing.xl }}>
+        <Text variant="subhead" color={t.colors.textSecondary} center style={{ marginTop: t.space.xl }}>
           Nothing in this group.
         </Text>
       }
@@ -100,13 +101,13 @@ function ExceptionRow({ item, onPress }: { item: OwnerException; onPress: () => 
   const meta = KIND_META[item.kind];
   const tappable = !!item.routeId || !!item.orderId;
   return (
-    <Row testID={`exception-${item.id}`} onPress={tappable ? onPress : undefined} disabled={!tappable} chevron={tappable} style={{ marginBottom: t.spacing.md }}>
+    <Row testID={`exception-${item.id}`} onPress={tappable ? onPress : undefined} disabled={!tappable} chevron={tappable} style={{ marginBottom: t.space.md }}>
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Badge tone={meta.tone} icon={meta.icon}>
             {meta.label}
           </Badge>
-          <Text variant="caption" color={t.color.textFaint} tabular>
+          <Text variant="caption" color={t.colors.textTertiary} tabular>
             {timeAgo(item.occurredAt)}
           </Text>
         </View>
@@ -114,12 +115,12 @@ function ExceptionRow({ item, onPress }: { item: OwnerException; onPress: () => 
           {item.title}
         </Text>
         {item.detail ? (
-          <Text variant="footnote" color={t.color.textMuted}>
+          <Text variant="footnote" color={t.colors.textSecondary}>
             {item.detail}
           </Text>
         ) : null}
         {item.amount ? (
-          <Text variant="subhead" weight="700" color={t.color.dangerInk} mono tabular>
+          <Text variant="subhead" weight="700" color={t.colors.onDangerTint} mono tabular>
             {money(item.amount, item.currency ?? undefined)}
           </Text>
         ) : null}

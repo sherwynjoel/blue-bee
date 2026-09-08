@@ -6,7 +6,8 @@ import { useFleet } from '../fleet/useFleet';
 import type { FleetVehicle } from '../fleet/fleet-controller';
 import { FleetMap } from '../components/FleetMap';
 import { ErrorBox, Loading } from '../components/ui';
-import { Badge, Row, Screen, Text, useTheme, type Tone } from '../components/kit';
+import { Badge, Text, useTheme, type Tone } from '@blue-bee/ui';
+import { Row, Screen } from '../components/kit';
 import { timeAgo } from '../format';
 import type { RootStackParamList } from '../navigation';
 
@@ -58,7 +59,7 @@ export function FleetScreen({ navigation }: { navigation: Nav }): React.ReactEle
 
   return (
     <Screen scroll testID="fleet">
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: t.spacing.md }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: t.space.md }}>
         <Text variant="title1">Live fleet</Text>
         <Badge tone={conn.tone} dot={conn.dot}>
           {conn.label}
@@ -68,12 +69,12 @@ export function FleetScreen({ navigation }: { navigation: Nav }): React.ReactEle
       <FleetMap vehicles={fleet.vehicles} onSelect={(v) => void onSelect(v)} />
 
       {note ? (
-        <Text variant="footnote" color={t.color.warningInk} style={{ marginTop: 10 }}>
+        <Text variant="footnote" color={t.colors.onWarningTint} style={{ marginTop: 10 }}>
           {note}
         </Text>
       ) : null}
 
-      <Text variant="footnote" color={t.color.textMuted} style={{ marginTop: t.spacing.lg, marginBottom: t.spacing.sm }} tabular>
+      <Text variant="footnote" color={t.colors.textSecondary} style={{ marginTop: t.space.lg, marginBottom: t.space.sm }} tabular>
         {positioned.length} reporting · {fleet.idleCount} idle
       </Text>
 
@@ -83,7 +84,7 @@ export function FleetScreen({ navigation }: { navigation: Nav }): React.ReactEle
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <Text variant="headline">{v.label}</Text>
-                <Text variant="footnote" color={t.color.textFaint} style={{ marginTop: 2 }}>
+                <Text variant="footnote" color={t.colors.textTertiary} style={{ marginTop: 2 }}>
                   {v.hasPosition ? (v.live ? 'live' : `updated ${timeAgo(v.recordedAt)}`) : 'no position yet'}
                 </Text>
               </View>

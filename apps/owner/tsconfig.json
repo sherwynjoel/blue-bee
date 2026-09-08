@@ -11,7 +11,9 @@
     "types": ["jest", "node"],
     "paths": {
       "@blue-bee/shared": ["../../packages/shared/src/index.ts"],
-      "@blue-bee/api-client": ["../../packages/api-client/src/index.ts"]
+      "@blue-bee/api-client": ["../../packages/api-client/src/index.ts"],
+      "@blue-bee/ui": ["../../packages/ui/src/index.ts"],
+      "@blue-bee/design-tokens": ["../../packages/design-tokens/src/index.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"],

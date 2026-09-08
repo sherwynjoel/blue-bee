@@ -3,7 +3,7 @@ import { Text as RNText, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { Feather } from '@expo/vector-icons';
 import type { FleetVehicle } from '../fleet/fleet-controller';
-import { useTheme } from '../theme';
+import { useTheme } from '@blue-bee/ui';
 
 /**
  * The org fleet on a real `react-native-maps` map (PRD §7C C1). Each positioned vehicle is a branded
@@ -33,16 +33,16 @@ export function FleetMap({
           height: 260,
           borderRadius: t.radius.card,
           borderWidth: 1,
-          borderColor: t.color.hairline,
-          backgroundColor: t.color.subtle,
+          borderColor: t.colors.hairline,
+          backgroundColor: t.colors.subtle,
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
           padding: 16,
         }}
       >
-        <Feather name="truck" size={26} color={t.color.textFaint} />
-        <RNText style={{ color: t.color.textFaint, textAlign: 'center', fontSize: 13 }}>No vehicles are reporting a position yet.</RNText>
+        <Feather name="truck" size={26} color={t.colors.textTertiary} />
+        <RNText style={{ color: t.colors.textTertiary, textAlign: 'center', fontSize: 13 }}>No vehicles are reporting a position yet.</RNText>
       </View>
     );
   }
@@ -68,7 +68,7 @@ export function FleetMap({
           onPress={() => onSelect?.(v)}
           onCalloutPress={() => onSelect?.(v)}
         >
-          <VehiclePin color={v.live ? t.color.success : t.color.azure} />
+          <VehiclePin color={v.live ? t.colors.success : t.colors.azure} />
         </Marker>
       ))}
     </MapView>

@@ -8,8 +8,8 @@ import type { OrderDetail } from '../api/types';
 import type { RootStackParamList } from '../navigation';
 import { money, orderRef, shortDate, shortTime } from '../format';
 import { Badge, Card, ErrorBox, Loading, Row, type Tone } from '../components/ui';
-import { Button, Screen, Text, useTheme } from '../components/kit';
-import { haptics } from '../components/haptics';
+import { Button, Text, useTheme, haptics } from '@blue-bee/ui';
+import { Screen } from '../components/kit';
 
 type Route = RouteProp<RootStackParamList, 'OrderDetail'>;
 
@@ -94,7 +94,7 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
         </Text>
         <Badge tone="blue">{humanize(order.status)}</Badge>
       </View>
-      <Text variant="footnote" color={t.color.textMuted} style={{ marginTop: 4 }}>
+      <Text variant="footnote" color={t.colors.textSecondary} style={{ marginTop: 4 }}>
         Booked {shortDate(order.createdAt)}
       </Text>
 
@@ -104,7 +104,7 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
           <Row label="Tax" value={money(quote.tax, order.totals?.currency)} />
           <Row label="Total" value={money(quote.total, order.totals?.currency)} bold />
           {quote.expiresAt ? (
-            <Text variant="caption" color={t.color.textFaint} style={{ marginTop: 6 }}>
+            <Text variant="caption" color={t.colors.textTertiary} style={{ marginTop: 6 }}>
               Valid until {shortDate(quote.expiresAt)}
             </Text>
           ) : null}
@@ -123,6 +123,7 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
                 onPress={() => void act(() => client.approveQuote(orderId), 'Quote approved — work can start.', true)}
                 busy={acting}
                 disabled={acting}
+                size="md"
                 haptic="none"
                 fullWidth
               />
@@ -131,7 +132,9 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
                 label="Decline"
                 onPress={() => void act(() => client.declineQuote(orderId), 'Quote declined.', false)}
                 disabled={acting}
-                variant="secondary"
+                tone="neutral"
+                variant="outline"
+                size="md"
                 haptic="none"
                 fullWidth
               />
@@ -142,7 +145,7 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
 
       <Card title="Chain of custody">
         {order.items.length === 0 ? (
-          <Text variant="subhead" color={t.color.textMuted}>
+          <Text variant="subhead" color={t.colors.textSecondary}>
             No items yet.
           </Text>
         ) : (
@@ -152,7 +155,7 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
                 {it.kind} · {humanize(it.status)}
               </Text>
               {it.custodyEvents.length === 0 ? (
-                <Text variant="footnote" color={t.color.textMuted}>
+                <Text variant="footnote" color={t.colors.textSecondary}>
                   No scans yet.
                 </Text>
               ) : (
@@ -168,13 +171,13 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
                         alignItems: 'center',
                         paddingVertical: 5,
                         borderLeftWidth: 2,
-                        borderLeftColor: t.color.success,
+                        borderLeftColor: t.colors.success,
                         paddingLeft: 12,
                         marginLeft: 4,
                       }}
                     >
                       <Text variant="footnote">{humanize(c.stage)}</Text>
-                      <Text variant="caption" color={t.color.textFaint} mono tabular>
+                      <Text variant="caption" color={t.colors.textTertiary} mono tabular>
                         {shortDate(c.occurredAt)} {shortTime(c.occurredAt)}
                       </Text>
                     </View>
@@ -186,7 +189,7 @@ export function OrderDetailScreen({ route }: { route: Route }): React.ReactEleme
       </Card>
 
       {actionMsg ? (
-        <Text testID="action-msg" variant="subhead" color={t.color.textMuted} center style={{ marginTop: 14 }}>
+        <Text testID="action-msg" variant="subhead" color={t.colors.textSecondary} center style={{ marginTop: 14 }}>
           {actionMsg}
         </Text>
       ) : null}

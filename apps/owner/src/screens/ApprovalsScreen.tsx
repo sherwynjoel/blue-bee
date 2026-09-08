@@ -6,7 +6,8 @@ import { useSession } from '../session/SessionProvider';
 import { useAsync } from '../useAsync';
 import { money, orderRef, shortDate } from '../format';
 import { EmptyState, ErrorBox, Loading } from '../components/ui';
-import { Badge, Row, Text, useTheme } from '../components/kit';
+import { Badge, Text, useTheme } from '@blue-bee/ui';
+import { Row } from '../components/kit';
 import type { RootStackParamList } from '../navigation';
 
 type Nav = NavigationProp<RootStackParamList>;
@@ -39,11 +40,11 @@ export function ApprovalsScreen({ navigation }: { navigation: Nav }): React.Reac
   return (
     <FlatList
       testID="approvals-list"
-      style={{ flex: 1, backgroundColor: t.color.canvas }}
-      contentContainerStyle={{ padding: t.spacing.lg }}
+      style={{ flex: 1, backgroundColor: t.colors.canvas }}
+      contentContainerStyle={{ padding: t.space.lg }}
       data={approvals}
       keyExtractor={(a) => a.orderId}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={t.color.azure} />}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={t.colors.azure} />}
       renderItem={({ item }) => <ApprovalRow item={item} onPress={() => navigation.navigate('OrderDetail', { orderId: item.orderId })} />}
     />
   );
@@ -53,25 +54,25 @@ function ApprovalRow({ item, onPress }: { item: OwnerApproval; onPress: () => vo
   const t = useTheme();
   const expired = item.expiresAt != null && new Date(item.expiresAt).getTime() < Date.now();
   return (
-    <Row testID={`approval-${item.orderId}`} onPress={onPress} style={{ marginBottom: t.spacing.md }}>
+    <Row testID={`approval-${item.orderId}`} onPress={onPress} style={{ marginBottom: t.space.md }}>
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
           <Text variant="headline" numberOfLines={1} style={{ flex: 1 }}>
             {item.accountName}
           </Text>
-          <Text variant="headline" color={t.color.successInk} mono tabular>
+          <Text variant="headline" color={t.colors.onSuccessTint} mono tabular>
             {money(item.total, item.currency)}
           </Text>
         </View>
-        <Text variant="footnote" color={t.color.textMuted}>
-          <Text variant="footnote" color={t.color.textMuted} mono>
+        <Text variant="footnote" color={t.colors.textSecondary}>
+          <Text variant="footnote" color={t.colors.textSecondary} mono>
             {orderRef(item.orderId)}
           </Text>
           {` · ${item.itemCount} item${item.itemCount === 1 ? '' : 's'}`}
           {item.siteName ? ` · ${item.siteName}` : ''}
         </Text>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-          <Text variant="caption" color={t.color.textFaint}>
+          <Text variant="caption" color={t.colors.textTertiary}>
             Quoted {shortDate(item.quotedAt)}
           </Text>
           {item.expiresAt ? (

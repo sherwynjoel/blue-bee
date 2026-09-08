@@ -1,24 +1,19 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text as RNText,
-  TextInput,
   View,
   type DimensionValue,
-  type KeyboardTypeOptions,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaInsetsContext, type EdgeInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { haptics } from './haptics';
-import { MIN_TARGET, tabular, toneColors, useTheme, type Theme, type Tone, type TypeVariant } from '../theme';
+import { Badge, Card, MIN_TARGET, Text, haptics, toneColors, useTheme, type Tone } from '@blue-bee/ui';
 
 const ZERO_INSETS: EdgeInsets = { top: 0, bottom: 0, left: 0, right: 0 };
 
@@ -28,17 +23,21 @@ function useInsets(): EdgeInsets {
 }
 
 /**
- * The Daylight operator primitives kit — the single shared vocabulary both ops apps render on, so the
- * driver and owner read as one family. Everything is tokenised (light/dark via `useTheme`), springs
- * with RN Animated (press scale .97), and taps the shared haptics. This file is byte-identical between
- * apps/driver and apps/owner — keep it that way.
+ * The Daylight operator COMPOSITES — the driver/owner-shell pieces built on top of the shared
+ * `@blue-bee/ui` primitives (Text / Button / Card / Badge / Input / StatTile + the theme layer). The
+ * genuinely-shared primitives now live in `@blue-bee/ui`; this file keeps only the operator-specific
+ * chrome the shared package doesn't (yet) provide — the themed `Screen` canvas, `Row`/`Field` list
+ * shells, the bottom `Sheet` + `SheetOption`, `Segmented`, skeletons, `EmptyState`, `SectionHeader`,
+ * `Divider`, and the `useToast` inline-notice hook. Everything reads from the shared `useTheme()` so the
+ * driver and owner still render as one family. This file is byte-identical between apps/driver and
+ * apps/owner — keep it that way.
  */
 
 export type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-/** A reusable spring press-scale. Press → 0.97, release → 1, both on a snappy spring. */
+/** A reusable spring press-scale. Press → `to`, release → 1, both on a snappy spring. */
 function usePressScale(to = 0.97): { scale: Animated.Value; pressIn: () => void; pressOut: () => void } {
   const scale = useRef(new Animated.Value(1)).current;
   const pressIn = useCallback(() => {
@@ -48,55 +47,6 @@ function usePressScale(to = 0.97): { scale: Animated.Value; pressIn: () => void;
     Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 6, tension: 160 }).start();
   }, [scale]);
   return { scale, pressIn, pressOut };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Text
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface TextProps {
-  variant?: TypeVariant;
-  color?: string;
-  weight?: TextStyle['fontWeight'];
-  center?: boolean;
-  /** True monospace family (IDs / timestamps). */
-  mono?: boolean;
-  /** Tabular figures (counts / ETAs that update in place). */
-  tabular?: boolean;
-  numberOfLines?: number;
-  style?: StyleProp<TextStyle>;
-  testID?: string;
-  accessibilityRole?: 'header' | 'text' | 'alert' | 'none';
-  children: React.ReactNode;
-}
-
-export function Text({
-  variant = 'body',
-  color,
-  weight,
-  center,
-  mono,
-  tabular: tab,
-  numberOfLines,
-  style,
-  testID,
-  accessibilityRole,
-  children,
-}: TextProps): React.ReactElement {
-  const t = useTheme();
-  const resolved: TextStyle = {
-    ...t.type[variant],
-    color: color ?? t.color.text,
-    ...(weight ? { fontWeight: weight } : null),
-    ...(center ? { textAlign: 'center' } : null),
-    ...(mono ? { fontFamily: t.font.mono } : null),
-    ...(tab ? tabular : null),
-  };
-  return (
-    <RNText testID={testID} accessibilityRole={accessibilityRole} numberOfLines={numberOfLines} style={[resolved, style]}>
-      {children}
-    </RNText>
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,14 +71,14 @@ export function Screen({
   const t = useTheme();
   const insets = useInsets();
   const pad: ViewStyle = {
-    padding: padded ? t.spacing.lg : 0,
-    paddingBottom: (padded ? t.spacing.lg : 0) + insets.bottom + 8,
+    padding: padded ? t.space.lg : 0,
+    paddingBottom: (padded ? t.space.lg : 0) + insets.bottom + 8,
   };
   if (scroll) {
     return (
       <ScrollView
         testID={testID}
-        style={{ flex: 1, backgroundColor: t.color.canvas }}
+        style={{ flex: 1, backgroundColor: t.colors.canvas }}
         contentContainerStyle={[pad, contentStyle]}
         refreshControl={refreshControl}
         keyboardShouldPersistTaps="handled"
@@ -138,7 +88,7 @@ export function Screen({
       </ScrollView>
     );
   }
-  return <View testID={testID} style={[{ flex: 1, backgroundColor: t.color.canvas }, pad, contentStyle]}>{children}</View>;
+  return <View testID={testID} style={[{ flex: 1, backgroundColor: t.colors.canvas }, pad, contentStyle]}>{children}</View>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,210 +97,7 @@ export function Screen({
 
 export function Icon({ name, size = 20, color }: { name: FeatherName; size?: number; color?: string }): React.ReactElement {
   const t = useTheme();
-  return <Feather name={name} size={size} color={color ?? t.color.text} />;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Button
-// ─────────────────────────────────────────────────────────────────────────────
-
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
-export type ButtonSize = 'md' | 'lg';
-export type HapticKind = 'tap' | 'medium' | 'success' | 'warning' | 'none';
-
-export interface ButtonProps {
-  label: string;
-  onPress: () => void;
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  busy?: boolean;
-  disabled?: boolean;
-  icon?: FeatherName;
-  iconRight?: FeatherName;
-  fullWidth?: boolean;
-  haptic?: HapticKind;
-  testID?: string;
-  style?: StyleProp<ViewStyle>;
-}
-
-export function Button({
-  label,
-  onPress,
-  variant = 'primary',
-  size = 'md',
-  busy = false,
-  disabled = false,
-  icon,
-  iconRight,
-  fullWidth = false,
-  haptic = 'tap',
-  testID,
-  style,
-}: ButtonProps): React.ReactElement {
-  const t = useTheme();
-  const { scale, pressIn, pressOut } = usePressScale();
-  const off = disabled || busy;
-
-  const fg =
-    variant === 'primary' ? t.color.onAzure : variant === 'danger' ? '#FFFFFF' : variant === 'ghost' ? t.color.azure : t.color.text;
-
-  const variantStyle: ViewStyle =
-    variant === 'primary'
-      ? { backgroundColor: t.color.azure, ...t.shadow.card }
-      : variant === 'danger'
-        ? { backgroundColor: t.color.danger, ...t.shadow.card }
-        : variant === 'secondary'
-          ? { backgroundColor: t.color.surface, borderWidth: 1, borderColor: t.color.hairline }
-          : { backgroundColor: 'transparent' };
-
-  const container: ViewStyle = {
-    minHeight: size === 'lg' ? 56 : MIN_TARGET,
-    borderRadius: t.radius.button,
-    paddingHorizontal: size === 'lg' ? 22 : 18,
-    paddingVertical: size === 'lg' ? 14 : 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    ...variantStyle,
-    ...(fullWidth ? { alignSelf: 'stretch' } : null),
-  };
-
-  const handlePress = (): void => {
-    if (off) return;
-    if (haptic !== 'none') haptics[haptic]();
-    onPress();
-  };
-
-  return (
-    <AnimatedPressable
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: off, busy }}
-      disabled={off}
-      onPress={off ? undefined : handlePress}
-      onPressIn={off ? undefined : pressIn}
-      onPressOut={off ? undefined : pressOut}
-      style={[container, { transform: [{ scale }], opacity: off ? 0.55 : 1 }, style]}
-    >
-      {busy ? (
-        <ActivityIndicator color={fg} />
-      ) : (
-        <>
-          {icon ? <Feather name={icon} size={size === 'lg' ? 20 : 18} color={fg} /> : null}
-          <RNText style={{ color: fg, fontSize: size === 'lg' ? 18 : 17, fontWeight: '600' }}>{label}</RNText>
-          {iconRight ? <Feather name={iconRight} size={size === 'lg' ? 20 : 18} color={fg} /> : null}
-        </>
-      )}
-    </AnimatedPressable>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Input
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface InputProps {
-  value: string;
-  onChangeText: (v: string) => void;
-  placeholder?: string;
-  keyboardType?: KeyboardTypeOptions;
-  maxLength?: number;
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  autoCorrect?: boolean;
-  icon?: FeatherName;
-  testID?: string;
-  /** Large, glove-friendly figures (OTP code). */
-  big?: boolean;
-}
-
-export function Input({
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-  maxLength,
-  autoCapitalize,
-  autoCorrect,
-  icon,
-  testID,
-  big,
-}: InputProps): React.ReactElement {
-  const t = useTheme();
-  const [focused, setFocused] = useState(false);
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        backgroundColor: t.color.surface,
-        borderWidth: 1.5,
-        borderColor: focused ? t.color.azure : t.color.hairline,
-        borderRadius: t.radius.input,
-        paddingHorizontal: 14,
-        minHeight: 54,
-      }}
-    >
-      {icon ? <Feather name={icon} size={18} color={focused ? t.color.azure : t.color.textFaint} /> : null}
-      <TextInput
-        testID={testID}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={t.color.textFaint}
-        keyboardType={keyboardType}
-        maxLength={maxLength}
-        autoCapitalize={autoCapitalize}
-        autoCorrect={autoCorrect}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={{
-          flex: 1,
-          color: t.color.text,
-          fontSize: big ? 26 : 18,
-          fontWeight: big ? '700' : '400',
-          letterSpacing: big ? 6 : 0,
-          paddingVertical: 14,
-          ...(big ? tabular : null),
-        }}
-      />
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Card
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function Card({
-  children,
-  padded = true,
-  style,
-}: {
-  children: React.ReactNode;
-  padded?: boolean;
-  style?: StyleProp<ViewStyle>;
-}): React.ReactElement {
-  const t = useTheme();
-  return (
-    <View
-      style={[
-        {
-          backgroundColor: t.color.surface,
-          borderRadius: t.radius.card,
-          borderWidth: 1,
-          borderColor: t.color.hairline,
-          ...t.shadow.card,
-          ...(padded ? { padding: t.spacing.lg } : null),
-        },
-        style,
-      ]}
-    >
-      {children}
-    </View>
-  );
+  return <Feather name={name} size={size} color={color ?? t.colors.text} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,10 +118,10 @@ export function Field({
   const t = useTheme();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, gap: 12 }}>
-      <Text variant="subhead" color={t.color.textMuted}>
+      <Text variant="subhead" color={t.colors.textSecondary}>
         {label}
       </Text>
-      <Text variant="subhead" weight="600" mono={mono} tabular={mono} color={valueColor ?? t.color.text} style={{ flexShrink: 1, textAlign: 'right' }}>
+      <Text variant="subhead" weight="600" mono={mono} tabular={mono} color={valueColor ?? t.colors.text} style={{ flexShrink: 1, textAlign: 'right' }}>
         {value}
       </Text>
     </View>
@@ -403,17 +150,17 @@ export function Row({
   const t = useTheme();
   const { scale, pressIn, pressOut } = usePressScale(0.985);
   const base: ViewStyle = {
-    backgroundColor: t.color.surface,
+    backgroundColor: t.colors.surface,
     borderRadius: t.radius.card,
     borderWidth: 1,
-    borderColor: t.color.hairline,
-    padding: t.spacing.lg,
-    ...t.shadow.card,
+    borderColor: t.colors.hairline,
+    padding: t.space.lg,
+    ...t.elevation.e1,
   };
   const content = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <View style={{ flex: 1 }}>{children}</View>
-      {chevron && onPress && !disabled ? <Feather name="chevron-right" size={20} color={t.color.textFaint} /> : null}
+      {chevron && onPress && !disabled ? <Feather name="chevron-right" size={20} color={t.colors.textTertiary} /> : null}
     </View>
   );
   if (!onPress) {
@@ -446,48 +193,8 @@ export function Row({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Badge / StatusPill
+// StatusPill — a label-only Badge (§5.4 status)
 // ─────────────────────────────────────────────────────────────────────────────
-
-export function Badge({
-  tone = 'neutral',
-  dot,
-  icon,
-  children,
-  style,
-}: {
-  tone?: Tone;
-  dot?: boolean;
-  icon?: FeatherName;
-  children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
-}): React.ReactElement {
-  const t = useTheme();
-  const tc = toneColors(t.color, tone);
-  return (
-    <View
-      style={[
-        {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          alignSelf: 'flex-start',
-          backgroundColor: tc.bg,
-          borderRadius: t.radius.pill,
-          paddingHorizontal: 10,
-          paddingVertical: 4,
-        },
-        style,
-      ]}
-    >
-      {dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tc.solid }} /> : null}
-      {icon ? <Feather name={icon} size={12} color={tc.ink} /> : null}
-      <Text variant="caption" weight="700" color={tc.ink}>
-        {children}
-      </Text>
-    </View>
-  );
-}
 
 export function StatusPill({ label, tone = 'neutral', dot }: { label: string; tone?: Tone; dot?: boolean }): React.ReactElement {
   return (
@@ -524,14 +231,14 @@ export function Skeleton({
     loop.start();
     return () => loop.stop();
   }, [pulse]);
-  return <Animated.View style={[{ width, height, borderRadius: radius, backgroundColor: t.color.skeleton, opacity: pulse }, style]} />;
+  return <Animated.View style={[{ width, height, borderRadius: radius, backgroundColor: t.colors.skeleton, opacity: pulse }, style]} />;
 }
 
 /** A card-shaped skeleton placeholder for list/grid loading. */
 export function SkeletonCard({ lines = 2 }: { lines?: number }): React.ReactElement {
   const t = useTheme();
   return (
-    <Card style={{ marginBottom: t.spacing.md }}>
+    <Card style={{ marginBottom: t.space.md }}>
       <Skeleton width="55%" height={18} style={{ marginBottom: 12 }} />
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton key={i} width={i === lines - 1 ? '40%' : '85%'} height={12} style={{ marginBottom: 8 }} />
@@ -559,19 +266,19 @@ export function EmptyState({
 }): React.ReactElement {
   const t = useTheme();
   return (
-    <View testID={testID} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: t.spacing.xxl, gap: t.spacing.md }}>
-      <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: t.color.subtle, alignItems: 'center', justifyContent: 'center' }}>
-        <Feather name={icon} size={30} color={t.color.textFaint} />
+    <View testID={testID} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: t.space.xxl, gap: t.space.md }}>
+      <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: t.colors.subtle, alignItems: 'center', justifyContent: 'center' }}>
+        <Feather name={icon} size={30} color={t.colors.textTertiary} />
       </View>
       <Text variant="title3" center>
         {title}
       </Text>
       {message ? (
-        <Text variant="subhead" color={t.color.textMuted} center>
+        <Text variant="subhead" color={t.colors.textSecondary} center>
           {message}
         </Text>
       ) : null}
-      {action ? <View style={{ marginTop: t.spacing.sm, alignSelf: 'stretch' }}>{action}</View> : null}
+      {action ? <View style={{ marginTop: t.space.sm, alignSelf: 'stretch' }}>{action}</View> : null}
     </View>
   );
 }
@@ -610,24 +317,24 @@ export function Sheet({
   }, [visible, translateY, opacity]);
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable testID={testID} style={{ flex: 1, backgroundColor: t.color.scrim, justifyContent: 'flex-end' }} onPress={onClose}>
+      <Pressable testID={testID} style={{ flex: 1, backgroundColor: t.colors.scrim, justifyContent: 'flex-end' }} onPress={onClose}>
         <Animated.View style={{ opacity }}>
           <Pressable onPress={() => undefined}>
             <Animated.View
               style={{
-                backgroundColor: t.color.surface,
+                backgroundColor: t.colors.surface,
                 borderTopLeftRadius: t.radius.sheet,
                 borderTopRightRadius: t.radius.sheet,
-                paddingHorizontal: t.spacing.lg,
-                paddingTop: t.spacing.md,
-                paddingBottom: insets.bottom + t.spacing.lg,
+                paddingHorizontal: t.space.lg,
+                paddingTop: t.space.md,
+                paddingBottom: insets.bottom + t.space.lg,
                 transform: [{ translateY }],
-                ...t.shadow.raised,
+                ...t.elevation.sheet,
               }}
             >
-              <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: t.color.hairline, marginBottom: t.spacing.md }} />
+              <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: t.colors.hairline, marginBottom: t.space.md }} />
               {title ? (
-                <Text variant="title3" style={{ marginBottom: t.spacing.sm }}>
+                <Text variant="title3" style={{ marginBottom: t.space.sm }}>
                   {title}
                 </Text>
               ) : null}
@@ -655,7 +362,7 @@ export function SheetOption({
   testID?: string;
 }): React.ReactElement {
   const t = useTheme();
-  const color = tone ? toneColors(t.color, tone).ink : t.color.text;
+  const color = tone ? toneColors(t.colors, tone).ink : t.colors.text;
   return (
     <Pressable
       testID={testID}
@@ -663,7 +370,7 @@ export function SheetOption({
         haptics.selection();
         onPress();
       }}
-      android_ripple={{ color: t.color.surfacePressed }}
+      android_ripple={{ color: t.colors.surfacePressed }}
       style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
@@ -672,7 +379,7 @@ export function SheetOption({
         paddingVertical: 12,
         paddingHorizontal: 8,
         borderRadius: t.radius.input,
-        backgroundColor: pressed ? t.color.surfacePressed : 'transparent',
+        backgroundColor: pressed ? t.colors.surfacePressed : 'transparent',
       })}
     >
       {icon ? <Feather name={icon} size={20} color={color} /> : null}
@@ -705,7 +412,7 @@ export function Segmented<T extends string>({
 }): React.ReactElement {
   const t = useTheme();
   return (
-    <View testID={testID} style={{ flexDirection: 'row', backgroundColor: t.color.subtle, borderRadius: t.radius.input, padding: 3 }}>
+    <View testID={testID} style={{ flexDirection: 'row', backgroundColor: t.colors.subtle, borderRadius: t.radius.input, padding: 3 }}>
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -727,63 +434,15 @@ export function Segmented<T extends string>({
               borderRadius: t.radius.input - 3,
               alignItems: 'center',
               justifyContent: 'center',
-              ...(active ? { backgroundColor: t.color.surface, ...t.shadow.card } : null),
+              ...(active ? { backgroundColor: t.colors.surface, ...t.elevation.e1 } : null),
             }}
           >
-            <Text variant="footnote" weight={active ? '700' : '500'} color={active ? t.color.text : t.color.textMuted}>
+            <Text variant="footnote" weight={active ? '700' : '500'} color={active ? t.colors.text : t.colors.textSecondary}>
               {o.label}
             </Text>
           </Pressable>
         );
       })}
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Stat — KPI tile
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function Stat({
-  label,
-  value,
-  tone,
-  hint,
-  testID,
-  valueTestID,
-}: {
-  label: string;
-  value: string;
-  tone?: Tone;
-  hint?: string;
-  testID?: string;
-  valueTestID?: string;
-}): React.ReactElement {
-  const t = useTheme();
-  const accent = tone ? toneColors(t.color, tone).ink : t.color.text;
-  return (
-    <View
-      testID={testID}
-      style={{
-        backgroundColor: t.color.surface,
-        borderRadius: t.radius.card,
-        borderWidth: 1,
-        borderColor: t.color.hairline,
-        padding: t.spacing.lg,
-        ...t.shadow.card,
-      }}
-    >
-      <Text variant="title1" mono tabular color={accent} testID={valueTestID} style={{ fontSize: 30, lineHeight: 34 }}>
-        {value}
-      </Text>
-      <Text variant="footnote" color={t.color.textMuted} style={{ marginTop: 6 }}>
-        {label}
-      </Text>
-      {hint ? (
-        <Text variant="caption" color={t.color.textFaint} style={{ marginTop: 2 }}>
-          {hint}
-        </Text>
-      ) : null}
     </View>
   );
 }
@@ -795,7 +454,7 @@ export function Stat({
 export function SectionHeader({ children, style }: { children: string; style?: StyleProp<TextStyle> }): React.ReactElement {
   const t = useTheme();
   return (
-    <Text variant="overline" color={t.color.textFaint} style={[{ marginTop: t.spacing.xl, marginBottom: t.spacing.sm }, style]}>
+    <Text variant="overline" color={t.colors.textTertiary} style={[{ marginTop: t.space.xl, marginBottom: t.space.sm }, style]}>
       {children.toUpperCase()}
     </Text>
   );
@@ -803,7 +462,7 @@ export function SectionHeader({ children, style }: { children: string; style?: S
 
 export function Divider(): React.ReactElement {
   const t = useTheme();
-  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.color.hairline, marginVertical: t.spacing.sm }} />;
+  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.colors.hairline, marginVertical: t.space.sm }} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -813,7 +472,7 @@ export function Divider(): React.ReactElement {
 function Toast({ message, tone }: { message: string; tone: Tone }): React.ReactElement {
   const t = useTheme();
   const insets = useInsets();
-  const tc = toneColors(t.color, tone);
+  const tc = toneColors(t.colors, tone);
   const y = useRef(new Animated.Value(20)).current;
   const o = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -832,16 +491,16 @@ function Toast({ message, tone }: { message: string; tone: Tone }): React.ReactE
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
-          backgroundColor: t.color.surface,
+          backgroundColor: t.colors.surface,
           borderRadius: t.radius.button,
           borderWidth: 1,
-          borderColor: t.color.hairline,
+          borderColor: t.colors.hairline,
           padding: 14,
-          ...t.shadow.raised,
+          ...t.elevation.e2,
         }}
       >
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tc.solid }} />
-        <Text variant="subhead" color={t.color.text} style={{ flex: 1 }}>
+        <Text variant="subhead" color={t.colors.text} style={{ flex: 1 }}>
           {message}
         </Text>
       </View>
@@ -868,7 +527,3 @@ export function useToast(): { toast: (message: string, tone?: Tone) => void; nod
   const node = state ? <Toast key={state.key} message={state.message} tone={state.tone} /> : null;
   return { toast, node };
 }
-
-// Re-export the theme hook + tones so screens import everything from one place.
-export { useTheme, toneColors };
-export type { Theme, Tone };

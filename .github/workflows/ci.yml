@@ -42,3 +42,5 @@ jobs:
         working-directory: packages/api-client
       - run: npx jest --runInBand
         working-directory: packages/design-tokens
+      - run: npx jest --runInBand
+        working-directory: packages/ui

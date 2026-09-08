@@ -8,7 +8,6 @@ import { TokenService } from '../src/auth/token.service';
 import { PrincipalService } from '../src/auth/principal.service';
 import { ETA_ESTIMATOR } from '../src/tracking/eta-estimator';
 import { PostgisEtaEstimator } from '../src/tracking/postgis-eta.estimator';
-import { EtaService } from '../src/tracking/eta.service';
 import { GeofenceService } from '../src/tracking/geofence.service';
 
 const ACCOUNT_A = '44444444-4444-4444-8444-444444444444';
@@ -24,7 +23,6 @@ const PHONES = {
 };
 
 // Coordinates relative to the SITE_NORTH stop destination (43.7615, -79.4111).
-const SITE = { lat: 43.7615, lng: -79.4111 };
 const FAR = { lat: 43.6534, lng: -79.3839 }; // downtown — ~13.5 km
 const MID = { lat: 43.7, lng: -79.41 }; // ~6.8 km
 const NEAR = { lat: 43.755, lng: -79.4111 }; // ~723 m — inside 800 m, outside 100 m

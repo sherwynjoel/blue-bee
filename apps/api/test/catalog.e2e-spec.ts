@@ -7,7 +7,6 @@ import { PrincipalService } from '../src/auth/principal.service';
 
 // ── Seeded ids (must match prisma/seed.ts) ──
 const ACCOUNT_A = '44444444-4444-4444-8444-444444444444';
-const ACCOUNT_B = 'e0000000-0000-4000-8000-0000000000b0';
 const SERVICE = '66666666-6666-4666-8666-666666666666';
 const SITE_CITY_HALL = '55555555-5555-4555-8555-555555555555';
 

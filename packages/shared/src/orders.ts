@@ -7,7 +7,7 @@
  * the wire shapes for book → intake/inspection → quote → approve/decline.
  */
 import { z } from 'zod';
-import { ItemKind, PhotoKind, OrderStatus, WeighPoint } from './enums';
+import { ItemKind, OrderStatus, WeighPoint } from './enums';
 import { geoPointSchema, timeWindowSchema } from './validators';
 
 /** Free-form measurement bag persisted to Item.measurements (sqft, pieces, weightLb, dims…). */

@@ -2,7 +2,6 @@ import { ConflictException, Inject, Injectable, Logger, NotFoundException } from
 import { Prisma } from '@prisma/client';
 import {
   InvoiceStatus,
-  OrderStatus,
   PAYMENT_ERRORS,
   QuoteStatus,
   type GenerateInvoiceDto,

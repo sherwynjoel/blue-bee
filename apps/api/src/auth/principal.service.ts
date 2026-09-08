@@ -8,8 +8,14 @@ import { PrismaService } from '../prisma/prisma.service';
 export class PrincipalService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async loadGrants(userId: string): Promise<RoleGrant[]> {
-    const roles = await this.prisma.userRole.findMany({ where: { userId } });
+  /**
+   * `orgId` is optional and defensive: `userId` already uniquely identifies a user (and a `User` row
+   * belongs to exactly one org — see `User.orgId` in schema.prisma), so an unscoped lookup isn't
+   * exploitable today. When the caller already has the org id in hand (e.g. from a loaded `User` row),
+   * pass it — it costs nothing and hardens this ahead of any future change that makes userId less unique.
+   */
+  async loadGrants(userId: string, orgId?: string): Promise<RoleGrant[]> {
+    const roles = await this.prisma.userRole.findMany({ where: { userId, ...(orgId ? { orgId } : {}) } });
     // Prisma generates its own nominal enums; values are identical to the shared
     // enums (verified 1:1), so map across the boundary here.
     return roles.map((r) => ({

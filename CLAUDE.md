@@ -27,7 +27,7 @@ apps/web                                    — Next.js (console + customer web)
 apps/api                                    — NestJS (modular monolith)
 packages/shared                             — TS types + lifecycle enums + Zod schemas (imported by all)
 packages/ui                                 — shared design system
-packages/api-client                         — typed API client (generated from OpenAPI)
+packages/api-client                         — typed API client (hand-written, typed against @blue-bee/shared)
 infra                                       — docker-compose, IaC
 docs                                        — PRD, visual blueprint, market index
 ```

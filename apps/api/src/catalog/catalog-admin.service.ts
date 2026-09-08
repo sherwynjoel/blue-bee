@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, type Service, type ServiceCategory } from '@prisma/client';
+import type { Service, ServiceCategory } from '@prisma/client';
 import {
   CATALOG_ERRORS,
   CatalogReorderScope,

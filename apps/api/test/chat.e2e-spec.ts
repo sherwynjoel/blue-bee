@@ -37,8 +37,6 @@ describe('Chat e2e — Increment 18 (per-order customer↔driver in-app chat)', 
   const token: Record<string, string> = {};
   let vehicleId: string;
   let driver1Id: string;
-  let driver2Id: string;
-  let shift1: string;
   const openSockets: Socket[] = [];
 
   const post = (path: string, who: string, body: unknown = {}) =>
@@ -116,8 +114,8 @@ describe('Chat e2e — Increment 18 (per-order customer↔driver in-app chat)', 
     }
     vehicleId = (await post('/v1/vehicles', 'dispatcher', { label: 'Chat Van 1', plate: 'CH-1' }).expect(201)).body.id;
     driver1Id = await ensureDriver((await get('/v1/me', 'driver1').expect(200)).body.user.userId);
-    driver2Id = await ensureDriver((await get('/v1/me', 'driver2').expect(200)).body.user.userId);
-    shift1 = await startedShift(driver1Id, vehicleId);
+    await ensureDriver((await get('/v1/me', 'driver2').expect(200)).body.user.userId);
+    await startedShift(driver1Id, vehicleId);
   }, 60000);
 
   afterEach(() => {

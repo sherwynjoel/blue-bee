@@ -25,7 +25,6 @@ const PHONES = {
   org2owner: '+14165559001', // OWNER in a different org
 };
 
-const SITE = { lat: 43.7615, lng: -79.4111 };
 const FAR = { lat: 43.6534, lng: -79.3839 }; // ~13.5 km — outside everything
 const NEAR = { lat: 43.755, lng: -79.4111 }; // ~723 m — inside 800 m (approaching), outside 100 m
 const AT = { lat: 43.7615, lng: -79.4111 }; // the stop — 0 m (arrived)

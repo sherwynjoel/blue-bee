@@ -91,7 +91,7 @@ export class TokenService {
   }
 
   async issuePair(user: User, ctx: IssueCtx): Promise<TokenPair> {
-    const roles = await this.principals.loadGrants(user.id);
+    const roles = await this.principals.loadGrants(user.id, user.orgId);
     const scope = await this.principals.deriveScope(roles);
     const accessToken = this.signAccess(user, roles, scope);
     const { token: refreshToken } = await this.createRefresh(user, randomUUID(), ctx);
@@ -134,7 +134,7 @@ export class TokenService {
     const next = await this.createRefresh(user, existing.familyId, ctx);
     await this.prisma.refreshToken.update({ where: { id: existing.id }, data: { rotatedToId: next.id } });
 
-    const roles = await this.principals.loadGrants(user.id);
+    const roles = await this.principals.loadGrants(user.id, user.orgId);
     const scope = await this.principals.deriveScope(roles);
     const pair: TokenPair = {
       accessToken: this.signAccess(user, roles, scope),

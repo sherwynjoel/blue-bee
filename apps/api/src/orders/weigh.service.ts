@@ -36,10 +36,6 @@ const QUOTABLE: OrderStatus[] = [OrderStatus.INTAKE_INSPECTED, OrderStatus.DAMAG
  *   • any FROM_MEASURED specialty line → build the quote SENT and STOP; the customer approves/declines in
  *     the existing OrderDetail quote card. Mixed orders price the FIXED lines but wait on the specialty.
  * No new lifecycle statuses; reuses OrderStateMachine + QuoteService verbatim.
- *
- * TODO (deferred, needs a re-quote flow): re-pricing after QUOTE_APPROVED — a plant re-weigh currently
- * records the new authoritative weight + audits the switch, but does NOT re-open an already-approved quote
- * (§5.1 has no QUOTE_APPROVED → INTAKE_INSPECTED edge; a REWASH-style re-quote branch would be needed).
  */
 @Injectable()
 export class WeighService {
@@ -213,15 +209,10 @@ export class WeighService {
     // re-prices; the audit note distinguishes it from the initial auto-price.
     const isRequote = currentStatus === OrderStatus.QUOTE_APPROVED;
 
-    let quoteId: string;
-    try {
-      const built = await this.quotes.build(principal, orderId, { upcharges: [], expiresInDays: 14 });
-      quoteId = built.quoteId;
-    } catch (err) {
-      // A line still missing its measure (e.g. a specialty item not yet measured) → 422 bubbles up. Honest:
-      // we can't price the order until every priceable line has a measure.
-      throw err;
-    }
+    // A line still missing its measure (e.g. a specialty item not yet measured) → 422 bubbles up. Honest:
+    // we can't price the order until every priceable line has a measure.
+    const built = await this.quotes.build(principal, orderId, { upcharges: [], expiresInDays: 14 });
+    const quoteId = built.quoteId;
 
     const quote = await this.prisma.quote.findUniqueOrThrow({ where: { id: quoteId }, select: { total: true } });
     const total = quote.total.toFixed(2);

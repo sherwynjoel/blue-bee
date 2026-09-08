@@ -90,7 +90,6 @@ describe('Corporate pricing e2e (Increment 15 — corporate accounts + rate card
     return req.send(body as object);
   };
   const put = (path: string, who: string, body: unknown = {}) => request(app.getHttpServer()).put(path).set('Authorization', `Bearer ${token[who]}`).send(body as object);
-  const patch = (path: string, who: string, body: unknown = {}) => request(app.getHttpServer()).patch(path).set('Authorization', `Bearer ${token[who]}`).send(body as object);
 
   const futureWindow = () => ({ start: new Date(Date.now() + 3600_000).toISOString(), end: new Date(Date.now() + 3 * 3600_000).toISOString() });
 

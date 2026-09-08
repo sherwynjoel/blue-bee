@@ -41,7 +41,6 @@ const NEW2 = { acct: 'f6000000-0000-4000-8000-000000000020', uid: 'f6000000-0000
 const ZONE = 'f6000000-0000-4000-8000-000000000001';
 
 // Seeded cross-account customers in DIFFERENT accounts (for the no-existence-leak scoping tests).
-const PRIYA_ACCT = 'd2000000-0000-4000-8000-000000000001';
 const GRACE_ACCT = 'd2000000-0000-4000-8000-000000000002';
 
 // An ACTIVE service zone covering downtown Toronto (a simple box). Verified with ST_Covers: City Hall /

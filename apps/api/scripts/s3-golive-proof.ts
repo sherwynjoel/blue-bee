@@ -102,7 +102,6 @@ async function main(): Promise<void> {
   const financeTok = await mkToken('+14165550005');
   const org2Tok = await mkToken('+14165559001');
   const post = (p: string, tok: string, b: unknown = {}) => request(app.getHttpServer()).post(p).set('Authorization', `Bearer ${tok}`).send(b as object);
-  const get = (p: string, tok: string) => request(app.getHttpServer()).get(p).set('Authorization', `Bearer ${tok}`);
   const win = () => ({ start: new Date(Date.now() + 3_600_000).toISOString(), end: new Date(Date.now() + 7_200_000).toISOString() });
 
   // ─────────── 1. GENERIC media (order/item photo) ───────────

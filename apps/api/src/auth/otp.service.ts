@@ -61,6 +61,11 @@ export class OtpService {
       return { ok: false, reason: 'rate_limited', resendInSeconds: Math.max(ttl, otp.resendCooldownSeconds) };
     }
 
+    // No orgId here (unlike verifyOtp, which has one from the just-consumed OtpChallenge): the full call
+    // chain for this endpoint (AuthController.requestOtp → AuthService.requestOtp → here) is phone + ip
+    // only — there is no tenant selector anywhere upstream to pass through. Scoping this lookup would
+    // require a larger change (e.g. an org-selection step in the request flow), not a same-signature fix,
+    // so this is intentionally left unscoped (see the resolveUser doc comment above) rather than faked.
     const user = await this.resolveUser(phone);
     const expiresAt = new Date(Date.now() + otp.ttlSeconds * 1000);
 

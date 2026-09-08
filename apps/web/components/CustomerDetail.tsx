@@ -360,7 +360,10 @@ function CreditsCard({ userId }: { userId: string }): React.ReactElement {
     setBusy(true);
     setErr(null);
     try {
-      await client.adjustCustomerCredits(userId, { amount: n, note: note.trim() });
+      // A fresh key per attempt — never derived from customer/amount — so a retry of THIS click is deduped
+      // but a genuinely different adjustment (e.g. a deduction right after a grant) is never mistaken for one.
+      const idempotencyKey = crypto.randomUUID();
+      await client.adjustCustomerCredits(userId, { amount: n, note: note.trim() }, idempotencyKey);
       setAmount('');
       setNote('');
       setNonce((x: number) => x + 1);

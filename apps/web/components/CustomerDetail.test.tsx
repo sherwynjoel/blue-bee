@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { RoleType, type Customer360View, type MeResponse } from '@blue-bee/shared';
 import { ApiError } from '@blue-bee/api-client';
 
@@ -133,6 +133,36 @@ describe('CustomerDetail (consumer 360)', () => {
     expect(await screen.findByTestId('credit-entry-c1')).toBeInTheDocument();
     expect(screen.getByTestId('credit-entry-c2')).toBeInTheDocument();
     expect(screen.getByTestId('credit-entry-c1').textContent).toContain('Priya Nair');
+  });
+
+  it('sends a FRESH Idempotency-Key with every credit adjustment — never derived from the amount/customer', async () => {
+    // The server-side IdempotencyInterceptor keys its cache on method+path+caller+key, NOT the body, so
+    // a deterministic key (like payInvoice's `inv-pay-${id}`) would wrongly dedupe two distinct
+    // adjustments (e.g. a grant followed by an unrelated deduction) to the same customer.
+    mockAdjustCredits.mockResolvedValue({ balance: '40.00', currency: 'CAD', entries: [] });
+    render(<CustomerDetail userId={USER_ID} />);
+    await screen.findByTestId('credit-balance');
+
+    fireEvent.change(screen.getByLabelText('Adjust amount'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Goodwill credit' } });
+    fireEvent.click(screen.getByTestId('credit-adjust'));
+    await waitFor(() => expect(mockAdjustCredits).toHaveBeenCalledTimes(1));
+
+    const [firstUserId, firstDto, firstKey] = mockAdjustCredits.mock.calls[0] as [string, unknown, string];
+    expect(firstUserId).toBe(USER_ID);
+    expect(firstDto).toEqual({ amount: 10, note: 'Goodwill credit' });
+    expect(firstKey).toEqual(expect.any(String));
+    expect(firstKey.length).toBeGreaterThan(0);
+
+    // A second, genuinely different adjustment must mint a DIFFERENT key.
+    fireEvent.change(screen.getByLabelText('Adjust amount'), { target: { value: '-5' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Correction' } });
+    fireEvent.click(screen.getByTestId('credit-adjust'));
+    await waitFor(() => expect(mockAdjustCredits).toHaveBeenCalledTimes(2));
+
+    const secondKey = mockAdjustCredits.mock.calls[1]![2] as string;
+    expect(secondKey).toEqual(expect.any(String));
+    expect(secondKey).not.toBe(firstKey);
   });
 
   // ── the honesty firewall, rendered ──

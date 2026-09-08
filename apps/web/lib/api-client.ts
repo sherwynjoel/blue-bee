@@ -225,9 +225,14 @@ export class ConsoleApiClient extends ApiClient {
     return this.request('GET', `/admin/customers/${userId}/credits`);
   }
 
-  /** Manually grant (+) or deduct (−) credit. A note is mandatory; a deduction can never overdraw. */
-  adjustCustomerCredits(userId: string, dto: AdjustCreditDto): Promise<CreditBalanceView> {
-    return this.request('POST', `/admin/customers/${userId}/credits/adjust`, { body: dto });
+  /**
+   * Manually grant (+) or deduct (−) credit. A note is mandatory; a deduction can never overdraw. This
+   * moves real money, so an idempotency-key protects a submit retry/double-click from double-applying —
+   * unlike `payInvoice`'s deterministic key, callers must mint a FRESH key per submission attempt, since
+   * two distinct adjustments to the same customer must never be deduped against each other.
+   */
+  adjustCustomerCredits(userId: string, dto: AdjustCreditDto, idempotencyKey?: string): Promise<CreditBalanceView> {
+    return this.request('POST', `/admin/customers/${userId}/credits/adjust`, { body: dto, idempotencyKey });
   }
 
   /** The current access token — needed for the `WS /live/fleet` handshake auth (Inc 6 contract). */

@@ -16,6 +16,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:api-safe": "cd apps/api && npx jest --runInBand",
     "typecheck": "turbo run typecheck",
     "postinstall": "node -e \"const fs=require('fs');if(!fs.existsSync('packages/shared/src')){console.log('[postinstall] workspace source absent (e.g. API Docker deps stage) -- skipping shared/api-client prebuild');process.exit(0)}require('child_process').execSync('npm run build --workspace @blue-bee/shared && npm run build --workspace @blue-bee/api-client',{stdio:'inherit'})\"",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",

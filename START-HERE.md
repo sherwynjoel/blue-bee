@@ -1,6 +1,6 @@
 # START HERE — kick off the Blue Bee build with Claude Code
 
-This is a **foundation only** — structure, configs, and docs are in place, but there is **no app code yet** and it is **not a git repo yet**. Open the folder in VS Code, then run the two prompts below in Claude Code, in order.
+This repo is **past initial bootstrap** — Phase-1 MVP is built and iterating (see `CHANGELOG.md`). The two prompts below are kept for reference/onboarding context only; do NOT re-run Prompt 1 (`git init`) against this repo. For picking up ongoing work, read `CHANGELOG.md`, the latest file in `handoffs/`, and `BUILD-PLAN.md`'s checklist instead.
 
 **Working folder — every prompt below operates here:** `/Volumes/Gowtham/Blue Bee`
 Before you start: be on **Node 20** (`nvm use`) and have **Docker running**.

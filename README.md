@@ -2,7 +2,7 @@
 
 Commercial laundry & specialty-cleaning **operating system** for the Greater Toronto Area. One backend, four client surfaces, three verticals (specialty cleaning, care-home linen, hotels). **Live truck tracking** and **end-to-end chain of custody** are the wedge.
 
-> **Status: foundation / scaffold.** No application code yet. To begin the build with Claude Code, open this folder in VS Code and follow **`START-HERE.md`** (and read **`CLAUDE.md`**).
+> **Status: Phase-1 MVP built and iterating** (39+ increments as of 2026-09-08) — auth, orders, logistics/tracking, payments, notifications, and all four client surfaces exist and are tested. See `CHANGELOG.md` for the build log and `handoffs/` for the latest developer handover before making changes.
 
 ## Surfaces
 - **Customer app** (iOS/Android/Web) — book, quote-approve, track the truck, pay, view before/after photos.

@@ -224,6 +224,7 @@ describe('Driver duty loop e2e — Increment 9 (/v1/driver/*)', () => {
     // is the only way to exercise those org-scoped queries themselves, so this spec mints one.
     const ORG2 = 'e0000000-0000-4000-8000-000000000002';
     let org2DriverUserId: string;
+    let org2VehicleId: string;
 
     beforeAll(async () => {
       const user = await prisma.user.create({
@@ -232,6 +233,7 @@ describe('Driver duty loop e2e — Increment 9 (/v1/driver/*)', () => {
       org2DriverUserId = user.id;
       await prisma.userRole.create({ data: { orgId: ORG2, userId: user.id, role: 'DRIVER', scope: 'ORG' } });
       const vehicle = await prisma.vehicle.create({ data: { orgId: ORG2, label: 'Org2 Cross-org Van' } });
+      org2VehicleId = vehicle.id;
       await prisma.driver.create({ data: { orgId: ORG2, userId: user.id, defaultVehicleId: vehicle.id } });
 
       const tokens = app.get(TokenService);
@@ -242,7 +244,16 @@ describe('Driver duty loop e2e — Increment 9 (/v1/driver/*)', () => {
     }, 30000);
 
     afterAll(async () => {
+      // `User.delete` cascades `UserRole` + `Driver` (both carry `onDelete: Cascade` back to `User` —
+      // schema.prisma). `Vehicle` has NO such cascade (nothing points from `Vehicle` back to `User`),
+      // so it's deleted explicitly. Order verified against the actual FK constraint (not assumed):
+      // `Driver_default_vehicle_id_fkey` is `ON DELETE SET NULL` (migration
+      // 20260624000000_init_phase1/migration.sql:809), so deleting the Vehicle first would just null
+      // out the (about-to-be-cascaded) Driver row rather than fail — but deleting the User first, so
+      // the Driver row referencing this Vehicle is already gone before the Vehicle delete runs, needs
+      // no reliance on that constraint at all.
       await prisma.user.delete({ where: { id: org2DriverUserId } }); // cascades the UserRole + Driver rows
+      await prisma.vehicle.delete({ where: { id: org2VehicleId } });
     });
 
     it("a real DRIVER in a DIFFERENT org cannot start org-1's shift by id (404 — the row is invisible, not merely forbidden)", async () => {

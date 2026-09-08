@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { CreditsController, CreditsAdminController } from './credits.controller';
 import { CreditsService } from './credits.service';
 
@@ -11,7 +12,7 @@ import { CreditsService } from './credits.service';
 @Module({
   imports: [PrismaModule],
   controllers: [CreditsController, CreditsAdminController],
-  providers: [CreditsService],
+  providers: [CreditsService, IdempotencyInterceptor],
   exports: [CreditsService],
 })
 export class CreditsModule {}

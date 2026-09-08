@@ -269,3 +269,79 @@ describe('Credits + Home e2e — the real referral reward (Inc-37)', () => {
     expect(home.credits.balance).toBe(await balanceOf());
   });
 });
+
+/**
+ * Credits admin-adjust idempotency (fix for the 2026-09-08 review finding: the console manual
+ * grant/deduct endpoint was the only money-moving mutation in the codebase with no Idempotency-Key
+ * protection, so a retried/double-clicked adjustment could double-grant or double-deduct real credit).
+ */
+describe('Credits e2e — admin adjust idempotency', () => {
+  let app: INestApplication;
+  const prisma = new PrismaClient();
+  const token: Record<string, string> = {};
+  const userId: Record<string, string> = {};
+
+  const PHONES = {
+    finance: '+14165550005', // FINANCE (org-wide)
+    rita: '+14165550010', // RESIDENTIAL_CUSTOMER, Account A
+  };
+
+  const post = (path: string, who: string, body: unknown = {}, key?: string) => {
+    let req = request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token[who]}`);
+    if (key) req = req.set('Idempotency-Key', key);
+    return req.send(body as object);
+  };
+
+  const adjustmentCount = () => prisma.creditEntry.count({ where: { orgId: ORG1, userId: userId.rita, kind: 'ADJUSTMENT' } });
+
+  beforeAll(async () => {
+    app = await createTestApp();
+    const tokens = app.get(TokenService);
+    const principals = app.get(PrincipalService);
+    for (const [name, phone] of Object.entries(PHONES)) {
+      const user = await prisma.user.findFirstOrThrow({ where: { phone } });
+      const roles = await principals.loadGrants(user.id);
+      const scope = await principals.deriveScope(roles);
+      token[name] = tokens.signAccess(user, roles, scope);
+      userId[name] = user.id;
+    }
+  }, 60000);
+
+  afterAll(async () => {
+    await prisma.creditEntry.deleteMany({ where: { orgId: ORG1, userId: userId.rita, kind: 'ADJUSTMENT' } });
+    await prisma.$disconnect();
+    await app.close();
+  });
+
+  it('replaying the same Idempotency-Key does not double-grant credit', async () => {
+    const key = `adjust-${Date.now()}`;
+    const before = await adjustmentCount();
+
+    const a = await post(`/v1/admin/customers/${userId.rita}/credits/adjust`, 'finance', { amount: 10, note: 'Goodwill credit' }, key).expect(201);
+    const b = await post(`/v1/admin/customers/${userId.rita}/credits/adjust`, 'finance', { amount: 10, note: 'Goodwill credit' }, key).expect(201);
+
+    expect(b.body.balance).toBe(a.body.balance); // replay returns the cached response, not a second grant
+    expect((await adjustmentCount()) - before).toBe(1); // exactly one entry written
+  });
+
+  it('is concurrency-safe: two CONCURRENT same-key adjustments write exactly one entry', async () => {
+    const key = `adjust-concurrent-${Date.now()}`;
+    const before = await adjustmentCount();
+
+    const [a, b] = await Promise.all([
+      post(`/v1/admin/customers/${userId.rita}/credits/adjust`, 'finance', { amount: 5, note: 'Concurrent test' }, key),
+      post(`/v1/admin/customers/${userId.rita}/credits/adjust`, 'finance', { amount: 5, note: 'Concurrent test' }, key),
+    ]);
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    expect(a.body.balance).toBe(b.body.balance);
+    expect((await adjustmentCount()) - before).toBe(1);
+  });
+
+  it('without an Idempotency-Key, two distinct requests both apply (no accidental de-dup of real adjustments)', async () => {
+    const before = await adjustmentCount();
+    await post(`/v1/admin/customers/${userId.rita}/credits/adjust`, 'finance', { amount: 1, note: 'No key A' }).expect(201);
+    await post(`/v1/admin/customers/${userId.rita}/credits/adjust`, 'finance', { amount: 1, note: 'No key B' }).expect(201);
+    expect((await adjustmentCount()) - before).toBe(2);
+  });
+});

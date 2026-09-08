@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   RoleType,
@@ -10,6 +10,7 @@ import {
   type SetReferralRewardDto,
 } from '@blue-bee/shared';
 import { ZodBody } from '../common/zod-validation.pipe';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { CurrentUser, Roles } from '../auth/rbac/decorators';
 import type { RequestPrincipal } from '../auth/rbac/types';
 import { CreditsService } from './credits.service';
@@ -41,6 +42,7 @@ export class CreditsController {
 @ApiTags('admin')
 @ApiBearerAuth()
 @Roles(RoleType.OWNER, RoleType.FINANCE)
+@UseInterceptors(IdempotencyInterceptor)
 @Controller('admin')
 export class CreditsAdminController {
   constructor(private readonly credits: CreditsService) {}

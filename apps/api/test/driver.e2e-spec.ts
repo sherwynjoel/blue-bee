@@ -2,7 +2,8 @@ import { INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import type Redis from 'ioredis';
-import { RouteStopStatus, ShiftStatus } from '@blue-bee/shared';
+import { randomUUID } from 'node:crypto';
+import { DRIVER_ERRORS, RouteStopStatus, ShiftStatus } from '@blue-bee/shared';
 import { RouteStatus as PrismaRouteStatus, ShiftStatus as PrismaShiftStatus } from '@prisma/client';
 import { createRealtimeTestApp } from './app.factory';
 import { TokenService } from '../src/auth/token.service';
@@ -178,5 +179,82 @@ describe('Driver duty loop e2e — Increment 9 (/v1/driver/*)', () => {
       const r = await prisma.route.findUniqueOrThrow({ where: { id: res.body.route.id } });
       expect(r.driverId).toBe(driver2Id);
     }
+  });
+
+  // ── 2026-09-08 review follow-up — the exact rejection payload + boundary edges the status-code-only
+  // checks above don't reach: the DRIVER_ERRORS code actually in the body (not just a bare 403/404
+  // status, which would also pass if the code silently changed or went missing), a nonexistent id
+  // (404, not a 500 or a silent success), and the driver-scoped weight READ (a separate code path from
+  // the §5.4 stop actions above — it must be stop-owned too, not merely role-gated). ──
+
+  it('starting a nonexistent shift is a 404 carrying DRIVER_ERRORS.NOT_OWN_SHIFT, not a 500 or a silent success', async () => {
+    const res = await post(`/v1/driver/shifts/${randomUUID()}/start`, 'driver1').expect(404);
+    expect(res.body.error ?? res.body.title).toBe(DRIVER_ERRORS.NOT_OWN_SHIFT);
+  });
+
+  it('acting on a nonexistent stop is a 404 carrying DRIVER_ERRORS.NOT_OWN_STOP', async () => {
+    const res = await post(`/v1/driver/stops/${randomUUID()}/depart`, 'driver1').expect(404);
+    expect(res.body.error ?? res.body.title).toBe(DRIVER_ERRORS.NOT_OWN_STOP);
+  });
+
+  it('cross-driver rejections carry the DRIVER_ERRORS code in the body, not just a bare 403 status', async () => {
+    const sc = await freshScenario(driver1Id);
+    const shiftRes = await post(`/v1/driver/shifts/${sc.shiftId}/start`, 'driver2').expect(403);
+    expect(shiftRes.body.error ?? shiftRes.body.title).toBe(DRIVER_ERRORS.NOT_OWN_SHIFT);
+    const stopRes = await post(`/v1/driver/stops/${sc.stopId}/depart`, 'driver2').expect(403);
+    expect(stopRes.body.error ?? stopRes.body.title).toBe(DRIVER_ERRORS.NOT_OWN_STOP);
+  });
+
+  it("driver A cannot read driver B's stop weight — the weight READ is stop-owned, not merely role-gated", async () => {
+    const sc = await freshScenario(driver1Id);
+    // owner reachable + sane on MY stop (nothing weighed yet — this just proves the read is reachable)
+    const own = await get(`/v1/driver/stops/${sc.stopId}/weight`, 'driver1').expect(200);
+    expect(own.body.authoritativeWeightKg).toBeNull();
+    expect(own.body.captures).toEqual([]);
+    // driver2 (a real, different driver) cannot read driver1's stop weight
+    const res = await get(`/v1/driver/stops/${sc.stopId}/weight`, 'driver2').expect(403);
+    expect(res.body.error ?? res.body.title).toBe(DRIVER_ERRORS.NOT_OWN_STOP);
+  });
+
+  describe('cross-org isolation (the explicit org_id scoping the service performs on every query)', () => {
+    // Deliberately NOT `org2owner` (the org-2 OWNER used elsewhere in this suite as the standard
+    // cross-org probe): OWNER has no DRIVER role, so `@Roles(RoleType.DRIVER)` on DriverController would
+    // reject them with 403 before the request ever reaches `assertOwnShift`/`requireOwnStop` — proving
+    // only the role gate, not the org scoping. A real DRIVER in a different org (org2 has none seeded)
+    // is the only way to exercise those org-scoped queries themselves, so this spec mints one.
+    const ORG2 = 'e0000000-0000-4000-8000-000000000002';
+    let org2DriverUserId: string;
+
+    beforeAll(async () => {
+      const user = await prisma.user.create({
+        data: { orgId: ORG2, name: 'Driver e2e — org2 cross-org probe', phone: '+14165559099', status: 'ACTIVE', authProviders: ['otp'] },
+      });
+      org2DriverUserId = user.id;
+      await prisma.userRole.create({ data: { orgId: ORG2, userId: user.id, role: 'DRIVER', scope: 'ORG' } });
+      const vehicle = await prisma.vehicle.create({ data: { orgId: ORG2, label: 'Org2 Cross-org Van' } });
+      await prisma.driver.create({ data: { orgId: ORG2, userId: user.id, defaultVehicleId: vehicle.id } });
+
+      const tokens = app.get(TokenService);
+      const principals = app.get(PrincipalService);
+      const roles = await principals.loadGrants(user.id);
+      const scope = await principals.deriveScope(roles);
+      token.org2Driver = tokens.signAccess(user, roles, scope);
+    }, 30000);
+
+    afterAll(async () => {
+      await prisma.user.delete({ where: { id: org2DriverUserId } }); // cascades the UserRole + Driver rows
+    });
+
+    it("a real DRIVER in a DIFFERENT org cannot start org-1's shift by id (404 — the row is invisible, not merely forbidden)", async () => {
+      const sc = await freshScenario(driver1Id);
+      const res = await post(`/v1/driver/shifts/${sc.shiftId}/start`, 'org2Driver').expect(404);
+      expect(res.body.error ?? res.body.title).toBe(DRIVER_ERRORS.NOT_OWN_SHIFT);
+    });
+
+    it("a real DRIVER in a DIFFERENT org cannot act on org-1's stop by id (404)", async () => {
+      const sc = await freshScenario(driver1Id);
+      const res = await post(`/v1/driver/stops/${sc.stopId}/depart`, 'org2Driver').expect(404);
+      expect(res.body.error ?? res.body.title).toBe(DRIVER_ERRORS.NOT_OWN_STOP);
+    });
   });
 });

@@ -1,14 +1,59 @@
 import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
+import { tailwindPreset, light, dark, type ColorScale } from '@blue-bee/design-tokens';
 
 /*
  * ───────────────────────── Daylight design system ─────────────────────────
- * The premium operator-console theme. Colours resolve to CSS variables defined
- * in app/globals.css (light) + the `.dark` override, so a single class toggle
- * re-themes everything. The legacy `bb-*` tokens are remapped onto the same
+ * The premium operator-console theme. Colours resolve to CSS variables whose
+ * light/dark values now come from the canonical @blue-bee/design-tokens color
+ * scale (the SAME source the 3 RN apps consume — Royal Dry Cleaning brand), so a
+ * single `.dark` class toggle re-themes everything. The token-derived :root/.dark
+ * variables are emitted by the `daylight-tokens` plugin below (see tokenCssVars),
+ * NOT hand-copied — app/globals.css only keeps the web-specific derived vars the
+ * token scale doesn't model. The legacy `bb-*` tokens remap onto the same
  * variables so even un-restyled markup inherits the palette + dark-mode parity.
+ *
+ * `presets: [tailwindPreset]` wires this config to the shared design-tokens
+ * preset (spacing / type ramp / radius / elevation). Tailwind loads this .ts
+ * config through `jiti`, which resolves @blue-bee/design-tokens' raw-TS package
+ * entry (a plain `require()` cannot — see the design-tokens package.json).
  */
+
+/**
+ * Web's CSS-variable base layer, derived from the canonical design-tokens color scale (single source
+ * of truth). Keys are web's long-standing CSS var names; values are the token fields they map to.
+ * Emitted for :root (light) and .dark (dark) by the plugin below so the class-based dark toggle keeps
+ * working. Web-specific derived vars the token scale doesn't model — --primary-hover/-active,
+ * --surface-translucent, --ring, --neutral-strong, --e1..3, --map-tile-filter — stay in globals.css.
+ */
+const tokenCssVars = (c: ColorScale): Record<string, string> => ({
+  '--canvas': c.canvas,
+  '--subtle': c.subtle,
+  '--surface': c.surface,
+  '--hairline': c.hairline,
+  '--ink': c.text,
+  '--text-secondary': c.textSecondary,
+  '--text-tertiary': c.textTertiary,
+  '--primary': c.azure,
+  '--primary-tint': c.azureTint,
+  '--on-primary': c.onAzure,
+  '--primary-strong': c.onAzureTint,
+  '--honey': c.honey,
+  '--honey-tint': c.honeyTint,
+  '--success': c.success,
+  '--success-tint': c.successTint,
+  '--success-strong': c.onSuccessTint,
+  '--warning': c.warning,
+  '--warning-tint': c.warningTint,
+  '--warning-strong': c.onWarningTint,
+  '--danger': c.danger,
+  '--danger-tint': c.dangerTint,
+  '--danger-strong': c.onDangerTint,
+});
+
 const config: Config = {
   darkMode: 'class',
+  presets: [tailwindPreset as unknown as Config],
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
   theme: {
     extend: {
@@ -34,6 +79,12 @@ const config: Config = {
         danger: { DEFAULT: 'var(--danger)', tint: 'var(--danger-tint)', strong: 'var(--danger-strong)' },
         'primary-strong': 'var(--primary-strong)',
         'neutral-strong': 'var(--neutral-strong)',
+
+        // Canonical azure/honey/text aliases matching the RN apps' token names, kept var-backed so
+        // they honour dark mode. This also overrides the shared preset's LIGHT-literal `azure`/`text`
+        // color tokens with the CSS-variable versions, so no non-theming literal color leaks into web.
+        azure: { DEFAULT: 'var(--primary)', tint: 'var(--primary-tint)' },
+        text: { DEFAULT: 'var(--ink)', secondary: 'var(--text-secondary)', tertiary: 'var(--text-tertiary)' },
 
         // legacy bb-* tokens → remapped onto the Daylight variables (back-compat
         // so untouched screens pick up the new palette + dark mode for free).
@@ -69,6 +120,14 @@ const config: Config = {
         btn: '12px',
         input: '12px',
         sheet: '20px',
+        // The shared preset maps the design-tokens px radius scale onto sm/md/lg/xl/2xl; re-assert
+        // Tailwind's defaults here so existing `rounded-{sm,md,lg,xl,2xl}` utilities keep their current
+        // pixel radii — radius is NOT part of the Royal Dry Cleaning rebrand (colors only).
+        sm: '0.125rem',
+        md: '0.375rem',
+        lg: '0.5rem',
+        xl: '0.75rem',
+        '2xl': '1rem',
       },
       boxShadow: {
         e1: 'var(--e1)',
@@ -100,7 +159,17 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // Emit the token-derived CSS variables for :root (light) + .dark (dark) straight from the
+    // canonical @blue-bee/design-tokens scale, so globals.css never hand-copies a hex value and the
+    // console can't drift from the shared source again.
+    plugin(({ addBase }) => {
+      addBase({
+        ':root': tokenCssVars(light),
+        '.dark': tokenCssVars(dark),
+      });
+    }),
+  ],
 };
 
 export default config;

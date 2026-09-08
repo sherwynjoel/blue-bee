@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@blue-bee/api-client": "*",
+    "@blue-bee/design-tokens": "*",
     "@blue-bee/shared": "*",
     "@stripe/react-stripe-js": "^6.6.0",
     "@stripe/stripe-js": "^9.8.0",

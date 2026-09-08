@@ -5,49 +5,29 @@
 /*
  * ───────────────────────── Daylight design tokens ─────────────────────────
  * The premium operator-console design language. Every colour is a CSS variable
- * so a single `.dark` class on <html> re-themes the whole app. Legacy `bb-*`
- * Tailwind tokens are remapped onto these variables (see tailwind.config) so
- * even un-touched markup inherits the palette + dark-mode parity.
+ * so a single `.dark` class on <html> re-themes the whole app.
+ *
+ * The BASE color variables (--canvas, --surface, --ink, --primary, --honey, the
+ * semantic hues + their tints/strong foregrounds) are emitted from the canonical
+ * @blue-bee/design-tokens scale by the `daylight-tokens` Tailwind plugin (see
+ * tailwind.config.ts → tokenCssVars) — the SAME Royal Dry Cleaning source the 3
+ * RN apps consume, so the console can't drift from it. They are deliberately NOT
+ * re-declared here; this file only carries the web-specific derived vars the
+ * token scale doesn't model (interaction states, translucency, focus ring,
+ * elevation, map filter). Legacy `bb-*` Tailwind tokens remap onto the base
+ * variables (see tailwind.config) so even un-touched markup inherits the palette.
  */
 :root {
   color-scheme: light;
 
-  /* surfaces */
-  --canvas: #fbfcfe;
-  --subtle: #f4f7fb;
-  --surface: #ffffff;
+  /* translucent surface for frosted cards (derived from --surface) */
   --surface-translucent: rgba(255, 255, 255, 0.72);
-  --hairline: #e5eaf1;
 
-  /* text */
-  --ink: #0a2540;
-  --text-secondary: #5a6b82;
-  --text-tertiary: #8a99ae;
-
-  /* primary — azure */
-  --primary: #0b5fff;
+  /* primary interaction states (no canonical token yet — kept web-local) */
   --primary-hover: #0a54e0;
   --primary-active: #0848c2;
-  --primary-tint: #e8f0ff;
-  --on-primary: #ffffff;
 
-  /* accent — honey */
-  --honey: #ffb020;
-  --honey-tint: #fff6e6;
-
-  /* semantic */
-  --success: #14b86a;
-  --success-tint: #e5f7ee;
-  --warning: #f59e0b;
-  --warning-tint: #fff4e0;
-  --danger: #e5484d;
-  --danger-tint: #fcebec;
-
-  /* AA-contrast text for badges/pills sitting on the tints above */
-  --primary-strong: #0848c2;
-  --success-strong: #0b7a43;
-  --warning-strong: #b45309;
-  --danger-strong: #b42318;
+  /* legible neutral foreground on neutral tints (no direct token equivalent) */
   --neutral-strong: #455468;
 
   /* focus + elevation */
@@ -63,36 +43,11 @@
 .dark {
   color-scheme: dark;
 
-  --canvas: #0a0e1a;
-  --subtle: #111728;
-  --surface: #141b2d;
   --surface-translucent: rgba(20, 27, 45, 0.72);
-  --hairline: rgba(255, 255, 255, 0.08);
 
-  --ink: #eaf0f8;
-  --text-secondary: #9db0c9;
-  --text-tertiary: #6b7c96;
-
-  --primary: #3d8bff;
   --primary-hover: #5c9dff;
   --primary-active: #2d7bef;
-  --primary-tint: rgba(61, 139, 255, 0.16);
-  --on-primary: #06122c;
 
-  --honey: #ffc34d;
-  --honey-tint: rgba(255, 195, 77, 0.16);
-
-  --success: #2dd583;
-  --success-tint: rgba(45, 213, 131, 0.16);
-  --warning: #ffc34d;
-  --warning-tint: rgba(255, 195, 77, 0.16);
-  --danger: #ff6168;
-  --danger-tint: rgba(255, 97, 104, 0.16);
-
-  --primary-strong: #7fb2ff;
-  --success-strong: #34e29a;
-  --warning-strong: #ffce6b;
-  --danger-strong: #ff8e92;
   --neutral-strong: #b6c5da;
 
   --ring: rgba(61, 139, 255, 0.45);

@@ -12,6 +12,7 @@ Format:
 ---
 
 ## 2026-09-08
+- 04:59 IST · **fix(payments): close the order-level payment race** — `createIntent` now locks the Order row (mirroring the existing invoice-level lock) before deciding whether to reuse a pending payment or create a new one, so two concurrent pay attempts can never create two PENDING rows / orphan one on the `stripePaymentIntentId` unique constraint. → `apps/api/src/payments/payment.service.ts`, `apps/api/test/payments.e2e-spec.ts`
 - 14:00 IST · **fix(driver): clear the location outbox on shift end** — a failed-to-send ping from an ended shift could previously sit queued and get flushed (and misattributed) under the NEXT shift once the driver started one; `stopTracking()` now clears the outbox, and a session-token guard in the flush closure stops an in-flight send from posting under a stale shift/vehicle binding. → `apps/driver/src/location/duty-cycle.ts`, `apps/driver/src/location/tracker.ts`
 
 ## 2026-08-12

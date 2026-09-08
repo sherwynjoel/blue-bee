@@ -138,48 +138,56 @@ export class PaymentService {
       return this.settleFromCreditOnly(principal, order, orderId, orderTotalStr, creditStr, currency);
     }
 
-    // Re-attempt of the SAME pending intent: re-call the provider with the stored idempotency key so
-    // Stripe returns the identical intent + client secret (no double-charge, no secret persistence).
-    const pending = await this.prisma.payment.findFirst({ where: { orderId, orgId: order.orgId, status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
-    if (pending && pending.idempotencyKey) {
-      const intent = await this.provider.createPaymentIntent({
-        amountMinor,
-        currency: currency.toLowerCase(),
-        orderId,
-        orgId: order.orgId,
-        accountId: order.accountId,
-        idempotencyKey: pending.idempotencyKey,
-        captureMethod: this.captureMethod(),
-      });
-      // Keep the stored intent id in sync (idempotent — same key ⇒ same id).
-      if (pending.stripePaymentIntentId !== intent.id) {
-        await this.prisma.payment.update({ where: { id: pending.id }, data: { stripePaymentIntentId: intent.id } });
+    // Decide the single Payment row to drive — SERIALIZED per order via a row lock so two concurrent
+    // pay attempts (double-tap, client retry) can never create two PENDING payments / two Stripe intents
+    // (the orphaned-row race this fix closes). Mirrors createInvoiceIntent's lock below; the Stripe call
+    // happens OUTSIDE the lock (never hold a row lock across an external network call).
+    const decision = await this.prisma.$transaction(async (tx) => {
+      // Lock THIS order row (tx does not inherit the scoped extension → pin orgId explicitly).
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId}::uuid AND org_id = ${order.orgId}::uuid FOR UPDATE`;
+
+      // Defensive re-check: another concurrent call may have just succeeded (the succeeded-check above
+      // ran before the lock).
+      const alreadySucceeded = await tx.payment.findFirst({ where: { orderId, orgId: order.orgId, status: PaymentStatus.SUCCEEDED } });
+      if (alreadySucceeded) {
+        throw new ConflictException({ error: PAYMENT_ERRORS.ALREADY_PAID, message: 'This order has already been paid' });
       }
-      return this.intentResponse(pending.id, intent.clientSecret, amountStr, currency, PaymentStatus.PENDING, creditStr, orderTotalStr);
-    }
 
-    // New attempt — bounded by the dunning retry cap.
-    const attempts = await this.prisma.payment.count({ where: { orderId, orgId: order.orgId } });
-    if (attempts >= this.config.maxPaymentAttempts) {
-      throw new ConflictException({ error: PAYMENT_ERRORS.RETRY_LIMIT_REACHED, message: 'Payment retry limit reached; please contact support' });
-    }
+      // Re-attempt of the SAME pending intent: reuse it rather than creating a second one.
+      const pending = await tx.payment.findFirst({ where: { orderId, orgId: order.orgId, status: PaymentStatus.PENDING }, orderBy: { createdAt: 'desc' } });
+      if (pending && pending.idempotencyKey) {
+        return { reuse: true as const, payment: pending };
+      }
 
-    const idempotencyKey = `pi-order-${orderId}-${attempts + 1}`;
-    const payment = await this.prisma.payment.create({
-      data: {
-        orgId: order.orgId,
-        orderId,
-        accountId: order.accountId,
-        amount: amountStr,
-        currency,
-        status: PaymentStatus.PENDING,
-        captureMethod: this.captureMethod(),
-        idempotencyKey,
-        attempts: attempts + 1,
-        createdBy: principal.userId,
-      },
+      // New attempt — bounded by the dunning retry cap. The count runs under the row lock, so the
+      // attempt number (→ the idempotency key) is consistent even under concurrency.
+      const attempts = await tx.payment.count({ where: { orderId, orgId: order.orgId } });
+      if (attempts >= this.config.maxPaymentAttempts) {
+        throw new ConflictException({ error: PAYMENT_ERRORS.RETRY_LIMIT_REACHED, message: 'Payment retry limit reached; please contact support' });
+      }
+
+      const created = await tx.payment.create({
+        data: {
+          orgId: order.orgId,
+          orderId,
+          accountId: order.accountId,
+          amount: amountStr,
+          currency,
+          status: PaymentStatus.PENDING,
+          captureMethod: this.captureMethod(),
+          idempotencyKey: `pi-order-${orderId}-${attempts + 1}`,
+          attempts: attempts + 1,
+          createdBy: principal.userId,
+        },
+      });
+      return { reuse: false as const, payment: created };
     });
 
+    const payment = decision.payment;
+    const idempotencyKey = payment.idempotencyKey as string;
+
+    // Create the intent OUTSIDE the lock — the deterministic key means a reuse re-calls the provider
+    // with the SAME key, so Stripe returns the identical intent + client secret (no double-charge).
     let intent;
     try {
       intent = await this.provider.createPaymentIntent({
@@ -193,20 +201,28 @@ export class PaymentService {
       });
     } catch (err) {
       // The intent couldn't be created — mark this attempt FAILED so the row isn't a dangling PENDING.
+      // Only do this for a freshly-created row: a reused pending row is shared with whichever request
+      // wins the retry, so we must not fail it out from under a concurrent caller.
       const reason = err instanceof Error ? err.message : String(err);
-      await this.prisma.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED, lastError: reason } });
+      if (!decision.reuse) {
+        await this.prisma.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED, lastError: reason } });
+      }
       throw new UnprocessableEntityException({ error: PAYMENT_ERRORS.ORDER_NOT_PAYABLE, message: `Could not start payment: ${reason}` });
     }
 
-    await this.prisma.payment.update({ where: { id: payment.id }, data: { stripePaymentIntentId: intent.id } });
-    await this.audit.record({
-      orgId: order.orgId,
-      actorId: principal.userId,
-      entity: 'Payment',
-      entityId: payment.id,
-      action: 'PAYMENT_INTENT_CREATED',
-      after: { orderId, amount: amountStr, creditApplied: creditStr, orderTotal: orderTotalStr, currency, intentId: intent.id, attempt: attempts + 1, provider: this.provider.name },
-    });
+    if (payment.stripePaymentIntentId !== intent.id) {
+      await this.prisma.payment.update({ where: { id: payment.id }, data: { stripePaymentIntentId: intent.id } });
+    }
+    if (!decision.reuse) {
+      await this.audit.record({
+        orgId: order.orgId,
+        actorId: principal.userId,
+        entity: 'Payment',
+        entityId: payment.id,
+        action: 'PAYMENT_INTENT_CREATED',
+        after: { orderId, amount: amountStr, creditApplied: creditStr, orderTotal: orderTotalStr, currency, intentId: intent.id, attempt: payment.attempts, provider: this.provider.name },
+      });
+    }
 
     return this.intentResponse(payment.id, intent.clientSecret, amountStr, currency, PaymentStatus.PENDING, creditStr, orderTotalStr);
   }

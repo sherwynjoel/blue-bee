@@ -271,6 +271,28 @@ describe('Payments e2e — Increment 12 (Stripe billing rail, signed test events
     });
   });
 
+  // ─────────────────────────── concurrency: no orphaned duplicate payment rows ───────────────────────────
+
+  describe('order-level payment concurrency (double-tap / retry safety)', () => {
+    it('two concurrent create-intent calls for the same order converge on ONE payment row, never two', async () => {
+      const orderId = await makeApprovedOrder();
+
+      const [a, b] = await Promise.all([
+        post(`/v1/orders/${orderId}/payment-intent`, 'rita'),
+        post(`/v1/orders/${orderId}/payment-intent`, 'rita'),
+      ]);
+
+      expect(a.status).toBe(201);
+      expect(b.status).toBe(201);
+      expect(a.body.paymentId).toBe(b.body.paymentId); // same row reused, not a second PENDING payment
+
+      expect(await prisma.payment.count({ where: { orderId } })).toBe(1);
+      const row = await prisma.payment.findFirstOrThrow({ where: { orderId } });
+      expect(row.stripePaymentIntentId).toBeTruthy(); // never left null/orphaned by a losing concurrent update
+      expect(row.status).toBe('PENDING');
+    });
+  });
+
   // ─────────────────────────── refunds (full + partial, owner/finance) ───────────────────────────
 
   describe('refunds + charge.refunded', () => {

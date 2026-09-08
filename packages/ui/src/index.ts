@@ -25,3 +25,7 @@ export {
 export { fireHaptic, haptics, type HapticKind } from './haptics';
 export { Text, type TextProps, type TextColor } from './Text';
 export { Button, type ButtonProps, type ButtonTone, type ButtonVariant, type ButtonSize } from './Button';
+export { Card, type CardProps } from './Card';
+export { Badge, type BadgeProps, type BadgeTone } from './Badge';
+export { Input, type InputProps } from './Input';
+export { StatTile, type StatTileProps } from './StatTile';

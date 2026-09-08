@@ -1,20 +1,16 @@
 import type { TokenStore } from '@blue-bee/api-client';
 
-const REFRESH_KEY = 'bb.console.refresh';
-
 /**
- * The web token store (Increment 13) — implements the api-client `TokenStore` so the SAME proven
- * transport (single-flight 401→refresh→retry, problem+json→ApiError) runs in the browser unchanged.
+ * The web token store — implements the api-client `TokenStore` so the SAME proven transport
+ * (single-flight 401→refresh→retry, problem+json→ApiError) runs in the browser unchanged.
  *
- * STRATEGY: the **access token lives in memory only** (never persisted → a closed tab drops it, and
- * disk XSS can't read it); the **refresh token is in localStorage**. This is the documented XSS
- * trade-off. The fully-httpOnly-cookie pattern is the recommended hardening but is a follow-up this
- * increment, because (1) the as-built `/auth/refresh` is BODY-based and the api-client assumes one
- * base for all calls incl. refresh — a cookie refresh needs a separate Next BFF origin, which would
- * fork the transport; and (2) the `WS /live/fleet` handshake already needs the access token readable
- * in JS (auth.token). Blast radius is capped by the Inc-2 server-side refresh ROTATION +
- * reuse-detection + access-jti denylist, short access TTL, React's default escaping, and a CSP.
- * SSR-safe: every `window`/`localStorage` access is guarded.
+ * The access token lives in memory only (a closed tab drops it; disk XSS can't read it). The refresh
+ * token is now an httpOnly cookie the SERVER sets and reads directly (see apps/api's
+ * auth.controller.ts / refresh-cookie.ts) — this class never sees it, never stores it, and
+ * `getRefresh()` always returns null (which `ApiClient.doRefresh()` now correctly treats as "refresh
+ * via cookie" rather than "cannot refresh"). This closes the localStorage XSS exposure the previous
+ * version explicitly traded off. Nothing here touches `window`/`localStorage`, so it is trivially
+ * SSR-safe.
  */
 export class WebTokenStore implements TokenStore {
   private access: string | null = null;
@@ -24,17 +20,19 @@ export class WebTokenStore implements TokenStore {
   }
 
   async getRefresh(): Promise<string | null> {
-    if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem(REFRESH_KEY);
+    return null; // the httpOnly cookie carries this now — never exposed to JS
   }
 
-  async setTokens(accessToken: string, refreshToken: string): Promise<void> {
+  async setTokens(accessToken: string, _refreshToken: string): Promise<void> {
     this.access = accessToken;
-    if (typeof window !== 'undefined') window.localStorage.setItem(REFRESH_KEY, refreshToken);
+    // refreshToken is intentionally ignored — the server already set it as an httpOnly cookie
+    // on this same response (and, for a trusted browser origin, OMITS it from the JSON body entirely,
+    // so it arrives here as `undefined` anyway); persisting it would recreate the exposure we removed.
   }
 
   async clear(): Promise<void> {
     this.access = null;
-    if (typeof window !== 'undefined') window.localStorage.removeItem(REFRESH_KEY);
+    // no localStorage to clear — logout() (via ApiClient) hits /auth/logout, which clears the
+    // server-side cookie (see refresh-cookie.ts's clearRefreshCookie).
   }
 }

@@ -28,6 +28,19 @@ class TestClient extends ApiClient {
   }
 }
 
+/**
+ * Models the WEB token store's contract (Task 6): the access token lives in memory, but the refresh
+ * token is an httpOnly cookie the JS never sees — so `getRefresh()` ALWAYS resolves null and
+ * `setTokens()` ignores whatever refresh value it's handed (the server also omits it from the body for
+ * a trusted browser origin, so it's `undefined` at runtime). Used to prove `doRefresh()` refreshes via
+ * the cookie (empty body) instead of short-circuiting to `false` when it holds no token.
+ */
+class CookieOnlyStore extends MemoryTokenStore {
+  override async getRefresh(): Promise<string | null> {
+    return null;
+  }
+}
+
 describe('@blue-bee/api-client ApiClient (extracted transport)', () => {
   afterEach(() => {
     jest.restoreAllMocks();
@@ -141,6 +154,56 @@ describe('@blue-bee/api-client ApiClient (extracted transport)', () => {
     const r = await client.book({ accountId: 'acc' }, 'idem-123');
     expect(r.id).toBe('order-1');
     expect(seenKey).toBe('idem-123');
+  });
+
+  it("sends credentials: 'include' on every fetch (so the httpOnly refresh cookie rides along)", async () => {
+    const store = new MemoryTokenStore();
+    await store.setTokens('a', 'r');
+    const client = new TestClient('http://api', store);
+    const inits: (RequestInit | undefined)[] = [];
+    global.fetch = jest.fn(async (_url: string, init?: RequestInit) => {
+      inits.push(init);
+      return jsonRes(200, { ok: true });
+    }) as unknown as typeof fetch;
+
+    await client.ping();
+    expect(inits).toHaveLength(1);
+    expect(inits[0]?.credentials).toBe('include');
+  });
+
+  it('with NO stored refresh token, doRefresh() still POSTs /auth/refresh (empty body + credentials) — cookie refresh', async () => {
+    // Models the web console: access in memory, refresh only in the httpOnly cookie (getRefresh() → null).
+    const store = new CookieOnlyStore();
+    await store.setTokens('old-access', 'ignored');
+    const client = new ApiClient('http://api', store);
+
+    let refreshCalls = 0;
+    let meCalls = 0;
+    let refreshInit: RequestInit | undefined;
+    global.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes('/auth/refresh')) {
+        refreshCalls += 1;
+        refreshInit = init;
+        // Trusted-browser refresh (Task 5): the server OMITS refreshToken from the body — the cookie carries it.
+        return jsonRes(200, { accessToken: 'new-access', tokenType: 'Bearer', expiresIn: 900 });
+      }
+      if (u.endsWith('/v1/me')) {
+        meCalls += 1;
+        return authOf(init) === 'Bearer new-access'
+          ? jsonRes(200, { user: { name: 'Rita' }, org: { id: 'o', name: 'Org' } })
+          : jsonRes(401, { title: 'token_expired' });
+      }
+      return jsonRes(404, {});
+    }) as unknown as typeof fetch;
+
+    const me = (await client.me()) as { user: { name: string } };
+    expect(me.user.name).toBe('Rita'); // it recovered via the cookie refresh instead of failing
+    expect(refreshCalls).toBe(1); // did NOT short-circuit to false on a null stored token
+    expect(meCalls).toBe(2); // original 401 + replay after refresh
+    expect(refreshInit?.credentials).toBe('include'); // the httpOnly cookie must flow
+    expect(refreshInit?.body).toBe('{}'); // empty body — no token in JS to send; the cookie is authoritative
+    expect(await store.getAccess()).toBe('new-access');
   });
 
   it('does not attach Authorization on auth:false calls (OTP request)', async () => {

@@ -156,6 +156,9 @@ export class ApiClient {
     const res = await fetch(`${this.base}${path}`, {
       method,
       headers,
+      // Send cookies (incl. the web console's httpOnly `bb_refresh` cookie) on every call so the
+      // cookie-based refresh works. No-op for native apps (fetch has no cookie jar there).
+      credentials: 'include',
       body: body === undefined ? undefined : JSON.stringify(body),
     });
 
@@ -181,11 +184,14 @@ export class ApiClient {
 
   private async doRefresh(): Promise<boolean> {
     const refreshToken = await this.store.getRefresh();
-    if (!refreshToken) return false;
+    // A null stored token no longer means "cannot refresh" — the web console keeps its refresh token in
+    // an httpOnly cookie (never JS-readable), so we send an EMPTY body and let `credentials: 'include'`
+    // carry the cookie. Native apps still hold the token and send it in the body as before.
     const res = await fetch(`${this.base}/auth/refresh`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      credentials: 'include',
+      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
     });
     if (!res.ok) {
       await this.store.clear(); // refresh reuse/expiry → force a fresh login

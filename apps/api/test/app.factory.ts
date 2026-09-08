@@ -1,6 +1,7 @@
 import { INestApplication, VersioningType } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import Redis from 'ioredis';
 import type { AddressInfo } from 'node:net';
 import { AppModule } from '../src/app.module';
@@ -9,6 +10,8 @@ import { RedisIoAdapter } from '../src/realtime/redis-io.adapter';
 
 function configure(app: INestApplication): void {
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  // Mirror main.ts: parse cookies so the httpOnly refresh cookie is readable in e2e (Task 5).
+  app.use(cookieParser());
   app.useGlobalFilters(new ProblemJsonFilter());
   const doc = SwaggerModule.createDocument(
     app,

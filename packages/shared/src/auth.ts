@@ -22,7 +22,10 @@ export const otpVerifySchema = z.object({
 });
 export type OtpVerifyDto = z.infer<typeof otpVerifySchema>;
 
-export const refreshSchema = z.object({ refreshToken: z.string().min(20) });
+// refreshToken is OPTIONAL because the web console presents it via an httpOnly cookie (Task 5) rather than
+// in the body; native apps still send it in the body. The controller resolves body-or-cookie and rejects
+// when neither is present (matches logoutSchema's optional pattern one line below).
+export const refreshSchema = z.object({ refreshToken: z.string().min(20).optional() });
 export type RefreshDto = z.infer<typeof refreshSchema>;
 
 export const logoutSchema = z.object({ refreshToken: z.string().min(20).optional() });
@@ -103,5 +106,7 @@ export const AUTH_ERRORS = {
   TOKEN_EXPIRED: 'token_expired',
   REFRESH_REUSE_DETECTED: 'refresh_reuse_detected',
   FORBIDDEN_ROLE: 'forbidden_role',
+  // Cookie-based refresh/logout from a browser Origin that is not on the allow-list (CSRF defense, Task 5).
+  UNTRUSTED_ORIGIN: 'untrusted_origin',
 } as const;
 export type AuthErrorCode = (typeof AUTH_ERRORS)[keyof typeof AUTH_ERRORS];

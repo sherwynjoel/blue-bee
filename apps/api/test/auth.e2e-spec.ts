@@ -2,8 +2,10 @@ import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import type Redis from 'ioredis';
+import type { Response } from 'express';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { REDIS } from '../src/redis/redis.module';
+import { REFRESH_COOKIE_NAME, clearRefreshCookie, setRefreshCookie } from '../src/auth/refresh-cookie';
 import { createTestApp, decodeJwt } from './app.factory';
 
 const OWNER_PHONE = '+14165550001';
@@ -193,5 +195,161 @@ describe('Auth + RBAC (e2e, real DB + Redis)', () => {
     expect(paths).toEqual(
       expect.arrayContaining(['/v1/auth/otp', '/v1/auth/verify', '/v1/auth/refresh', '/v1/auth/logout', '/v1/me']),
     );
+  });
+
+  // ── httpOnly refresh cookie (web console hardening — Task 5) ──
+  // The web console keeps its refresh token in an httpOnly cookie (never in JS) so an XSS payload can't
+  // exfiltrate it, while native apps (no cookie jar for this origin) keep using the body-based flow. Every
+  // token-issuing route ALSO sets the cookie; refresh/logout accept the token from cookie OR body.
+  // WEB_ORIGIN must be in CORS_ALLOWED_ORIGINS for the test env (set in test/setup-env.ts) so the Origin
+  // allow-list has a positive case; a genuinely-foreign origin proves the CSRF check has teeth.
+  describe('httpOnly refresh cookie (web console hardening)', () => {
+    const WEB_ORIGIN = 'https://web-production-ba508.up.railway.app';
+    const COOKIE_PHONE = OWNER_PHONE;
+
+    // Fetch a fresh OTP code for the seeded phone (mirrors the file's `login` helper's first half).
+    const freshCode = async (phone: string): Promise<string> => {
+      const otp = await requestOtp(phone);
+      expect(otp.status).toBe(200);
+      return otp.body.devCode as string;
+    };
+
+    it('verify sets an httpOnly refresh cookie AND still returns the token in the body (native compat)', async () => {
+      const code = await freshCode(COOKIE_PHONE);
+      const res = await request(http)
+        .post('/v1/auth/verify')
+        .set('Origin', WEB_ORIGIN)
+        .send({ phone: COOKIE_PHONE, code });
+      expect(res.status).toBe(200);
+      expect(res.body.refreshToken).toBeTruthy(); // native apps still get it in the body
+
+      const setCookie = res.headers['set-cookie'];
+      expect(setCookie).toBeDefined();
+      const cookieStr = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
+      expect(cookieStr).toMatch(/bb_refresh=/);
+      expect(cookieStr).toMatch(/HttpOnly/i); // JS can never read it (the whole point)
+      expect(cookieStr).toMatch(/Path=\/v1\/auth/i); // scoped to auth routes only
+      // Test env is NODE_ENV=development ⇒ SameSite=Lax + non-Secure so cookie-refresh is testable over
+      // plain HTTP. The production posture (SameSite=None; Secure) is asserted by the helper unit test below.
+      expect(cookieStr).toMatch(/SameSite=Lax/i);
+    });
+
+    it('refresh works via the cookie ALONE, with no body token (the web path)', async () => {
+      const agent = request.agent(http); // supertest agent = automatic cookie jar
+      const code = await freshCode(COOKIE_PHONE);
+      const verifyRes = await agent
+        .post('/v1/auth/verify')
+        .set('Origin', WEB_ORIGIN)
+        .send({ phone: COOKIE_PHONE, code })
+        .expect(200);
+
+      const refreshRes = await agent.post('/v1/auth/refresh').set('Origin', WEB_ORIGIN).send({}).expect(200); // EMPTY body
+      expect(refreshRes.body.accessToken).toBeTruthy();
+      expect(refreshRes.body.accessToken).not.toBe(verifyRes.body.accessToken); // genuinely rotated
+    });
+
+    it('refresh still works via the BODY alone, with no cookie (native app compat — unchanged)', async () => {
+      const code = await freshCode(COOKIE_PHONE);
+      const verifyRes = await request(http).post('/v1/auth/verify').send({ phone: COOKIE_PHONE, code }).expect(200);
+      const refreshRes = await request(http)
+        .post('/v1/auth/refresh')
+        .send({ refreshToken: verifyRes.body.refreshToken })
+        .expect(200);
+      expect(refreshRes.body.accessToken).toBeTruthy();
+    });
+
+    it('a refresh from an untrusted Origin is rejected (CSRF defense)', async () => {
+      const agent = request.agent(http);
+      const code = await freshCode(COOKIE_PHONE);
+      await agent.post('/v1/auth/verify').set('Origin', WEB_ORIGIN).send({ phone: COOKIE_PHONE, code }).expect(200);
+      const res = await agent.post('/v1/auth/refresh').set('Origin', 'https://evil.example').send({}).expect(403);
+      expect(res.body.title).toBe('untrusted_origin');
+    });
+
+    it('logout clears the cookie', async () => {
+      const agent = request.agent(http);
+      const code = await freshCode(COOKIE_PHONE);
+      const verifyRes = await agent
+        .post('/v1/auth/verify')
+        .set('Origin', WEB_ORIGIN)
+        .send({ phone: COOKIE_PHONE, code })
+        .expect(200);
+      const logoutRes = await agent
+        .post('/v1/auth/logout')
+        .set('Origin', WEB_ORIGIN)
+        .set('Authorization', `Bearer ${verifyRes.body.accessToken}`)
+        .send({})
+        .expect(200);
+      const setCookie = logoutRes.headers['set-cookie'];
+      expect(setCookie).toBeDefined();
+      const cookieStr = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
+      expect(cookieStr).toMatch(/bb_refresh=;/); // cleared (empty value + past expiry)
+    });
+  });
+});
+
+/**
+ * Unit coverage for the cookie attributes themselves — asserted directly against the helper (no booted app)
+ * so the PRODUCTION posture is verified even though the e2e suite runs under NODE_ENV=development. This is
+ * the evidence that the token is httpOnly (never JS-readable) and, in prod, Secure + SameSite=None + path-scoped.
+ */
+describe('refresh-cookie helper attributes (production vs dev posture)', () => {
+  const captureCookieCalls = () => {
+    const calls: Array<{ op: 'cookie' | 'clear'; name: string; value?: string; opts: Record<string, unknown> }> = [];
+    const res = {
+      cookie(name: string, value: string, opts: Record<string, unknown>) {
+        calls.push({ op: 'cookie', name, value, opts });
+        return this;
+      },
+      clearCookie(name: string, opts: Record<string, unknown>) {
+        calls.push({ op: 'clear', name, opts });
+        return this;
+      },
+    } as unknown as Response;
+    return { res, calls };
+  };
+
+  const withNodeEnv = (value: string, fn: () => void) => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = value;
+    try {
+      fn();
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
+  };
+
+  it('production: httpOnly + Secure + SameSite=None, scoped to /v1/auth, maxAge from TTL', () => {
+    withNodeEnv('production', () => {
+      const { res, calls } = captureCookieCalls();
+      setRefreshCookie(res, 'the-raw-refresh-token', 3600);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ op: 'cookie', name: REFRESH_COOKIE_NAME, value: 'the-raw-refresh-token' });
+      expect(calls[0].opts).toEqual({
+        httpOnly: true, // JavaScript can NEVER read this cookie — the core XSS mitigation
+        secure: true, // mandated by the spec whenever SameSite=None is used
+        sameSite: 'none', // API + web console are cross-SITE Railway subdomains
+        path: '/v1/auth', // never sent to non-auth routes
+        maxAge: 3600 * 1000,
+      });
+    });
+  });
+
+  it('development: httpOnly stays ON, but SameSite=Lax + non-Secure so it works over plain HTTP', () => {
+    withNodeEnv('development', () => {
+      const { res, calls } = captureCookieCalls();
+      setRefreshCookie(res, 'tok', 60);
+      expect(calls[0].opts).toMatchObject({ httpOnly: true, secure: false, sameSite: 'lax', path: '/v1/auth' });
+    });
+  });
+
+  it('clear uses matching attributes (path/secure/sameSite) so the browser actually expires it', () => {
+    withNodeEnv('production', () => {
+      const { res, calls } = captureCookieCalls();
+      clearRefreshCookie(res);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ op: 'clear', name: REFRESH_COOKIE_NAME });
+      expect(calls[0].opts).toMatchObject({ httpOnly: true, secure: true, sameSite: 'none', path: '/v1/auth' });
+    });
   });
 });

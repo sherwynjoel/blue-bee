@@ -20,6 +20,11 @@ process.env.SMS_TRANSPORT = 'console';
 // (per-phone cooldown is still exercised by the rate-limit test).
 process.env.OTP_RATE_PER_IP = '100000';
 
+// Trusted browser origins for the httpOnly-refresh-cookie Origin allow-list (Task 5). Mirrors the
+// deployed console origin so the positive-case Origin test passes; the CSRF test proves a foreign origin
+// (not in this list) is rejected regardless. The controller and main.ts both parse this same CSV.
+process.env.CORS_ALLOWED_ORIGINS = 'https://web-production-ba508.up.railway.app';
+
 // ── Notifications (Increment 8) ── real-but-local transports (console email/push; no SENDGRID/EXPO
 // creds ⇒ no external calls), deterministic retry: tiny backoff + 2 attempts so the retry e2e
 // exhausts/recovers without timers, and NO background drain scan (drained explicitly in specs).

@@ -3,9 +3,11 @@ import { Logger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import Redis from 'ioredis';
 import { AppModule } from './app.module';
 import { ProblemJsonFilter } from './common/problem-json.filter';
+import { parseAllowedOrigins } from './auth/refresh-cookie';
 import { RedisIoAdapter } from './realtime/redis-io.adapter';
 
 async function bootstrap(): Promise<void> {
@@ -13,6 +15,10 @@ async function bootstrap(): Promise<void> {
   // the signature against the exact bytes (Increment 12). All other routes still receive parsed JSON.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   app.enableShutdownHooks();
+
+  // Parse the Cookie header into req.cookies so the web console's httpOnly refresh cookie (Increment —
+  // Task 5) is readable on /v1/auth/{refresh,logout}. Native apps send no such cookie; this is inert for them.
+  app.use(cookieParser());
 
   // Socket.IO realtime gateway (Increment 6) with the Redis adapter — emits/disconnects fan
   // out cluster-wide (PRD §10.4). Dedicated pub/sub connections, reusing the same Redis.
@@ -43,10 +49,9 @@ async function bootstrap(): Promise<void> {
   // API cross-origin, so the deployed origins must be allow-listed. Comma-separated in
   // CORS_ALLOWED_ORIGINS; if unset, CORS stays off (same-origin only — the safe local-dev default).
   // Native apps (Expo customer/owner/driver) issue non-browser requests and are NOT subject to CORS.
-  const corsOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  // Shared parser (auth/refresh-cookie) so the CORS allow-list and the controller's cookie-CSRF Origin
+  // allow-list are ALWAYS the same set — they can never drift.
+  const corsOrigins = parseAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS);
   if (corsOrigins.length > 0) {
     // A wildcard origin and credentials are mutually exclusive per the CORS spec (a browser rejects
     // `Access-Control-Allow-Origin: *` on a credentialed request), so only enable credentials for an

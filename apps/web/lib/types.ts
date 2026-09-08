@@ -1,4 +1,4 @@
-import type { ItemKind, ItemStatus, OrderStatus, PhotoKind, QuoteStatus } from '@blue-bee/shared';
+import type { ItemKind, ItemStatus, Measurements, OrderStatus, PhotoKind, QuoteStatus } from '@blue-bee/shared';
 
 /**
  * View models the console reads from the proven API responses (Prisma graphs serialized over JSON).
@@ -35,10 +35,23 @@ export interface QuoteView {
   subtotal: string | null;
   tax: string | null;
   total: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  lines: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  adjustments: any;
+  /**
+   * Per-line breakdown persisted to `Quote.lines` (Json, default `[]`) — always an array, but its element
+   * shape is genuinely inconsistent across writers: `QuoteService.build` (apps/api/src/orders/quote.service.ts)
+   * writes `computeQuote`'s `ComputedLine[]` (apps/api/src/orders/quote-calc.ts — itemId/serviceId/serviceName/
+   * unit/measure/rate/rateSource/baseAmount/upcharges/upchargeTotal/amount), while `prisma/seed.ts` writes ad
+   * hoc demo rows with a different field set (description/measure/unit/rate/amount, no itemId/upcharges). No
+   * console component reads into these elements today, so `unknown` (not `any`) is used rather than fabricate
+   * a shape that would lie about half the data in the database.
+   */
+  lines: unknown[];
+  /**
+   * Manual-adjustment audit trail persisted to `Quote.adjustments` (Json, default `[]`) — always an array
+   * (the only writer, `QuoteService.build`, always supplies `[]` or one `{ reason, actorId, amount, before,
+   * after, at }` record; see note on `lines` above for why the element shape isn't asserted more precisely
+   * project-wide).
+   */
+  adjustments: unknown[];
   expiresAt: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
@@ -75,8 +88,13 @@ export interface ItemView {
   id: string;
   kind: ItemKind;
   status: ItemStatus;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  measurements: any;
+  /**
+   * `Item.measurements` (Json, non-nullable, `@default("{}")`) — every write site (order booking, intake
+   * inspection, weigh capture) stores an object, empty `{}` for an unmeasured item, never `null`/`undefined`
+   * (see apps/api/src/orders/orders.service.ts book() and intake.service.ts). `Measurements` (a
+   * `Record<string, number | string | boolean>`) is `@blue-bee/shared`'s exact `measurementsSchema` type.
+   */
+  measurements: Measurements;
   inspections: InspectionView[];
   photos: PhotoView[];
   custodyEvents: CustodyEventView[];
@@ -175,8 +193,9 @@ export interface RouteStopOpsView {
   eta: string | null;
   arrivedAt: string | null;
   completedAt: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  timeWindow: any;
+  /** `RouteStop.timeWindow` (Json?) — nullable; a stop created/moved with no window stores `Prisma.JsonNull`
+   *  (apps/api/src/logistics/route.service.ts `inheritedWindow`/`Prisma.JsonNull` fallback). */
+  timeWindow: TimeWindowJson | null;
   order?: { id: string; status: string } | null;
   route?: { id: string; status: string; driverId: string | null } | null;
 }

@@ -31,7 +31,7 @@ describe('QuotePanel', () => {
     mockMe = me(RoleType.OWNER);
     const o = order({
       status: OrderStatus.QUOTED,
-      quotes: [{ id: 'q1', status: QuoteStatus.SENT, subtotal: '260.00', tax: '33.80', total: '293.80', lines: [], adjustments: null, expiresAt: null, approvedBy: null, approvedAt: null, createdAt: 'c' }],
+      quotes: [{ id: 'q1', status: QuoteStatus.SENT, subtotal: '260.00', tax: '33.80', total: '293.80', lines: [], adjustments: [], expiresAt: null, approvedBy: null, approvedAt: null, createdAt: 'c' }],
     });
     mockClient.approveQuote.mockResolvedValue(order({ status: OrderStatus.QUOTE_APPROVED }));
     render(<QuotePanel order={o} onChanged={jest.fn()} />);

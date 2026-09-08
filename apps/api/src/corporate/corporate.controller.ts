@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   RoleType,
@@ -20,6 +20,7 @@ import {
 import { ZodBody } from '../common/zod-validation.pipe';
 import { CurrentUser, Roles } from '../auth/rbac/decorators';
 import type { RequestPrincipal } from '../auth/rbac/types';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { CorporateService } from './corporate.service';
 
 /**
@@ -35,6 +36,7 @@ import { CorporateService } from './corporate.service';
 @ApiTags('corporate')
 @ApiBearerAuth()
 @Controller('corporate')
+@UseInterceptors(IdempotencyInterceptor)
 export class CorporateController {
   static readonly MANAGE = [RoleType.OWNER, RoleType.FINANCE];
 

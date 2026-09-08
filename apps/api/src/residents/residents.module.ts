@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuditService } from '../orders/audit.service';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { ResidentService } from './resident.service';
 import { GarmentService } from './garment.service';
 import { ResidentsController } from './residents.controller';
@@ -16,6 +17,6 @@ import { LostFoundController } from './lost-found.controller';
 @Module({
   imports: [PrismaModule],
   controllers: [ResidentsController, GarmentsController, LostFoundController],
-  providers: [ResidentService, GarmentService, AuditService],
+  providers: [ResidentService, GarmentService, AuditService, IdempotencyInterceptor],
 })
 export class ResidentsModule {}

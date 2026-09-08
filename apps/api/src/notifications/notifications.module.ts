@@ -10,6 +10,7 @@ import { NotificationProcessor } from './notification-processor.service';
 import { NotificationService } from './notification.service';
 import { DeviceTokenService } from './device-token.service';
 import { DeviceTokenController } from './device-token.controller';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 
 /**
  * Notifications module (Increment 8, BUILD-PLAN — §8.5/§17.2 notification engine). Turns the durable
@@ -50,6 +51,7 @@ import { DeviceTokenController } from './device-token.controller';
     NotificationProcessor,
     NotificationService,
     DeviceTokenService,
+    IdempotencyInterceptor,
   ],
   exports: [NotificationService, NotificationProcessor],
 })

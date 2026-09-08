@@ -84,7 +84,11 @@ describe('Corporate pricing e2e (Increment 15 — corporate accounts + rate card
   let codeB = '';
 
   const get = (path: string, who: string) => request(app.getHttpServer()).get(path).set('Authorization', `Bearer ${token[who]}`);
-  const post = (path: string, who: string, body: unknown = {}) => request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token[who]}`).send(body as object);
+  const post = (path: string, who: string, body: unknown = {}, key?: string) => {
+    let req = request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token[who]}`);
+    if (key) req = req.set('Idempotency-Key', key);
+    return req.send(body as object);
+  };
   const put = (path: string, who: string, body: unknown = {}) => request(app.getHttpServer()).put(path).set('Authorization', `Bearer ${token[who]}`).send(body as object);
   const patch = (path: string, who: string, body: unknown = {}) => request(app.getHttpServer()).patch(path).set('Authorization', `Bearer ${token[who]}`).send(body as object);
 
@@ -299,6 +303,20 @@ describe('Corporate pricing e2e (Increment 15 — corporate accounts + rate card
       expect(detail.body.pricingAccount).toBeNull();
       const { line } = await quoteFor(order.id, { weightLb: 10 });
       expect(line.amount).toBe('25.00'); // 10 lb × $2.50 retail — corporate pricing never leaked in
+    });
+  });
+
+  // ─────────────────────────── idempotency (replay safety) ───────────────────────────
+
+  describe('idempotency', () => {
+    it('replaying the same Idempotency-Key does not create a duplicate corporate account', async () => {
+      const key = `create-corp-${Date.now()}`;
+      const before = await prisma.account.count({ where: { orgId: ORG1, name: { startsWith: 'CORP E2E — Idemp' } } });
+      const a = await post('/v1/corporate/accounts', 'finance', { name: `CORP E2E — Idemp ${Date.now()}` }, key).expect(201);
+      const b = await post('/v1/corporate/accounts', 'finance', { name: `CORP E2E — Idemp ${Date.now()}-2` }, key).expect(201);
+      expect(b.body.id).toBe(a.body.id);
+      expect(b.body.name).toBe(a.body.name); // the cached response, not a fresh create with the new name
+      expect((await prisma.account.count({ where: { orgId: ORG1, name: { startsWith: 'CORP E2E — Idemp' } } })) - before).toBe(1);
     });
   });
 });

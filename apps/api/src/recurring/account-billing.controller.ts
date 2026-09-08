@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   RoleType,
@@ -10,6 +10,7 @@ import {
 import { ZodBody } from '../common/zod-validation.pipe';
 import { CurrentUser, Roles } from '../auth/rbac/decorators';
 import type { RequestPrincipal } from '../auth/rbac/types';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { AccountBillingService } from './account-billing.service';
 import { StandingOrderService } from './standing-order.service';
 
@@ -23,6 +24,7 @@ import { StandingOrderService } from './standing-order.service';
 @ApiTags('account-billing')
 @ApiBearerAuth()
 @Controller('accounts')
+@UseInterceptors(IdempotencyInterceptor)
 export class AccountBillingController {
   static readonly FINANCE = [RoleType.OWNER, RoleType.FINANCE];
   static readonly OPS_FINANCE_READ = [RoleType.OWNER, RoleType.FINANCE, RoleType.DISPATCHER, RoleType.CSR];

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OrdersModule } from '../orders/orders.module';
 import { LogisticsModule } from '../logistics/logistics.module';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { RECURRING_CONFIG, loadRecurringConfig } from './recurring.config';
 import { StandingOrderService } from './standing-order.service';
 import { AccountBillingService } from './account-billing.service';
@@ -26,6 +27,7 @@ import { AccountBillingController } from './account-billing.controller';
     StandingOrderService,
     AccountBillingService,
     StandingOrderGenerationService,
+    IdempotencyInterceptor,
   ],
   exports: [StandingOrderGenerationService],
 })

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OrdersModule } from '../orders/orders.module';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { CorporateController } from './corporate.controller';
 import { CorporateService } from './corporate.service';
 
@@ -14,6 +15,6 @@ import { CorporateService } from './corporate.service';
 @Module({
   imports: [PrismaModule, OrdersModule],
   controllers: [CorporateController],
-  providers: [CorporateService],
+  providers: [CorporateService, IdempotencyInterceptor],
 })
 export class CorporateModule {}

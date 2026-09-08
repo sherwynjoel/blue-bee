@@ -106,7 +106,11 @@ describe('Cost-centre split-billing e2e (Track A Phase 2)', () => {
   let ccOther = '';
 
   const get = (path: string, who: string) => request(app.getHttpServer()).get(path).set('Authorization', `Bearer ${token[who]}`);
-  const post = (path: string, who: string, body: object) => request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token[who]}`).send(body);
+  const post = (path: string, who: string, body: object, key?: string) => {
+    let req = request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token[who]}`);
+    if (key) req = req.set('Idempotency-Key', key);
+    return req.send(body);
+  };
   const put = (path: string, who: string, body: object) => request(app.getHttpServer()).put(path).set('Authorization', `Bearer ${token[who]}`).send(body);
   const patch = (path: string, who: string, body: object) => request(app.getHttpServer()).patch(path).set('Authorization', `Bearer ${token[who]}`).send(body);
 
@@ -336,6 +340,20 @@ describe('Cost-centre split-billing e2e (Track A Phase 2)', () => {
       const occ = await prisma.standingOrderOccurrence.findFirstOrThrow({ where: { standingOrderId: soId } });
       const order = await prisma.order.findUniqueOrThrow({ where: { id: occ.orderId! } });
       expect(order.costCenterId).toBe(ccA); // INHERITED
+    });
+  });
+
+  // ─────────────────────────── idempotency (replay safety) ───────────────────────────
+
+  describe('idempotency', () => {
+    it('replaying the same Idempotency-Key does not create a duplicate cost centre', async () => {
+      const key = `create-cc-${Date.now()}`;
+      const before = await prisma.costCenter.count({ where: { accountId: ACCT_CC } });
+      const a = await post(`/v1/accounts/${ACCT_CC}/cost-centers`, 'finance', { code: `IDEMP-${Date.now()}`, name: 'Idempotency test' }, key).expect(201);
+      const b = await post(`/v1/accounts/${ACCT_CC}/cost-centers`, 'finance', { code: `IDEMP-${Date.now()}-2`, name: 'Idempotency test 2' }, key).expect(201);
+      expect(b.body.id).toBe(a.body.id);
+      expect(b.body.code).toBe(a.body.code); // the cached response, not a fresh create with the new code
+      expect((await prisma.costCenter.count({ where: { accountId: ACCT_CC } })) - before).toBe(1);
     });
   });
 });

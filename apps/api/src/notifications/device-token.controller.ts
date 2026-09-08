@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, HttpStatus, Post, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   registerDeviceTokenSchema,
@@ -9,6 +9,7 @@ import {
 import { ZodBody } from '../common/zod-validation.pipe';
 import { CurrentUser } from '../auth/rbac/decorators';
 import type { RequestPrincipal } from '../auth/rbac/types';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { DeviceTokenService } from './device-token.service';
 
 /**
@@ -20,6 +21,7 @@ import { DeviceTokenService } from './device-token.service';
 @ApiTags('notifications')
 @ApiBearerAuth()
 @Controller('device-tokens')
+@UseInterceptors(IdempotencyInterceptor)
 export class DeviceTokenController {
   constructor(private readonly service: DeviceTokenService) {}
 

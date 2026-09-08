@@ -40,7 +40,11 @@ describe('Resident personal-clothing e2e (Track-B care homes)', () => {
 
   const auth = (who: string) => ({ Authorization: `Bearer ${token[who]}` });
   const get = (path: string, who: string) => request(app.getHttpServer()).get(path).set(auth(who));
-  const post = (path: string, who: string, body: object) => request(app.getHttpServer()).post(path).set(auth(who)).send(body);
+  const post = (path: string, who: string, body: object, key?: string) => {
+    let req = request(app.getHttpServer()).post(path).set(auth(who));
+    if (key) req = req.set('Idempotency-Key', key);
+    return req.send(body);
+  };
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -205,6 +209,18 @@ describe('Resident personal-clothing e2e (Track-B care homes)', () => {
       // The same-site guard runs BEFORE the write — the seeded pool row is untouched (still OPEN).
       const pool = await get(`/v1/lost-found?siteId=${SITE}`, 'owner').expect(200);
       expect(pool.body.lostFound.some((x: { id: string; status: string }) => x.id === LF_SEED && x.status === 'OPEN')).toBe(true);
+    });
+  });
+
+  describe('idempotency (replay safety)', () => {
+    it('replaying the same Idempotency-Key does not create a duplicate resident', async () => {
+      const key = `create-resident-${Date.now()}`;
+      const before = await prisma.resident.count({ where: { siteId: SITE } });
+      const a = await post('/v1/residents', 'owner', { siteId: SITE, name: `Idempotency test ${RUN}` }, key).expect(201);
+      const b = await post('/v1/residents', 'owner', { siteId: SITE, name: `Idempotency test ${RUN}-2` }, key).expect(201);
+      expect(b.body.id).toBe(a.body.id);
+      expect(b.body.name).toBe(a.body.name); // the cached response, not a fresh create with the new name
+      expect((await prisma.resident.count({ where: { siteId: SITE } })) - before).toBe(1);
     });
   });
 });

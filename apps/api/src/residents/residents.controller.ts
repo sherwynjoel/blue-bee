@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   RoleType,
@@ -12,6 +12,7 @@ import {
 import { ZodBody } from '../common/zod-validation.pipe';
 import { CurrentUser, Roles } from '../auth/rbac/decorators';
 import type { RequestPrincipal } from '../auth/rbac/types';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { ResidentService } from './resident.service';
 import { GarmentService } from './garment.service';
 
@@ -24,6 +25,7 @@ import { GarmentService } from './garment.service';
 @ApiTags('residents')
 @ApiBearerAuth()
 @Controller('residents')
+@UseInterceptors(IdempotencyInterceptor)
 export class ResidentsController {
   /** Resident PII reads — org-wide ops + the account's own staff (their site only). */
   static readonly READ = [RoleType.OWNER, RoleType.CSR, RoleType.PLANT_OP, RoleType.ACCOUNT_ADMIN, RoleType.ACCOUNT_STAFF];

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Res, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import {
@@ -15,6 +15,7 @@ import {
 import { ZodBody } from '../common/zod-validation.pipe';
 import { CurrentUser, Roles } from '../auth/rbac/decorators';
 import type { RequestPrincipal } from '../auth/rbac/types';
+import { IdempotencyInterceptor } from '../common/idempotency.interceptor';
 import { CostCentersService } from './cost-centers.service';
 
 /**
@@ -27,6 +28,7 @@ import { CostCentersService } from './cost-centers.service';
 @ApiTags('cost-centers')
 @ApiBearerAuth()
 @Controller('accounts')
+@UseInterceptors(IdempotencyInterceptor)
 export class CostCentersController {
   static readonly FINANCE = [RoleType.OWNER, RoleType.FINANCE];
   static readonly OPS_FINANCE_READ = [RoleType.OWNER, RoleType.FINANCE, RoleType.DISPATCHER, RoleType.CSR];

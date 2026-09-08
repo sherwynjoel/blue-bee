@@ -55,8 +55,11 @@ describe('Notifications e2e — Increment 8 (matrix-driven engine + outbox + tra
     return new Date(clockMs).toISOString();
   };
 
-  const post = (path: string, who: string, body: unknown = {}) =>
-    request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token[who]}`).send(body as object);
+  const post = (path: string, who: string, body: unknown = {}, key?: string) => {
+    let req = request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token[who]}`);
+    if (key) req = req.set('Idempotency-Key', key);
+    return req.send(body as object);
+  };
   const del = (path: string, who: string, body: unknown = {}) =>
     request(app.getHttpServer()).delete(path).set('Authorization', `Bearer ${token[who]}`).send(body as object);
   const pingBatch = (s: Scenario, c: { lat: number; lng: number }, recordedAt: string) =>
@@ -335,5 +338,18 @@ describe('Notifications e2e — Increment 8 (matrix-driven engine + outbox + tra
     await post('/v1/device-tokens', 'rita', { token: tkn, platform: 'IOS' }).expect(201);
     row = await prisma.deviceToken.findUniqueOrThrow({ where: { token: tkn } });
     expect(row.active).toBe(true);
+  });
+
+  it('idempotency: replaying the same Idempotency-Key does not register a duplicate device token', async () => {
+    const key = `register-token-${Date.now()}`;
+    const tknA = `ExponentPushToken[rita-idem-a-${vehSeq + 2000}]`;
+    const tknB = `ExponentPushToken[rita-idem-b-${vehSeq + 2000}]`;
+    const before = await prisma.deviceToken.count({ where: { userId: userId.rita } });
+    const a = await post('/v1/device-tokens', 'rita', { token: tknA, platform: 'IOS' }, key).expect(201);
+    const b = await post('/v1/device-tokens', 'rita', { token: tknB, platform: 'IOS' }, key).expect(201);
+    expect(b.body.id).toBe(a.body.id);
+    expect(b.body.token).toBe(tknA); // the cached response — the SECOND (different) token never registered
+    expect((await prisma.deviceToken.count({ where: { userId: userId.rita } })) - before).toBe(1);
+    expect(await prisma.deviceToken.findUnique({ where: { token: tknB } })).toBeNull();
   });
 });

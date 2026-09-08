@@ -111,8 +111,11 @@ describe('Track-A recurring/standing-orders + per-account billing e2e', () => {
 
   const post = (path: string, who: string, body: object) =>
     request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token[who]}`).send(body);
-  const put = (path: string, who: string, body: object) =>
-    request(app.getHttpServer()).put(path).set('Authorization', `Bearer ${token[who]}`).send(body);
+  const put = (path: string, who: string, body: object, key?: string) => {
+    let req = request(app.getHttpServer()).put(path).set('Authorization', `Bearer ${token[who]}`);
+    if (key) req = req.set('Idempotency-Key', key);
+    return req.send(body);
+  };
   const get = (path: string, who: string) =>
     request(app.getHttpServer()).get(path).set('Authorization', `Bearer ${token[who]}`);
 
@@ -298,6 +301,19 @@ describe('Track-A recurring/standing-orders + per-account billing e2e', () => {
     it('a PER_ORDER account rejects batch invoicing (400 not_batch_account)', async () => {
       const res = await post(`/v1/accounts/${ACCT_PERORDER}/invoices/batch`, 'finance', { from: '2026-06-01T00:00:00.000Z', to: '2026-07-01T00:00:00.000Z' }).expect(400);
       expect(res.body.error ?? res.body.title).toContain('not_batch_account');
+    });
+  });
+
+  // ─────────────────────────── idempotency (replay safety) ───────────────────────────
+
+  describe('idempotency', () => {
+    it('replaying the same Idempotency-Key does not double-apply a billing-terms change', async () => {
+      const key = `set-terms-${Date.now()}`;
+      const first = await put(`/v1/accounts/${ACCT_PERORDER}/billing-terms`, 'finance', { billingMode: 'PER_ORDER', netDays: 5 }, key).expect(200);
+      const second = await put(`/v1/accounts/${ACCT_PERORDER}/billing-terms`, 'finance', { billingMode: 'PER_ORDER', netDays: 99 }, key).expect(200);
+      expect(second.body).toEqual(first.body); // the cached response, not a fresh update with netDays=99
+      expect(first.body.billingNetDays).toBe(5);
+      expect((await prisma.account.findUniqueOrThrow({ where: { id: ACCT_PERORDER } })).billingNetDays).toBe(5); // NOT 99
     });
   });
 });

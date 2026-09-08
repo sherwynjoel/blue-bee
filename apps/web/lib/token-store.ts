@@ -1,6 +1,17 @@
 import type { TokenStore } from '@blue-bee/api-client';
 
 /**
+ * LEGACY key from the pre-cookie era, when the refresh token was persisted in `localStorage`.
+ * Nothing reads this anymore — it exists ONLY so the constructor below can purge it once. Anyone
+ * who was already logged in before this migration shipped still has a real, JS-readable refresh
+ * token sitting under this key; if we simply stopped touching it (as this class did before this
+ * fix), it would sit there for up to its 30-day TTL, leaving every pre-existing session exactly as
+ * exposed to XSS as before the httpOnly-cookie migration. Do not reintroduce reads/writes here —
+ * only the one-time removal below.
+ */
+const LEGACY_REFRESH_KEY = 'bb.console.refresh';
+
+/**
  * The web token store — implements the api-client `TokenStore` so the SAME proven transport
  * (single-flight 401→refresh→retry, problem+json→ApiError) runs in the browser unchanged.
  *
@@ -9,11 +20,22 @@ import type { TokenStore } from '@blue-bee/api-client';
  * auth.controller.ts / refresh-cookie.ts) — this class never sees it, never stores it, and
  * `getRefresh()` always returns null (which `ApiClient.doRefresh()` now correctly treats as "refresh
  * via cookie" rather than "cannot refresh"). This closes the localStorage XSS exposure the previous
- * version explicitly traded off. Nothing here touches `window`/`localStorage`, so it is trivially
- * SSR-safe.
+ * version explicitly traded off. Nothing here touches `window`/`localStorage` for the ACTIVE token
+ * flow, so it is trivially SSR-safe; the constructor makes one narrowly-scoped, SSR-guarded
+ * exception to purge the stranded legacy key above (see `LEGACY_REFRESH_KEY`).
  */
 export class WebTokenStore implements TokenStore {
   private access: string | null = null;
+
+  constructor() {
+    // One-time cleanup: a user who was logged in before this migration has a real refresh token
+    // still sitting in localStorage under the old key. Nothing else in this app ever reads or
+    // writes it anymore, so it would otherwise never be removed. `typeof window` guards SSR (this
+    // class is also instantiated during server-side rendering, where `window` doesn't exist).
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(LEGACY_REFRESH_KEY);
+    }
+  }
 
   async getAccess(): Promise<string | null> {
     return this.access;
@@ -32,7 +54,8 @@ export class WebTokenStore implements TokenStore {
 
   async clear(): Promise<void> {
     this.access = null;
-    // no localStorage to clear — logout() (via ApiClient) hits /auth/logout, which clears the
-    // server-side cookie (see refresh-cookie.ts's clearRefreshCookie).
+    // no ACTIVE localStorage to clear here — logout() (via ApiClient) hits /auth/logout, which
+    // clears the server-side cookie (see refresh-cookie.ts's clearRefreshCookie). The one-time
+    // legacy-key purge already happened in the constructor above, not here.
   }
 }

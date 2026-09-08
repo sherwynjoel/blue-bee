@@ -40,4 +40,19 @@ describe('WebTokenStore (web token strategy — httpOnly cookie for refresh)', (
     expect(await afterReload.getAccess()).toBeNull(); // → the api-client refreshes on first 401...
     expect(await afterReload.getRefresh()).toBeNull(); // ...via the httpOnly cookie, not a JS-held token
   });
+
+  it('purges a stranded PRE-MIGRATION refresh token from localStorage on construction', () => {
+    // Models a user who was already logged in before the httpOnly-cookie migration shipped: their
+    // browser still has a real, JS-readable refresh token under the old key. Simply never writing
+    // to it again (the pre-fix behaviour) would leave it there for its full TTL, exposed to XSS.
+    window.localStorage.setItem('bb.console.refresh', 'stranded-pre-migration-refresh-token');
+    new WebTokenStore();
+    expect(window.localStorage.getItem('bb.console.refresh')).toBeNull();
+  });
+
+  it('purging the legacy key is a harmless no-op when it was never set', () => {
+    expect(window.localStorage.getItem('bb.console.refresh')).toBeNull();
+    expect(() => new WebTokenStore()).not.toThrow();
+    expect(window.localStorage.getItem('bb.console.refresh')).toBeNull();
+  });
 });

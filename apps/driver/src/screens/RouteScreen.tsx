@@ -5,8 +5,8 @@ import { useSession } from '../session/SessionProvider';
 import { RouteMap } from '../components/RouteMap';
 import { isTerminal } from '../stops/actions';
 import { stopStatusMeta } from '../stops/status-ui';
-import { useTheme } from '../theme';
-import { Badge, EmptyState, Row, Screen, Text } from '../components/kit';
+import { Badge, Text, useTheme } from '@blue-bee/ui';
+import { EmptyState, Row, Screen } from '../components/kit';
 import type { RouteProps } from '../navigation';
 
 /** "My route today" — the optimized stop sequence + a map. Tap a stop to work it. */
@@ -29,7 +29,7 @@ export function RouteScreen({ navigation }: RouteProps): React.ReactElement {
       <RouteMap stops={route.stops} />
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 12 }}>
         <Text variant="headline">Stops</Text>
-        <Text variant="footnote" color={t.color.textMuted} tabular>
+        <Text variant="footnote" color={t.colors.textSecondary} tabular>
           {done}/{route.stops.length} done
         </Text>
       </View>
@@ -54,12 +54,12 @@ function StopRow({ stop, onPress }: { stop: DriverStopView; onPress: () => void 
             width: 38,
             height: 38,
             borderRadius: 12,
-            backgroundColor: terminal ? t.color.subtle : t.color.azureTint,
+            backgroundColor: terminal ? t.colors.subtle : t.colors.azureTint,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Text variant="headline" mono tabular color={terminal ? t.color.textFaint : t.color.azure}>
+          <Text variant="headline" mono tabular color={terminal ? t.colors.textTertiary : t.colors.azure}>
             {stop.seq}
           </Text>
         </View>
@@ -68,7 +68,7 @@ function StopRow({ stop, onPress }: { stop: DriverStopView; onPress: () => void 
             {stop.siteName ?? 'Stop'}
           </Text>
           {stop.address ? (
-            <Text variant="footnote" color={t.color.textMuted} numberOfLines={1} style={{ marginTop: 2 }}>
+            <Text variant="footnote" color={t.colors.textSecondary} numberOfLines={1} style={{ marginTop: 2 }}>
               {stop.address}
             </Text>
           ) : null}
@@ -77,7 +77,7 @@ function StopRow({ stop, onPress }: { stop: DriverStopView; onPress: () => void 
               {meta.label}
             </Badge>
             {stop.eta ? (
-              <Text variant="caption" color={t.color.textFaint} mono tabular>
+              <Text variant="caption" color={t.colors.textTertiary} mono tabular>
                 ETA {new Date(stop.eta).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
               </Text>
             ) : null}

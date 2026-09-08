@@ -10,5 +10,10 @@ module.exports = {
   moduleNameMapper: {
     '^@blue-bee/shared$': '<rootDir>/../../packages/shared/dist/index.js',
     '^@blue-bee/api-client$': '<rootDir>/../../packages/api-client/dist/index.js',
+    // @blue-bee/ui + @blue-bee/design-tokens are consumed as TypeScript SOURCE (no dist build) — map to
+    // src so jest transforms the same files Metro/tsc resolve (transformIgnorePatterns already allows
+    // @blue-bee/* through babel).
+    '^@blue-bee/ui$': '<rootDir>/../../packages/ui/src/index.ts',
+    '^@blue-bee/design-tokens$': '<rootDir>/../../packages/design-tokens/src/index.ts',
   },
 };

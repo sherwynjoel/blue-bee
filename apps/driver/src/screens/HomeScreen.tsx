@@ -4,9 +4,8 @@ import { ShiftStatus } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
 import { SharingIndicator } from '../components/SharingIndicator';
 import { ApiError } from '../api/problem';
-import { useTheme } from '../theme';
-import { Badge, Button, Card, Field, Screen, Text, useToast } from '../components/kit';
-import { haptics } from '../components/haptics';
+import { Badge, Button, Card, Text, haptics, useTheme } from '@blue-bee/ui';
+import { Field, Screen, useToast } from '../components/kit';
 import type { HomeProps } from '../navigation';
 
 /**
@@ -56,74 +55,74 @@ export function HomeScreen({ navigation }: HomeProps): React.ReactElement {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.color.canvas }}>
+    <View style={{ flex: 1, backgroundColor: t.colors.canvas }}>
       <SharingIndicator visible={sharingLocation} />
-      <Screen scroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.color.azure} />}>
-        <Text variant="title1" style={{ marginBottom: t.spacing.lg }}>
+      <Screen scroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.azure} />}>
+        <Text variant="title1" style={{ marginBottom: t.space.lg }}>
           Hi {me?.user.name ?? 'driver'}
         </Text>
 
         <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: t.spacing.sm }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: t.space.sm }}>
             <Text variant="headline">Today&apos;s shift</Text>
             {shift ? <Badge tone={isActive ? 'success' : 'neutral'} dot={isActive}>{isActive ? 'Active' : shift.status}</Badge> : null}
           </View>
           {shift ? (
             <>
               <Field label="Vehicle" value={shift.vehicleLabel ?? shift.vehicleId.slice(0, 8)} mono />
-              <View style={{ height: t.spacing.md }} />
+              <View style={{ height: t.space.md }} />
               <Button
                 testID="toggle-shift"
                 label={isActive ? 'End shift' : 'Start shift'}
                 onPress={() => void toggleShift()}
                 busy={busy}
-                variant={isActive ? 'danger' : 'primary'}
+                tone={isActive ? 'danger' : 'azure'}
                 size="lg"
                 icon={isActive ? 'square' : 'play'}
                 haptic="none"
                 fullWidth
               />
               {!isActive ? (
-                <Text variant="footnote" color={t.color.textMuted} style={{ marginTop: t.spacing.sm }}>
+                <Text variant="footnote" color={t.colors.textSecondary} style={{ marginTop: t.space.sm }}>
                   Starting your shift turns on location sharing.
                 </Text>
               ) : null}
             </>
           ) : (
-            <Text variant="subhead" color={t.color.textMuted}>
+            <Text variant="subhead" color={t.colors.textSecondary}>
               No shift assigned yet. Pull to refresh.
             </Text>
           )}
         </Card>
 
-        <View style={{ height: t.spacing.lg }} />
+        <View style={{ height: t.space.lg }} />
 
         <Card>
-          <Text variant="headline" style={{ marginBottom: t.spacing.sm }}>
+          <Text variant="headline" style={{ marginBottom: t.space.sm }}>
             My route today
           </Text>
           {route ? (
             <>
-              <Text variant="subhead" color={t.color.textMuted} style={{ marginBottom: t.spacing.md }}>
+              <Text variant="subhead" color={t.colors.textSecondary} style={{ marginBottom: t.space.md }}>
                 {route.stops.length} stop{route.stops.length === 1 ? '' : 's'} · {route.status}
               </Text>
-              <Button testID="open-route" label="View route & stops" onPress={() => navigation.navigate('Route')} icon="map" iconRight="arrow-right" fullWidth />
+              <Button testID="open-route" label="View route & stops" onPress={() => navigation.navigate('Route')} icon="map" iconRight="arrow-right" size="md" fullWidth />
             </>
           ) : (
-            <Text variant="subhead" color={t.color.textMuted}>
+            <Text variant="subhead" color={t.colors.textSecondary}>
               No route assigned yet.
             </Text>
           )}
         </Card>
 
-        <View style={{ height: t.spacing.xl }} />
+        <View style={{ height: t.space.xl }} />
 
-        <View style={{ flexDirection: 'row', gap: t.spacing.md }}>
+        <View style={{ flexDirection: 'row', gap: t.space.md }}>
           <View style={{ flex: 1 }}>
-            <Button testID="settings" label="Settings" onPress={() => navigation.navigate('Settings')} variant="secondary" icon="settings" fullWidth />
+            <Button testID="settings" label="Settings" onPress={() => navigation.navigate('Settings')} tone="neutral" variant="outline" size="md" icon="settings" fullWidth />
           </View>
           <View style={{ flex: 1 }}>
-            <Button testID="logout" label="Sign out" onPress={() => void logout()} variant="ghost" icon="log-out" fullWidth />
+            <Button testID="logout" label="Sign out" onPress={() => void logout()} variant="ghost" size="md" icon="log-out" fullWidth />
           </View>
         </View>
       </Screen>

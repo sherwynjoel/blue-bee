@@ -4,9 +4,8 @@ import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-c
 import { useSession } from '../session/SessionProvider';
 import { ApiError } from '../api/problem';
 import { capturePod, oneShotGeo, pickDeliveryPhoto, PodCaptureError, type PickedAsset } from '../media/pod-capture';
-import { useTheme } from '../theme';
-import { Badge, Button, Card, Screen, Text, useToast } from '../components/kit';
-import { haptics } from '../components/haptics';
+import { Badge, Button, Card, Text, haptics, useTheme } from '@blue-bee/ui';
+import { Screen, useToast } from '../components/kit';
 import type { PodProps } from '../navigation';
 
 const SIGNATURE_HEIGHT = 220;
@@ -85,7 +84,7 @@ export function PodScreen({ route, navigation }: PodProps): React.ReactElement {
   const signaturePadStyle = `.m-signature-pad{box-shadow:none;border:none;margin:0;}.m-signature-pad--body{border:none;}.m-signature-pad--footer{display:none;margin:0;}body,html{height:${SIGNATURE_HEIGHT}px;margin:0;}`;
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.color.canvas }}>
+    <View style={{ flex: 1, backgroundColor: t.colors.canvas }}>
       <Screen scroll>
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -96,67 +95,67 @@ export function PodScreen({ route, navigation }: PodProps): React.ReactElement {
               Delivery
             </Badge>
           </View>
-          <Text variant="subhead" color={t.color.textMuted} style={{ marginTop: 4 }}>
+          <Text variant="subhead" color={t.colors.textSecondary} style={{ marginTop: 4 }}>
             {stop?.siteName ?? 'Delivery stop'} — capture a photo + signature to complete this delivery.
           </Text>
         </Card>
 
-        <View style={{ height: t.spacing.lg }} />
+        <View style={{ height: t.space.lg }} />
 
         {/* Step 1 — delivery photo */}
         <Card>
-          <Text variant="headline" style={{ marginBottom: t.spacing.sm }}>
+          <Text variant="headline" style={{ marginBottom: t.space.sm }}>
             1 · Delivery photo
           </Text>
           {photo ? (
-            <View style={{ gap: t.spacing.sm }}>
+            <View style={{ gap: t.space.sm }}>
               <Image
                 source={{ uri: photo.uri }}
                 testID="pod-photo-preview"
-                style={{ width: '100%', height: 200, borderRadius: t.radius.card, backgroundColor: t.color.subtle }}
+                style={{ width: '100%', height: 200, borderRadius: t.radius.card, backgroundColor: t.colors.subtle }}
                 resizeMode="cover"
               />
-              <Button testID="pod-retake" label="Retake photo" onPress={() => void takePhoto()} variant="secondary" icon="refresh-cw" busy={busy === 'photo'} disabled={busy !== null} fullWidth />
+              <Button testID="pod-retake" label="Retake photo" onPress={() => void takePhoto()} tone="neutral" variant="outline" size="md" icon="refresh-cw" busy={busy === 'photo'} disabled={busy !== null} fullWidth />
             </View>
           ) : (
-            <Button testID="pod-take-photo" label="Take delivery photo" onPress={() => void takePhoto()} icon="camera" busy={busy === 'photo'} disabled={busy !== null} fullWidth />
+            <Button testID="pod-take-photo" label="Take delivery photo" onPress={() => void takePhoto()} icon="camera" size="md" busy={busy === 'photo'} disabled={busy !== null} fullWidth />
           )}
         </Card>
 
-        <View style={{ height: t.spacing.lg }} />
+        <View style={{ height: t.space.lg }} />
 
         {/* Step 2 — signature */}
         <Card>
-          <Text variant="headline" style={{ marginBottom: t.spacing.sm }}>
+          <Text variant="headline" style={{ marginBottom: t.space.sm }}>
             2 · Recipient signature
           </Text>
           {signature ? (
-            <View style={{ gap: t.spacing.sm }}>
-              <View style={{ alignItems: 'center', paddingVertical: t.spacing.md, borderRadius: t.radius.card, backgroundColor: t.color.successTint }}>
+            <View style={{ gap: t.space.sm }}>
+              <View style={{ alignItems: 'center', paddingVertical: t.space.md, borderRadius: t.radius.card, backgroundColor: t.colors.successTint }}>
                 <Badge tone="success" icon="check-circle">
                   Signature captured
                 </Badge>
               </View>
-              <Button testID="pod-resign" label="Re-sign" onPress={clearSignature} variant="secondary" icon="edit-2" disabled={busy !== null} fullWidth />
+              <Button testID="pod-resign" label="Re-sign" onPress={clearSignature} tone="neutral" variant="outline" size="md" icon="edit-2" disabled={busy !== null} fullWidth />
             </View>
           ) : (
-            <View style={{ gap: t.spacing.sm }}>
-              <View testID="pod-signature-pad" style={{ height: SIGNATURE_HEIGHT, borderRadius: t.radius.card, overflow: 'hidden', borderWidth: 1, borderColor: t.color.hairline, backgroundColor: '#ffffff' }}>
+            <View style={{ gap: t.space.sm }}>
+              <View testID="pod-signature-pad" style={{ height: SIGNATURE_HEIGHT, borderRadius: t.radius.card, overflow: 'hidden', borderWidth: 1, borderColor: t.colors.hairline, backgroundColor: '#ffffff' }}>
                 <SignatureScreen ref={sigRef} onOK={(sig) => setSignature(sig)} onEmpty={() => toast('Please sign in the box first.', 'warning')} webStyle={signaturePadStyle} backgroundColor="#ffffff" penColor="#0a2540" />
               </View>
-              <View style={{ flexDirection: 'row', gap: t.spacing.md }}>
+              <View style={{ flexDirection: 'row', gap: t.space.md }}>
                 <View style={{ flex: 1 }}>
-                  <Button testID="pod-clear" label="Clear" onPress={clearSignature} variant="ghost" icon="x" disabled={busy !== null} fullWidth />
+                  <Button testID="pod-clear" label="Clear" onPress={clearSignature} variant="ghost" size="md" icon="x" disabled={busy !== null} fullWidth />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Button testID="pod-confirm-signature" label="Use signature" onPress={confirmSignature} variant="secondary" icon="check" disabled={busy !== null} fullWidth />
+                  <Button testID="pod-confirm-signature" label="Use signature" onPress={confirmSignature} tone="neutral" variant="outline" size="md" icon="check" disabled={busy !== null} fullWidth />
                 </View>
               </View>
             </View>
           )}
         </Card>
 
-        <View style={{ height: t.spacing.xl }} />
+        <View style={{ height: t.space.xl }} />
 
         <Button
           testID="pod-submit"
@@ -170,13 +169,13 @@ export function PodScreen({ route, navigation }: PodProps): React.ReactElement {
           fullWidth
         />
         {!ready && busy === null ? (
-          <Text variant="footnote" color={t.color.textFaint} center style={{ marginTop: t.spacing.sm }}>
+          <Text variant="footnote" color={t.colors.textTertiary} center style={{ marginTop: t.space.sm }}>
             Add a photo and a signature to complete.
           </Text>
         ) : null}
 
-        <View style={{ height: t.spacing.lg }} />
-        <Button label="Back to stop" onPress={() => navigation.goBack()} variant="ghost" icon="arrow-left" disabled={busy !== null} fullWidth />
+        <View style={{ height: t.space.lg }} />
+        <Button label="Back to stop" onPress={() => navigation.goBack()} variant="ghost" size="md" icon="arrow-left" disabled={busy !== null} fullWidth />
       </Screen>
       {toastNode}
     </View>

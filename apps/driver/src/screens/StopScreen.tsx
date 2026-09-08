@@ -5,9 +5,8 @@ import { useSession } from '../session/SessionProvider';
 import { ApiError } from '../api/problem';
 import { ACTION_LABEL, availableActions, isTerminal, reasonsFor, requiresReason } from '../stops/actions';
 import { stopStatusMeta } from '../stops/status-ui';
-import { useTheme } from '../theme';
-import { Badge, Button, Card, EmptyState, Field, Screen, Sheet, SheetOption, Text, useToast, type FeatherName } from '../components/kit';
-import { haptics } from '../components/haptics';
+import { Badge, Button, Card, Text, haptics, useTheme } from '@blue-bee/ui';
+import { EmptyState, Field, Screen, Sheet, SheetOption, useToast, type FeatherName } from '../components/kit';
 import type { StopProps } from '../navigation';
 
 const ACTION_ICON: Record<DriverStopAction, FeatherName> = {
@@ -85,7 +84,7 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.color.canvas }}>
+    <View style={{ flex: 1, backgroundColor: t.colors.canvas }}>
       <Screen scroll>
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -97,7 +96,7 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
             </Badge>
           </View>
           {stop.address ? (
-            <Text variant="subhead" color={t.color.textMuted} style={{ marginTop: 4, marginBottom: 8 }}>
+            <Text variant="subhead" color={t.colors.textSecondary} style={{ marginTop: 4, marginBottom: 8 }}>
               {stop.address}
             </Text>
           ) : null}
@@ -111,10 +110,10 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
             />
           ) : null}
           {stop.eta ? <Field label="ETA" value={new Date(stop.eta).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} mono /> : null}
-          {stop.exceptionReason ? <Field label="Reason" value={stop.exceptionReason.replace(/_/g, ' ')} valueColor={t.color.dangerInk} /> : null}
+          {stop.exceptionReason ? <Field label="Reason" value={stop.exceptionReason.replace(/_/g, ' ')} valueColor={t.colors.onDangerTint} /> : null}
         </Card>
 
-        <View style={{ height: t.spacing.xl }} />
+        <View style={{ height: t.space.xl }} />
 
         {terminal ? (
           <Card>
@@ -122,7 +121,7 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
               <Badge tone={meta.tone} icon={meta.icon}>
                 {meta.label}
               </Badge>
-              <Text variant="subhead" color={t.color.textMuted} center>
+              <Text variant="subhead" color={t.colors.textSecondary} center>
                 This stop is {stop.status.toLowerCase()}. Nothing more to do here.
               </Text>
             </View>
@@ -142,17 +141,17 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
                 size="lg"
                 haptic="none"
                 fullWidth
-                style={{ marginBottom: t.spacing.md }}
+                style={{ marginBottom: t.space.md }}
               />
             ))}
 
             {/* Subordinate exceptions. */}
             {exceptions.length > 0 ? (
-              <View style={{ marginTop: t.spacing.sm }}>
-                <Text variant="footnote" color={t.color.textFaint} style={{ marginBottom: t.spacing.sm }}>
+              <View style={{ marginTop: t.space.sm }}>
+                <Text variant="footnote" color={t.colors.textTertiary} style={{ marginBottom: t.space.sm }}>
                   Can&apos;t complete this stop?
                 </Text>
-                <View style={{ flexDirection: 'row', gap: t.spacing.md }}>
+                <View style={{ flexDirection: 'row', gap: t.space.md }}>
                   {exceptions.map((action) => (
                     <View key={action} style={{ flex: 1 }}>
                       <Button
@@ -162,7 +161,9 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
                         onPress={() => onPress(action)}
                         busy={busy === action}
                         disabled={busy !== null}
-                        variant="secondary"
+                        tone="neutral"
+                        variant="outline"
+                        size="md"
                         haptic="none"
                         fullWidth
                       />
@@ -173,7 +174,7 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
             ) : null}
 
             {forward.length === 0 && exceptions.length === 0 ? (
-              <Text variant="subhead" color={t.color.textMuted} center>
+              <Text variant="subhead" color={t.colors.textSecondary} center>
                 No actions available.
               </Text>
             ) : null}
@@ -182,34 +183,38 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
 
         {stop.orderId ? (
           <>
-            <View style={{ height: t.spacing.lg }} />
+            <View style={{ height: t.space.lg }} />
             {/* [Inc-23 P2] Weigh the load (pickup or plant) — offline-first; records an append-only capture. */}
             <Button
               testID="weigh-load"
               label="Weigh load"
               onPress={() => navigation.navigate('Weigh', { stopId })}
-              variant="secondary"
+              tone="neutral"
+              variant="outline"
+              size="md"
               icon="package"
               fullWidth
             />
-            <View style={{ height: t.spacing.sm }} />
+            <View style={{ height: t.space.sm }} />
             <Button
               testID="message-customer"
               label="Message customer"
               onPress={() => navigation.navigate('Chat', { orderId: stop.orderId! })}
-              variant="secondary"
+              tone="neutral"
+              variant="outline"
+              size="md"
               icon="message-circle"
               fullWidth
             />
           </>
         ) : null}
 
-        <View style={{ height: t.spacing.lg }} />
-        <Button label="Back to route" onPress={() => navigation.goBack()} variant="ghost" icon="arrow-left" fullWidth />
+        <View style={{ height: t.space.lg }} />
+        <Button label="Back to route" onPress={() => navigation.goBack()} variant="ghost" size="md" icon="arrow-left" fullWidth />
       </Screen>
 
       <Sheet visible={reasonFor !== null} onClose={() => setReasonFor(null)} title={reasonFor ? ACTION_LABEL[reasonFor] : ''}>
-        <Text variant="subhead" color={t.color.textMuted} style={{ marginBottom: t.spacing.sm }}>
+        <Text variant="subhead" color={t.colors.textSecondary} style={{ marginBottom: t.space.sm }}>
           Pick a reason
         </Text>
         {reasonFor

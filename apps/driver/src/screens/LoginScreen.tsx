@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { useSession } from '../session/SessionProvider';
 import { ApiError } from '../api/problem';
-import { useTheme } from '../theme';
-import { Button, Input, Text } from '../components/kit';
+import { Button, Input, Text, useTheme } from '@blue-bee/ui';
 
 /**
  * Phone-OTP login (PRD §8.1, Increment 2 flow). Request a code → enter it → verify. In dev the
@@ -49,24 +48,24 @@ export function LoginScreen(): React.ReactElement {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, justifyContent: 'center', padding: 24, gap: 14, backgroundColor: t.color.canvas }}
+      style={{ flex: 1, justifyContent: 'center', padding: 24, gap: 14, backgroundColor: t.colors.canvas }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={{ alignItems: 'center', marginBottom: 8, gap: 14 }}>
-        <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: t.color.azureTint, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: t.colors.azureTint, alignItems: 'center', justifyContent: 'center' }}>
           <Text variant="title1">🐝</Text>
         </View>
         <Text variant="title1" center>
           Blue Bee Driver
         </Text>
-        <Text variant="subhead" color={t.color.textMuted} center>
+        <Text variant="subhead" color={t.colors.textSecondary} center>
           Sign in to start your shift.
         </Text>
       </View>
 
       {step === 'phone' ? (
         <>
-          <Text variant="footnote" color={t.color.textMuted}>
+          <Text variant="footnote" color={t.colors.textSecondary}>
             Your phone number
           </Text>
           <Input
@@ -83,12 +82,12 @@ export function LoginScreen(): React.ReactElement {
         </>
       ) : (
         <>
-          <Text variant="footnote" color={t.color.textMuted}>
+          <Text variant="footnote" color={t.colors.textSecondary}>
             Enter the 6-digit code sent to {phone}
           </Text>
           <Input testID="code-input" value={code} onChangeText={setCode} placeholder="123456" keyboardType="number-pad" maxLength={6} big />
           {devCode ? (
-            <Text variant="caption" color={t.color.textFaint}>
+            <Text variant="caption" color={t.colors.textTertiary}>
               dev code: {devCode}
             </Text>
           ) : null}
@@ -100,7 +99,7 @@ export function LoginScreen(): React.ReactElement {
             accessibilityLabel="Use a different number"
             style={{ alignSelf: 'center', minHeight: 48, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text variant="subhead" weight="600" color={t.color.azure}>
+            <Text variant="subhead" weight="600" color={t.colors.azure}>
               Use a different number
             </Text>
           </Pressable>
@@ -108,7 +107,7 @@ export function LoginScreen(): React.ReactElement {
       )}
 
       {error ? (
-        <Text testID="login-error" variant="subhead" color={t.color.danger} center style={{ marginTop: 4 }}>
+        <Text testID="login-error" variant="subhead" color={t.colors.danger} center style={{ marginTop: 4 }}>
           {error}
         </Text>
       ) : null}

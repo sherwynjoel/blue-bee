@@ -1,5 +1,5 @@
 import { RouteStopStatus } from '@blue-bee/shared';
-import type { Tone } from '../theme';
+import type { Tone } from '@blue-bee/ui';
 import type { FeatherName } from '../components/kit';
 
 /** Title-case a SCREAMING_SNAKE status for display. */

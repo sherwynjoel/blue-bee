@@ -2,9 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import type { OrderWeightView } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
-import { useTheme } from '../theme';
-import { Badge, Button, Card, Input, Screen, Segmented, Stat, Text, useToast } from '../components/kit';
-import { haptics } from '../components/haptics';
+import { Badge, Button, Card, Input, StatTile, Text, haptics, useTheme } from '@blue-bee/ui';
+import { Screen, Segmented, useToast } from '../components/kit';
 import { useWeighQueue } from '../weigh/useWeighQueue';
 import type { WeighProps } from '../navigation';
 
@@ -86,7 +85,7 @@ export function WeighScreen({ route, navigation }: WeighProps): React.ReactEleme
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.color.canvas }}>
+    <View style={{ flex: 1, backgroundColor: t.colors.canvas }}>
       <Screen scroll>
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -97,56 +96,56 @@ export function WeighScreen({ route, navigation }: WeighProps): React.ReactEleme
               {stop?.kind ?? 'Stop'}
             </Badge>
           </View>
-          <Text variant="subhead" color={t.color.textMuted} style={{ marginTop: 4 }}>
+          <Text variant="subhead" color={t.colors.textSecondary} style={{ marginTop: 4 }}>
             {stop?.siteName ?? 'This stop'} — enter the actual weight and approve. The approved weight is authoritative.
           </Text>
         </Card>
 
-        <View style={{ height: t.spacing.lg }} />
+        <View style={{ height: t.space.lg }} />
 
         {/* Current authoritative weight + the customer's booking estimate */}
         <Card>
-          <View style={{ flexDirection: 'row', gap: t.spacing.md }}>
+          <View style={{ flexDirection: 'row', gap: t.space.md }}>
             <View style={{ flex: 1 }}>
-              <Stat label="Authoritative" value={current?.authoritativeWeightKg ? `${current.authoritativeWeightKg} kg` : '—'} hint={current?.authoritativeWeighPoint ?? 'not weighed yet'} valueTestID="weigh-authoritative" />
+              <StatTile label="Authoritative" value={current?.authoritativeWeightKg ? `${current.authoritativeWeightKg} kg` : '—'} hint={current?.authoritativeWeighPoint ?? 'not weighed yet'} valueTestID="weigh-authoritative" />
             </View>
             <View style={{ flex: 1 }}>
-              <Stat label="Customer estimate" value={current?.customerEstimate != null ? `~${current.customerEstimate} kg` : '—'} hint={current?.customerEstimate != null ? 'from booking' : 'none given'} />
+              <StatTile label="Customer estimate" value={current?.customerEstimate != null ? `~${current.customerEstimate} kg` : '—'} hint={current?.customerEstimate != null ? 'from booking' : 'none given'} />
             </View>
           </View>
           {current && current.captures.length > 0 ? (
-            <Text variant="footnote" color={t.color.textFaint} style={{ marginTop: t.spacing.sm }} testID="weigh-history-count">
+            <Text variant="footnote" color={t.colors.textTertiary} style={{ marginTop: t.space.sm }} testID="weigh-history-count">
               {current.captures.length} capture{current.captures.length === 1 ? '' : 's'} on record (re-weighing adds a new one).
             </Text>
           ) : null}
         </Card>
 
-        <View style={{ height: t.spacing.lg }} />
+        <View style={{ height: t.space.lg }} />
 
         {/* Enter + approve */}
         <Card>
-          <Text variant="headline" style={{ marginBottom: t.spacing.sm }}>
+          <Text variant="headline" style={{ marginBottom: t.space.sm }}>
             Weight (kg)
           </Text>
           <Input testID="weigh-input" value={weightKg} onChangeText={setWeightKg} placeholder="e.g. 6.5" keyboardType="decimal-pad" icon="package" big />
-          <View style={{ height: t.spacing.md }} />
-          <Text variant="subhead" color={t.color.textMuted} style={{ marginBottom: t.spacing.xs }}>
+          <View style={{ height: t.space.md }} />
+          <Text variant="subhead" color={t.colors.textSecondary} style={{ marginBottom: t.space.xs }}>
             Weigh point
           </Text>
           <Segmented testID="weigh-point" options={WEIGH_POINTS} value={weighPoint} onChange={setWeighPoint} />
-          <View style={{ height: t.spacing.lg }} />
+          <View style={{ height: t.space.lg }} />
           <Button testID="weigh-approve" label="Approve weight" icon="check-circle" onPress={() => void submit()} busy={busy || syncing} disabled={busy} size="lg" haptic="none" fullWidth />
         </Card>
 
         {pending > 0 ? (
           <>
-            <View style={{ height: t.spacing.md }} />
+            <View style={{ height: t.space.md }} />
             <Card>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Badge tone="warning" icon="wifi-off" dot>
                   Offline
                 </Badge>
-                <Text variant="footnote" color={t.color.textMuted} style={{ flex: 1 }} testID="weigh-pending">
+                <Text variant="footnote" color={t.colors.textSecondary} style={{ flex: 1 }} testID="weigh-pending">
                   {pending} approval{pending === 1 ? '' : 's'} queued — syncing automatically when back online.
                 </Text>
               </View>
@@ -154,8 +153,8 @@ export function WeighScreen({ route, navigation }: WeighProps): React.ReactEleme
           </>
         ) : null}
 
-        <View style={{ height: t.spacing.lg }} />
-        <Button label="Back to stop" onPress={() => navigation.goBack()} variant="ghost" icon="arrow-left" disabled={busy} fullWidth />
+        <View style={{ height: t.space.lg }} />
+        <Button label="Back to stop" onPress={() => navigation.goBack()} variant="ghost" size="md" icon="arrow-left" disabled={busy} fullWidth />
       </Screen>
       {toastNode}
     </View>

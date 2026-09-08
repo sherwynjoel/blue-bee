@@ -13,8 +13,7 @@ import { PodScreen } from './src/screens/PodScreen';
 import { WeighScreen } from './src/screens/WeighScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
-import { useTheme } from './src/theme';
-import { Text } from './src/components/kit';
+import { Text, useTheme } from '@blue-bee/ui';
 import type { RootStackParamList } from './src/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -27,11 +26,11 @@ function useNavTheme(): NavTheme {
     ...base,
     colors: {
       ...base.colors,
-      primary: t.color.azure,
-      background: t.color.canvas,
-      card: t.color.surface,
-      text: t.color.text,
-      border: t.color.hairline,
+      primary: t.colors.azure,
+      background: t.colors.canvas,
+      card: t.colors.surface,
+      text: t.colors.text,
+      border: t.colors.hairline,
     },
   };
 }
@@ -40,11 +39,11 @@ function useNavTheme(): NavTheme {
 function Splash(): React.ReactElement {
   const t = useTheme();
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, backgroundColor: t.color.canvas }}>
-      <View style={{ width: 76, height: 76, borderRadius: 22, backgroundColor: t.color.azureTint, alignItems: 'center', justifyContent: 'center' }}>
-        <Text variant="display" color={t.color.azure}>🐝</Text>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, backgroundColor: t.colors.canvas }}>
+      <View style={{ width: 76, height: 76, borderRadius: 22, backgroundColor: t.colors.azureTint, alignItems: 'center', justifyContent: 'center' }}>
+        <Text variant="display" color={t.colors.azure}>🐝</Text>
       </View>
-      <ActivityIndicator size="large" color={t.color.azure} />
+      <ActivityIndicator size="large" color={t.colors.azure} />
     </View>
   );
 }
@@ -60,11 +59,11 @@ function Root(): React.ReactElement {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: t.color.surface },
-        headerTitleStyle: { color: t.color.text, fontWeight: '700' },
-        headerTintColor: t.color.azure,
+        headerStyle: { backgroundColor: t.colors.surface },
+        headerTitleStyle: { color: t.colors.text, fontWeight: '700' },
+        headerTintColor: t.colors.azure,
         headerShadowVisible: false,
-        contentStyle: { backgroundColor: t.color.canvas },
+        contentStyle: { backgroundColor: t.colors.canvas },
       }}
     >
       <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'My shift' }} />

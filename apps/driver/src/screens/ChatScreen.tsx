@@ -5,8 +5,8 @@ import type { ChatMessageDto } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
 import { useDriverChat } from '../chat/useDriverChat';
 import type { OutboxItem } from '../chat/outbox-store';
-import { useTheme } from '../theme';
-import { Button, EmptyState, Input, Text } from '../components/kit';
+import { Button, Input, Text, useTheme } from '@blue-bee/ui';
+import { EmptyState } from '../components/kit';
 import type { ChatProps } from '../navigation';
 
 /** Local, Intl-free clock: "2:45 PM". */
@@ -62,14 +62,14 @@ export function ChatScreen({ route }: ChatProps): React.ReactElement {
         style={[
           styles.bubble,
           {
-            backgroundColor: mine ? t.color.azure : t.color.surface,
-            borderColor: mine ? t.color.azure : t.color.hairline,
+            backgroundColor: mine ? t.colors.azure : t.colors.surface,
+            borderColor: mine ? t.colors.azure : t.colors.hairline,
             borderTopRightRadius: mine ? 4 : 16,
             borderTopLeftRadius: mine ? 16 : 4,
           },
         ]}
       >
-        <Text variant="body" color={mine ? t.color.onAzure : t.color.text}>
+        <Text variant="body" color={mine ? t.colors.onAzure : t.colors.text}>
           {body}
         </Text>
         <View style={styles.footer}>{footer}</View>
@@ -84,7 +84,7 @@ export function ChatScreen({ route }: ChatProps): React.ReactElement {
         return bubble(
           mine,
           item.msg.body,
-          <Text variant="caption" color={mine ? t.color.onAzure : t.color.textFaint}>
+          <Text variant="caption" color={mine ? t.colors.onAzure : t.colors.textTertiary}>
             {clock(item.msg.sentAt)}
           </Text>,
         );
@@ -95,8 +95,8 @@ export function ChatScreen({ route }: ChatProps): React.ReactElement {
         true,
         item.item.body,
         <View style={styles.pendingFooter} testID={failed ? 'chat-failed' : 'chat-queued'}>
-          <Feather name={failed ? 'alert-circle' : 'clock'} size={11} color={failed ? t.color.dangerInk : t.color.onAzure} />
-          <Text variant="caption" color={failed ? t.color.dangerInk : t.color.onAzure}>
+          <Feather name={failed ? 'alert-circle' : 'clock'} size={11} color={failed ? t.colors.onDangerTint : t.colors.onAzure} />
+          <Text variant="caption" color={failed ? t.colors.onDangerTint : t.colors.onAzure}>
             {failed ? "couldn't send" : 'queued'}
           </Text>
         </View>,
@@ -111,7 +111,7 @@ export function ChatScreen({ route }: ChatProps): React.ReactElement {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: t.color.canvas }]}
+      style={[styles.flex, { backgroundColor: t.colors.canvas }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
@@ -124,7 +124,7 @@ export function ChatScreen({ route }: ChatProps): React.ReactElement {
         contentContainerStyle={[styles.listContent, rows.length === 0 && styles.listEmpty]}
         onContentSizeChange={scrollToEnd}
         ListHeaderComponent={
-          chat.hasMore ? <Button label="Load earlier messages" variant="ghost" onPress={chat.loadOlder} fullWidth /> : null
+          chat.hasMore ? <Button label="Load earlier messages" variant="ghost" size="md" onPress={chat.loadOlder} fullWidth /> : null
         }
         ListEmptyComponent={
           chat.phase === 'ready' ? (
@@ -138,7 +138,7 @@ export function ChatScreen({ route }: ChatProps): React.ReactElement {
       />
 
       {chat.open ? (
-        <View style={[styles.composer, { borderTopColor: t.color.hairline, backgroundColor: t.color.canvas }]}>
+        <View style={[styles.composer, { borderTopColor: t.colors.hairline, backgroundColor: t.colors.canvas }]}>
           <View style={styles.flex}>
             <Input testID="chat-composer" value={draft} onChangeText={setDraft} placeholder="Message the customer…" autoCapitalize="sentences" />
           </View>
@@ -148,15 +148,15 @@ export function ChatScreen({ route }: ChatProps): React.ReactElement {
             accessibilityLabel="Send message"
             onPress={onSend}
             disabled={!draft.trim()}
-            style={[styles.sendBtn, { backgroundColor: draft.trim() ? t.color.azure : t.color.subtle }]}
+            style={[styles.sendBtn, { backgroundColor: draft.trim() ? t.colors.azure : t.colors.subtle }]}
           >
-            <Feather name="send" size={18} color={draft.trim() ? t.color.onAzure : t.color.textFaint} />
+            <Feather name="send" size={18} color={draft.trim() ? t.colors.onAzure : t.colors.textTertiary} />
           </Pressable>
         </View>
       ) : (
-        <View testID="chat-readonly" style={[styles.readOnly, { borderTopColor: t.color.hairline, backgroundColor: t.color.subtle }]}>
-          <Feather name="lock" size={15} color={t.color.textFaint} />
-          <Text variant="footnote" color={t.color.textMuted}>
+        <View testID="chat-readonly" style={[styles.readOnly, { borderTopColor: t.colors.hairline, backgroundColor: t.colors.subtle }]}>
+          <Feather name="lock" size={15} color={t.colors.textTertiary} />
+          <Text variant="footnote" color={t.colors.textSecondary}>
             Chat closes after the stop completes — this conversation is now read-only.
           </Text>
         </View>

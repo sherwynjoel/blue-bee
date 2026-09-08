@@ -3,7 +3,7 @@ import { Text as RNText, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Feather } from '@expo/vector-icons';
 import type { DriverStopView } from '@blue-bee/shared';
-import { toneColors, useTheme } from '../theme';
+import { toneColors, useTheme } from '@blue-bee/ui';
 import { stopStatusMeta } from '../stops/status-ui';
 
 /**
@@ -24,15 +24,15 @@ export function RouteMap({ stops }: { stops: DriverStopView[] }): React.ReactEle
           height: 200,
           borderRadius: t.radius.card,
           borderWidth: 1,
-          borderColor: t.color.hairline,
-          backgroundColor: t.color.subtle,
+          borderColor: t.colors.hairline,
+          backgroundColor: t.colors.subtle,
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
         }}
       >
-        <Feather name="map" size={26} color={t.color.textFaint} />
-        <RNText style={{ color: t.color.textFaint, fontSize: 13 }}>No mapped stops yet</RNText>
+        <Feather name="map" size={26} color={t.colors.textTertiary} />
+        <RNText style={{ color: t.colors.textTertiary, fontSize: 13 }}>No mapped stops yet</RNText>
       </View>
     );
   }
@@ -48,7 +48,7 @@ export function RouteMap({ stops }: { stops: DriverStopView[] }): React.ReactEle
     >
       {located.map((s) => (
         <Marker key={s.id} coordinate={{ latitude: s.lat, longitude: s.lng }} title={`${s.seq}. ${s.siteName ?? 'Stop'}`} description={s.address ?? undefined}>
-          <Pin seq={s.seq} color={toneColors(t.color, stopStatusMeta(s.status).tone).solid} />
+          <Pin seq={s.seq} color={toneColors(t.colors, stopStatusMeta(s.status).tone).solid} />
         </Marker>
       ))}
     </MapView>

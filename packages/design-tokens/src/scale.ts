@@ -58,7 +58,10 @@ export const fontSize = {
   footnote: { size: 13, lineHeight: 18, weight: 400, tracking: 0 },
   caption: { size: 12, lineHeight: 16, weight: 500, tracking: 0.01 },
   /** Matches driver/owner's production `typography.overline` (fontSize 12/lineHeight 16/fontWeight
-   * '700'/letterSpacing 0.7), field names converted to this file's `TypeStyle` shape. */
-  overline: { size: 12, lineHeight: 16, weight: 700, tracking: 0.7 },
+   * '700'/letterSpacing 0.7), field names converted to this file's `TypeStyle` shape. `tracking` is
+   * this file's em convention, NOT the raw RN value: RN's `letterSpacing` is in points, so 0.7pt on a
+   * 12px font converts to 0.7 / 12 ≈ 0.058em — do NOT "fix" this back to 0.7 (0.7em would be ~8.4px of
+   * space after every character, wider than the letters themselves). */
+  overline: { size: 12, lineHeight: 16, weight: 700, tracking: 0.058 },
 } as const satisfies Record<string, TypeStyle>;
 export type FontSizeToken = keyof typeof fontSize;

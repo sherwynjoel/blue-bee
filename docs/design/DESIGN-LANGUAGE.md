@@ -205,7 +205,12 @@ keeps it native and legible.
 | `subhead` | 15 | 20 | 500 | 0 | Labels, sub-row |
 | `footnote` | 13 | 18 | 400 | 0 | Secondary metadata |
 | `caption` | 12 | 16 | 500 | 0.01 | Badges, timestamps, hints |
-| `overline` | 12 | 16 | 700 | 0.7 | Section eyebrows / uppercase kickers |
+| `overline` | 12 | 16 | 700 | 0.058 | Section eyebrows / uppercase kickers |
+
+> `overline`'s tracking is converted from driver/owner's raw RN `letterSpacing: 0.7` (points) to this
+> ramp's em convention: `0.7 / 12` (its font size) `≈ 0.058`. Do not "restore" it to `0.7` — at this
+> ramp's em scale that would mean ~8.4px of space after every character on a 12px font, wider than the
+> letters themselves.
 
 ---
 

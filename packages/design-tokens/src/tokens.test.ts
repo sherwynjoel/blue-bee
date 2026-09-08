@@ -48,8 +48,11 @@ describe('@blue-bee/design-tokens', () => {
     expect(fontSize.caption.tracking).toBe(0.01);
   });
 
-  it('adds the overline type variant matching driver/owner\'s production value', () => {
-    expect(fontSize.overline).toEqual({ size: 12, lineHeight: 16, weight: 700, tracking: 0.7 });
+  it('adds the overline type variant, tracking converted from RN points to this file\'s em convention', () => {
+    // driver/owner's raw RN value is { fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.7 }
+    // (points). This file's `tracking` is em, so 0.7 / 12 (the font size) ≈ 0.058 — NOT 0.7 (0.7em would
+    // be ~8.4px of extra space after every character on a 12px font, wider than the letters themselves).
+    expect(fontSize.overline).toEqual({ size: 12, lineHeight: 16, weight: 700, tracking: 0.058 });
   });
 
   it('exposes elevation + motion', () => {

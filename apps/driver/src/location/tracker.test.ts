@@ -36,4 +36,25 @@ describe('location tracker gating (US-T5 / §6.2)', () => {
     await tracker.ingestFixes([{ latitude: 1, longitude: 2, timestampMs: 1_700_000_100_000 }]);
     expect(fakeClient.postLocations).not.toHaveBeenCalled(); // gated again after shift end
   });
+
+  it('does not carry an ended shift\'s unsent pings into the next shift', async () => {
+    await tracker.startTracking(fakeClient, 'shift-A', 'veh-A');
+    (fakeClient.postLocations as jest.Mock).mockRejectedValueOnce(new Error('network blip'));
+    await tracker.ingestFixes([{ latitude: 1, longitude: 1, timestampMs: 1_700_000_200_000 }]);
+    expect(tracker.pendingPingCount()).toBe(1); // failed flush left it queued — the designed, expected behavior
+
+    await tracker.stopTracking();
+    expect(tracker.pendingPingCount()).toBe(0); // the ended shift's unsent ping must not survive the boundary
+
+    (fakeClient.postLocations as jest.Mock).mockClear();
+    (fakeClient.postLocations as jest.Mock).mockResolvedValue({});
+    await tracker.startTracking(fakeClient, 'shift-B', 'veh-B');
+    await tracker.ingestFixes([{ latitude: 2, longitude: 2, timestampMs: 1_700_000_300_000 }]);
+
+    expect(fakeClient.postLocations).toHaveBeenCalledTimes(1);
+    const batch = (fakeClient.postLocations as jest.Mock).mock.calls[0][0];
+    expect(batch.shiftId).toBe('shift-B');
+    expect(batch.pings).toHaveLength(1); // only shift-B's own ping — never shift-A's leftover
+    expect(batch.pings[0]).toMatchObject({ lat: 2, lng: 2 });
+  });
 });

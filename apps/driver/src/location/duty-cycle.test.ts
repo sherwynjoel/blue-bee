@@ -38,6 +38,15 @@ describe('LocationOutbox', () => {
     expect(box.peek().map((p) => p.recordedAt)).toEqual([ping(1), ping(2), ping(3)].map((p) => p.recordedAt));
   });
 
+  it('clear() discards all pending pings', () => {
+    const box = new LocationOutbox();
+    box.enqueue([ping(1), ping(2)]);
+    expect(box.size).toBe(2);
+    box.clear();
+    expect(box.size).toBe(0);
+    expect(box.peek()).toEqual([]);
+  });
+
   it('caps at the max, dropping the oldest and counting the drops', () => {
     const box = new LocationOutbox(2, 10); // cap 2
     box.enqueue([ping(1), ping(2), ping(3)]);

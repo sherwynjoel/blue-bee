@@ -94,6 +94,11 @@ export class LocationOutbox {
     return this.pending;
   }
 
+  /** Discard all pending pings. Used when a shift ends so its unsent pings never leak into the next shift. */
+  clear(): void {
+    this.pending = [];
+  }
+
   /**
    * Send pending pings in batches. A batch that fails (throws) stays queued — we stop and report
    * `ok:false` with what remains, so the next flush retries it. Never throws.

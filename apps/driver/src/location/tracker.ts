@@ -26,6 +26,10 @@ interface TrackerState {
 const state: TrackerState = { client: null, shiftId: null, vehicleId: null };
 const outbox = new LocationOutbox();
 let tracking = false;
+// Bumped on every stopTracking() so a `send` closure already queued inside an in-flight
+// outbox.flush() can detect its shift has ended and skip the network call, instead of
+// posting under a shift/vehicle binding that no longer applies.
+let sessionId = 0;
 const listeners = new Set<(on: boolean) => void>();
 
 function setTracking(on: boolean): void {
@@ -55,9 +59,13 @@ export function pendingPingCount(): number {
 export async function ingestFixes(fixes: DeviceFix[]): Promise<void> {
   const { client, shiftId, vehicleId } = state;
   if (!client || !shiftId || !vehicleId) return; // not emitting unless a shift is active
+  const session = sessionId;
   outbox.enqueue(fixes.map(toPing));
   if (outbox.size === 0) return;
-  await outbox.flush((pings) => client.postLocations({ shiftId, vehicleId, pings }));
+  await outbox.flush((pings) => {
+    if (session !== sessionId) return Promise.resolve(); // the shift ended mid-flush — drop, never POST stale
+    return client.postLocations({ shiftId, vehicleId, pings });
+  });
 }
 
 // The background task: defined once at module load. Receives batched fixes from the OS and forwards
@@ -131,9 +139,11 @@ export async function startTracking(client: ApiClient, shiftId: string, vehicleI
  * server would (correctly) reject them; per-callback flushes already drained the buffer while active.
  */
 export async function stopTracking(): Promise<void> {
+  sessionId++; // invalidate any in-flight flush so it can never POST under this now-ended shift
   state.client = null;
   state.shiftId = null;
   state.vehicleId = null;
+  outbox.clear(); // discard unsent pings — they belong to the shift that just ended, never carry forward
   setTracking(false);
   const started = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK).catch(() => false);
   if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);

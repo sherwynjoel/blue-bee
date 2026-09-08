@@ -10,13 +10,25 @@
 FROM postgis/postgis:16-3.4
 
 RUN set -eux; \
-    apt-get update; \
+    # Debian 11 (bullseye, this base image's OS) has aged out of Debian's LIVE mirrors — package
+    # files now 404 on deb.debian.org/security.debian.org. archive.debian.org is Debian's permanent
+    # archive for retired releases and mirrors the main suite forever (does NOT mirror
+    # debian-security separately for bullseye), so: repoint the main/updates suites to archive.debian.org
+    # (identical package set, just relocated) and drop the debian-security line — every package this
+    # RUN installs (gnupg/wget/lsb-release/ca-certificates/timescaledb) is available from bullseye's
+    # main archive, none of them is security-suite-exclusive.
+    sed -i \
+      -e '/debian-security/d' \
+      -e 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' \
+      -e 's|http://security.debian.org|http://archive.debian.org|g' \
+      /etc/apt/sources.list; \
+    apt-get update -o Acquire::Check-Valid-Until=false; \
     apt-get install -y --no-install-recommends gnupg lsb-release wget ca-certificates; \
     echo "deb https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -cs) main" \
       > /etc/apt/sources.list.d/timescaledb.list; \
     wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
       | gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg; \
-    apt-get update; \
+    apt-get update -o Acquire::Check-Valid-Until=false; \
     apt-get install -y --no-install-recommends timescaledb-2-postgresql-16; \
     apt-get purge -y --auto-remove wget gnupg lsb-release; \
     rm -rf /var/lib/apt/lists/*

@@ -113,6 +113,22 @@ describe('Auth login-expansion e2e — email+password + Apple/Google (Inc-35)', 
     expect(await prisma.account.count({ where: { id: roles[0].scopeId ?? '' } })).toBe(1);
   });
 
+  it('register from a trusted browser origin sets the httpOnly cookie and OMITS the raw refresh token from tokens', async () => {
+    // The web console gets its refresh token via the httpOnly cookie only — never in the JS-readable body
+    // (transit-copy XSS hardening). Native register (no Origin, tested above) keeps tokens.refreshToken.
+    const email = `browserreg${DOMAIN}`;
+    const res = await request(app.getHttpServer())
+      .post('/v1/auth/register')
+      .set('Origin', 'https://web-production-ba508.up.railway.app') // in CORS_ALLOWED_ORIGINS (test/setup-env.ts)
+      .send({ email, password: 'browser-signup-pw', name: 'Browser Reg' })
+      .expect(201);
+    expect(res.body.tokens.accessToken).toBeTruthy(); // client still gets the access token
+    expect(res.body.tokens.refreshToken).toBeUndefined(); // omitted for the browser
+    expect(res.body).toMatchObject({ emailVerified: false, provider: 'password', created: true });
+    const setCookie = res.headers['set-cookie'];
+    expect(Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie)).toMatch(/bb_refresh=/);
+  });
+
   it('rejects a duplicate email registration → 409 email_taken', async () => {
     const email = `reg${DOMAIN}`;
     const res = await post('/v1/auth/register', { email, password: 'another-password', name: 'Dup' }).expect(409);

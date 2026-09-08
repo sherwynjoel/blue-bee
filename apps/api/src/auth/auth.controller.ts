@@ -25,6 +25,7 @@ import {
   type RefreshDto,
   type RegisterDto,
   type SetPasswordDto,
+  type TokenPair,
   type VerifyEmailDto,
 } from '@blue-bee/shared';
 import { AUTH_CONFIG, type AuthConfig } from '../config/auth.config';
@@ -37,6 +38,7 @@ import {
   REFRESH_COOKIE_NAME,
   assertTrustedOrigin,
   clearRefreshCookie,
+  isTrustedBrowserOrigin,
   parseAllowedOrigins,
   setRefreshCookie,
 } from './refresh-cookie';
@@ -68,6 +70,19 @@ export class AuthController {
     return this.authConfig.jwt.refreshTtlSeconds;
   }
 
+  /** The token pair minus its refresh token — the body shape a trusted browser gets (its refresh token
+   *  lives ONLY in the httpOnly cookie, never in a JS-readable response). */
+  private stripRefresh(pair: TokenPair): Omit<TokenPair, 'refreshToken'> {
+    return { accessToken: pair.accessToken, tokenType: pair.tokenType, expiresIn: pair.expiresIn };
+  }
+
+  /** For a login/session result carrying `{ tokens }`: strip the raw refresh token for a trusted browser
+   *  origin (the cookie carries it); native/no-Origin callers get the unchanged body (their only copy). */
+  private tokensForCaller<T extends { tokens: TokenPair }>(result: T, req: Request) {
+    if (!isTrustedBrowserOrigin(req, this.allowedOrigins)) return result;
+    return { ...result, tokens: this.stripRefresh(result.tokens) };
+  }
+
   @Public()
   @Post('otp')
   @HttpCode(HttpStatus.OK)
@@ -86,10 +101,12 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const pair = await this.auth.verify(body.phone, body.code, { ip: req.ip, userAgent: req.headers['user-agent'] });
-    // Additive: also set the httpOnly cookie for the web console. Native apps ignore Set-Cookie (no jar
-    // for this origin) and keep reading pair.refreshToken from the body — zero behavior change for them.
+    // Additive: also set the httpOnly cookie. A trusted browser origin (the web console) then gets its
+    // refresh token ONLY via that cookie — stripRefresh keeps it out of the JS-readable body. Native clients
+    // authenticate by the body token (never by this cookie), so they keep receiving pair.refreshToken as
+    // before — zero behavior change for them (whether or not their HTTP stack happens to retain Set-Cookie).
     setRefreshCookie(res, pair.refreshToken, this.refreshTtlSeconds);
-    return pair;
+    return isTrustedBrowserOrigin(req, this.allowedOrigins) ? this.stripRefresh(pair) : pair;
   }
 
   @Public()
@@ -104,13 +121,25 @@ export class AuthController {
     // CSRF: the cookie is SameSite=None in prod, so the browser sends it cross-site — reject an untrusted
     // Origin BEFORE touching any token (cookie or body). Native/no-Origin requests pass through.
     assertTrustedOrigin(req, this.allowedOrigins);
+    // Cookie-sourced ⇒ the caller is the web console (its raw token lives only in the httpOnly cookie), so
+    // it must NEVER get the rotated token back in a JS-readable body. Body-sourced ⇒ a native client that
+    // has no cookie and needs the rotated token in the body (unchanged).
+    const fromCookie = !body.refreshToken;
     const token = body.refreshToken ?? req.cookies?.[REFRESH_COOKIE_NAME];
     if (!token) {
       throw new BadRequestException({ error: 'validation_failed', message: 'refreshToken is required (body or cookie)' });
     }
-    const pair = await this.auth.refresh(token, { ip: req.ip, userAgent: req.headers['user-agent'] });
+    let pair: TokenPair;
+    try {
+      pair = await this.auth.refresh(token, { ip: req.ip, userAgent: req.headers['user-agent'] });
+    } catch (err) {
+      // On a failed rotation (expired / invalid / reuse-detected → family revoked) the cookie's token is now
+      // dead. Clear it so the browser stops resending a token that can only ever fail again.
+      if (fromCookie) clearRefreshCookie(res);
+      throw err;
+    }
     setRefreshCookie(res, pair.refreshToken, this.refreshTtlSeconds); // rotate the cookie to the new token
-    return pair;
+    return fromCookie ? this.stripRefresh(pair) : pair;
   }
 
   @Post('logout')
@@ -142,7 +171,7 @@ export class AuthController {
   ) {
     const result = await this.credentials.register(body, this.reqCtx(req));
     setRefreshCookie(res, result.tokens.refreshToken, this.refreshTtlSeconds);
-    return result;
+    return this.tokensForCaller(result, req);
   }
 
   @Public()
@@ -156,7 +185,7 @@ export class AuthController {
   ) {
     const result = await this.credentials.loginEmail(body, this.reqCtx(req));
     setRefreshCookie(res, result.tokens.refreshToken, this.refreshTtlSeconds);
-    return result;
+    return this.tokensForCaller(result, req);
   }
 
   @Public()
@@ -196,7 +225,7 @@ export class AuthController {
   ) {
     const result = await this.credentials.oauthSignIn(body, this.reqCtx(req));
     setRefreshCookie(res, result.tokens.refreshToken, this.refreshTtlSeconds);
-    return result;
+    return this.tokensForCaller(result, req);
   }
 
   // ─────────────────────── [Inc-35] account security (authenticated) ───────────────────────

@@ -199,7 +199,9 @@ describe('Auth + RBAC (e2e, real DB + Redis)', () => {
 
   // ── httpOnly refresh cookie (web console hardening — Task 5) ──
   // The web console keeps its refresh token in an httpOnly cookie (never in JS) so an XSS payload can't
-  // exfiltrate it, while native apps (no cookie jar for this origin) keep using the body-based flow. Every
+  // exfiltrate it. A trusted browser origin therefore also NEVER receives the raw refresh token in the
+  // JS-readable response body (the transit copy) — only the cookie carries it. Native clients authenticate
+  // by the body token (never by the cookie), so they keep receiving it in the body, unchanged. Every
   // token-issuing route ALSO sets the cookie; refresh/logout accept the token from cookie OR body.
   // WEB_ORIGIN must be in CORS_ALLOWED_ORIGINS for the test env (set in test/setup-env.ts) so the Origin
   // allow-list has a positive case; a genuinely-foreign origin proves the CSRF check has teeth.
@@ -214,14 +216,15 @@ describe('Auth + RBAC (e2e, real DB + Redis)', () => {
       return otp.body.devCode as string;
     };
 
-    it('verify sets an httpOnly refresh cookie AND still returns the token in the body (native compat)', async () => {
+    it('verify from a trusted browser origin sets the httpOnly cookie AND omits the raw token from the body', async () => {
       const code = await freshCode(COOKIE_PHONE);
       const res = await request(http)
         .post('/v1/auth/verify')
         .set('Origin', WEB_ORIGIN)
         .send({ phone: COOKIE_PHONE, code });
       expect(res.status).toBe(200);
-      expect(res.body.refreshToken).toBeTruthy(); // native apps still get it in the body
+      expect(res.body.accessToken).toBeTruthy(); // still returned — the client needs it for API calls
+      expect(res.body.refreshToken).toBeUndefined(); // NOT in the JS-readable body; only the cookie has it
 
       const setCookie = res.headers['set-cookie'];
       expect(setCookie).toBeDefined();
@@ -234,7 +237,14 @@ describe('Auth + RBAC (e2e, real DB + Redis)', () => {
       expect(cookieStr).toMatch(/SameSite=Lax/i);
     });
 
-    it('refresh works via the cookie ALONE, with no body token (the web path)', async () => {
+    it('verify from a native client (no Origin) STILL returns the refresh token in the body (native compat)', async () => {
+      const code = await freshCode(COOKIE_PHONE);
+      const res = await request(http).post('/v1/auth/verify').send({ phone: COOKIE_PHONE, code });
+      expect(res.status).toBe(200);
+      expect(res.body.refreshToken).toBeTruthy(); // native apps' ONLY copy — unchanged behavior
+    });
+
+    it('refresh works via the cookie ALONE and OMITS the rotated token from the body (the web path)', async () => {
       const agent = request.agent(http); // supertest agent = automatic cookie jar
       const code = await freshCode(COOKIE_PHONE);
       const verifyRes = await agent
@@ -246,16 +256,21 @@ describe('Auth + RBAC (e2e, real DB + Redis)', () => {
       const refreshRes = await agent.post('/v1/auth/refresh').set('Origin', WEB_ORIGIN).send({}).expect(200); // EMPTY body
       expect(refreshRes.body.accessToken).toBeTruthy();
       expect(refreshRes.body.accessToken).not.toBe(verifyRes.body.accessToken); // genuinely rotated
+      expect(refreshRes.body.refreshToken).toBeUndefined(); // cookie-sourced ⇒ never leaks the rotated token
+      // The cookie itself IS rotated (a fresh bb_refresh is set on the response).
+      const setCookie = refreshRes.headers['set-cookie'];
+      expect(Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie)).toMatch(/bb_refresh=/);
     });
 
-    it('refresh still works via the BODY alone, with no cookie (native app compat — unchanged)', async () => {
+    it('refresh via the BODY alone (native) STILL returns the rotated refresh token in the body (unchanged)', async () => {
       const code = await freshCode(COOKIE_PHONE);
       const verifyRes = await request(http).post('/v1/auth/verify').send({ phone: COOKIE_PHONE, code }).expect(200);
-      const refreshRes = await request(http)
-        .post('/v1/auth/refresh')
-        .send({ refreshToken: verifyRes.body.refreshToken })
-        .expect(200);
+      const original = verifyRes.body.refreshToken as string;
+      expect(original).toBeTruthy();
+      const refreshRes = await request(http).post('/v1/auth/refresh').send({ refreshToken: original }).expect(200);
       expect(refreshRes.body.accessToken).toBeTruthy();
+      expect(refreshRes.body.refreshToken).toBeTruthy(); // native keeps getting the rotated token in the body
+      expect(refreshRes.body.refreshToken).not.toBe(original); // genuinely rotated
     });
 
     it('a refresh from an untrusted Origin is rejected (CSRF defense)', async () => {

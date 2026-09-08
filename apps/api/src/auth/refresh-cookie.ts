@@ -53,6 +53,12 @@ export function clearRefreshCookie(res: Response): void {
  * reject unless the caller's `Origin` is one we trust. A request with NO `Origin` header (native apps and
  * most non-browser HTTP clients) is NOT rejected — this defense targets only a BROWSER-driven cross-site
  * attack, and native requests were never subject to it (they authenticate by body token, not by cookie).
+ *
+ * NOTE: a literal `*` in `allowedOrigins` is treated as an ordinary string here — it will NOT match a
+ * concrete origin, so `CORS_ALLOWED_ORIGINS=*` fails CLOSED (every browser refresh/logout gets 403). That
+ * is intentional: `*` is fundamentally incompatible with credentialed cookies anyway (a wildcard origin
+ * disables `Access-Control-Allow-Credentials`, so the browser would never send the cookie), so the cookie
+ * path simply does not support a wildcard — configure the concrete console origin(s) instead.
  */
 export function assertTrustedOrigin(req: Request, allowedOrigins: string[]): void {
   const origin = req.headers.origin;
@@ -60,6 +66,19 @@ export function assertTrustedOrigin(req: Request, allowedOrigins: string[]): voi
   if (!allowedOrigins.includes(origin)) {
     throw new ForbiddenException({ error: AUTH_ERRORS.UNTRUSTED_ORIGIN, message: 'Untrusted origin' });
   }
+}
+
+/**
+ * True iff the request carries a browser `Origin` header that is on the trust allow-list — i.e. the caller
+ * is the web console. Used to decide whether to OMIT the raw refresh token from the JSON response body: the
+ * console keeps its token in the httpOnly cookie and must NEVER receive a JS-readable transit copy (an XSS
+ * on the trusted origin could otherwise POST /refresh with `credentials:'include'` and read the freshly
+ * rotated token straight out of the response body). Native/no-Origin clients return `false` here and keep
+ * getting the body token — they have no cookie and it is their only copy.
+ */
+export function isTrustedBrowserOrigin(req: Request, allowedOrigins: string[]): boolean {
+  const origin = req.headers.origin;
+  return !!origin && allowedOrigins.includes(origin);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useTheme } from '@blue-bee/ui';
+import { lightTheme } from '@blue-bee/ui';
 
 /**
  * Customer-local glass tokens.
@@ -10,6 +10,9 @@ import { useTheme } from '@blue-bee/ui';
  * Per the design's Open Item resolution, they live here as a tiny customer-local extension layered on top
  * of the shared theme — `Glass.tsx` reads its surface `colors`/`radius` from `@blue-bee/ui`'s `useTheme()`
  * and pulls just these two fields from `useGlass()`. Values are verbatim from customer's old `theme.ts`.
+ *
+ * Customer is pinned to the LIGHT palette (see theme/index.ts), so glass resolves deterministically off
+ * the shared `lightTheme` — never `useColorScheme()` — matching every other customer-authored surface.
  */
 
 const glassLight = { glass: 'rgba(255,255,255,0.72)', blurTint: 'light' as const };
@@ -22,8 +25,7 @@ export interface GlassTokens {
   blurTint: 'light' | 'dark';
 }
 
-/** The glass tokens for the active scheme (follows the shared theme's light/dark resolution). */
+/** The glass tokens for the customer's pinned (light) scheme. */
 export function useGlass(): GlassTokens {
-  const { isDark } = useTheme();
-  return isDark ? glassDark : glassLight;
+  return lightTheme.isDark ? glassDark : glassLight;
 }

@@ -28,7 +28,7 @@ Gradients, glows, and faux-3D are off-limits. In dark mode, depth comes from the
 (canvas → subtle → surface), not heavier shadows.
 
 ### 1.3 Restraint with color
-One brand blue does the work. Color is **meaning**: primary = the action, accent = attention/marking,
+One brand blue does the work. Color is **meaning**: azure = the action, honey = attention/marking,
 success / warning / danger = state. Tints (the soft backgrounds) carry status without shouting. A
 screen that is mostly neutral with a single confident blue reads as more premium — and more
 legible — than a rainbow. Never use color as the *only* signal (see §8 accessibility).
@@ -62,32 +62,45 @@ comfortable.
 
 ## 2. Color
 
-Two complete scales — **light** (default) and **dark**. Semantics are identical across modes; only the
-values change. Source of truth: `color.light` / `color.dark` in the tokens package.
+Two complete scales — **light** (default) and **dark** — carrying the **Royal Dry Cleaning** brand
+(the crest's royal blue = `azure`, the crown's gold = `honey`). Semantics are identical across modes;
+only the values change. Source of truth: `color.light` / `color.dark` in the tokens package. Naming
+(`azure`/`honey`, not generic `primary`/`accent`) matches what's already live in production across all
+three mobile apps — see `docs/superpowers/specs/2026-09-08-shared-ui-design-tokens-design.md` for the
+reconciliation history.
 
 ### 2.1 Light
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `canvas` | `#FBFCFE` | App/page background |
-| `subtle` | `#F4F7FB` | Recessed background (grouped rows, inset panels) |
+| `canvas` | `#F4F6FB` | App/page background |
+| `subtle` | `#EAEFF7` | Recessed background (grouped rows, inset panels) |
 | `surface` | `#FFFFFF` | Cards, sheets, inputs |
-| `hairline` | `#E5EAF1` | 1px borders / separators |
-| `textPrimary` | `#0A2540` | Primary text, headings |
+| `surfacePressed` | `#EEF3FA` | Pressed/active surface tint (list rows, buttons mid-press) |
+| `hairline` | `#E4E9F2` | 1px borders / separators |
+| `text` | `#0A2540` | Primary text, headings |
 | `textSecondary` | `#5A6B82` | Secondary text, labels |
 | `textTertiary` | `#8A99AE` | Hints, disabled, metadata |
-| `primary` | `#0B5FFF` | Brand action |
-| `primaryHover` | `#0A54E0` | Action hover |
-| `primaryActive` | `#0848C2` | Action pressed |
-| `primaryTint` | `#E8F0FF` | Selected rows, ghost-button bg |
-| `accent` | `#FFB020` | Attention / flags / highlights |
-| `accentTint` | `#FFF6E6` | Accent background |
+| `azure` | `#1E50C8` | Brand primary — the crest's royal blue |
+| `azureTint` | `#E7ECFB` | Selected chips, info cards, marker halo |
+| `honey` | `#DDA82E` | Brand accent — the crown's gold |
+| `honeyTint` | `#FAF3DF` | Honey wash |
 | `success` | `#14B86A` | Delivered, paid, healthy |
-| `successTint` | `#E5F7EE` | Success background |
+| `successTint` | `#E5F8EE` | Success background |
 | `warning` | `#F59E0B` | At-risk, due-soon, on-hold |
-| `warningTint` | `#FFF4E0` | Warning background |
+| `warningTint` | `#FEF3E2` | Warning background |
 | `danger` | `#E5484D` | Failed, overdue, claims, destructive |
-| `dangerTint` | `#FCEBEC` | Danger background |
+| `dangerTint` | `#FDECEC` | Danger background |
+| `onAzure` | `#FFFFFF` | Text drawn ON a solid azure fill |
+| `onHoney` | `#3D2C00` | Text drawn ON a solid honey fill |
+| `onAzureTint` | `#1E50C8` | Legible text on `azureTint` |
+| `onSuccessTint` | `#0A7C46` | Legible text on `successTint` |
+| `onWarningTint` | `#8A5300` | Legible text on `warningTint` |
+| `onDangerTint` | `#C42A1F` | Legible text on `dangerTint` |
+| `onHoneyTint` | `#7A5800` | Legible text on `honeyTint` |
+| `scrim` | `rgba(10,37,64,0.45)` | Modal scrim behind sheets |
+| `skeleton` | `#E9EEF5` | Skeleton loading-state base |
+| `skeletonHighlight` | `#F4F7FB` | Skeleton loading-state highlight |
 
 ### 2.2 Dark
 
@@ -96,27 +109,46 @@ values change. Source of truth: `color.light` / `color.dark` in the tokens packa
 | `canvas` | `#0A0E1A` | App/page background |
 | `subtle` | `#111728` | Recessed background |
 | `surface` | `#141B2D` | Cards, sheets, inputs |
+| `surfacePressed` | `#1B2438` | Pressed/active surface tint |
 | `hairline` | `rgba(255,255,255,0.08)` | 1px borders / separators |
-| `textPrimary` | `#EAF0F8` | Primary text |
+| `text` | `#EAF0F8` | Primary text |
 | `textSecondary` | `#9DB0C9` | Secondary text |
 | `textTertiary` | `#6B7C96` | Hints, disabled |
-| `primary` | `#3D8BFF` | Brand action |
-| `primaryTint` | `rgba(61,139,255,0.16)` | Selected rows, ghost-button bg |
-| `accent` | `#FFC34D` | Attention / flags |
+| `azure` | `#5B87F5` | Brand primary |
+| `azureTint` | `rgba(91,135,245,0.18)` | Selected chips, info cards, marker halo |
+| `honey` | `#E8B84D` | Brand accent |
+| `honeyTint` | `rgba(232,184,77,0.16)` | Honey wash |
 | `success` | `#2DD583` | Delivered, paid, healthy |
+| `successTint` | `rgba(45,213,131,0.16)` | Success background |
 | `warning` | `#FFC34D` | At-risk, due-soon |
+| `warningTint` | `rgba(255,195,77,0.16)` | Warning background |
 | `danger` | `#FF6168` | Failed, overdue, claims |
+| `dangerTint` | `rgba(255,97,104,0.16)` | Danger background |
+| `onAzure` | `#FFFFFF` | Text drawn ON a solid azure fill |
+| `onHoney` | `#241A00` | Text drawn ON a solid honey fill |
+| `onAzureTint` | `#5B87F5` | Legible text on `azureTint` |
+| `onSuccessTint` | `#2DD583` | Legible text on `successTint` |
+| `onWarningTint` | `#FFC34D` | Legible text on `warningTint` |
+| `onDangerTint` | `#FF6168` | Legible text on `dangerTint` |
+| `onHoneyTint` | `#E8B84D` | Legible text on `honeyTint` |
+| `scrim` | `rgba(0,0,0,0.6)` | Modal scrim behind sheets |
+| `skeleton` | `#1B2438` | Skeleton loading-state base |
+| `skeletonHighlight` | `#222D45` | Skeleton loading-state highlight |
 
-> Dark mode intentionally ships a smaller interaction set (no separate hover/active or per-status
-> tints) — depth and state come from the surface steps + base status colors. Don't invent dark-mode
-> hovers/tints; if the system needs them later, add them to the tokens first.
+> `onXTint` fields are the legible foreground for text drawn ON that status's pale tint background —
+> in light mode these are deep shades of the hue (the bright semantic color fails contrast on its own
+> tint); in dark mode they're the bright hue (reads fine on the dark translucent tint). Use the bright
+> `success`/`warning`/`danger`/`honey`/`azure` values only for fills, icons, dots, and borders — never
+> for text on the matching tint. RN has no hover state, and web's own press/hover states live in its
+> own component layer (`apps/web/components/ui.tsx`) independent of this shared scale — so there are
+> no `*Hover`/`*Active` fields here; don't invent them.
 
 ### 2.3 Status → color mapping (canonical)
 
 | Domain state | Color |
 | --- | --- |
 | Delivered · Paid · Completed · On-time · Reconciled | `success` |
-| En-route · Scheduled · In-progress · Active | `primary` |
+| En-route · Scheduled · In-progress · Active | `azure` |
 | Due soon · On-hold · At-risk · Pending approval | `warning` |
 | Failed · Overdue · Claim · Lost · Damage flagged | `danger` |
 | Draft · Closed · Inactive · Archived | neutral text + `subtle` bg |
@@ -147,7 +179,7 @@ gaps and screen padding.
 | Token | px | Use |
 | --- | --- | --- |
 | `xs` | 6 | Chips, small inputs |
-| `sm` | 8 | Buttons, inputs |
+| `sm` | 10 | Buttons, inputs |
 | `md` | 12 | Cards, list rows |
 | `lg` | 16 | Large cards, tiles |
 | `xl` | 20 | Sheets, modals |
@@ -173,6 +205,7 @@ keeps it native and legible.
 | `subhead` | 15 | 20 | 500 | 0 | Labels, sub-row |
 | `footnote` | 13 | 18 | 400 | 0 | Secondary metadata |
 | `caption` | 12 | 16 | 500 | 0.01 | Badges, timestamps, hints |
+| `overline` | 12 | 16 | 700 | 0.7 | Section eyebrows / uppercase kickers |
 
 ---
 
@@ -225,19 +258,23 @@ Every data surface implements all of these — they are not optional polish:
 
 ## 9. Component conventions (applying the tokens)
 
-- **Buttons** — `sm` radius; primary = `primary` bg / white text (hover `primaryHover`, active
-  `primaryActive`); secondary = `surface` + `hairline` border; ghost = `primaryTint` bg. Min target
-  44×44pt. Disabled = `textTertiary` on `subtle`.
+- **Buttons** — `sm` radius; primary = `azure` bg / `onAzure` text (RN has no hover state; web's
+  press/hover states live in its own component layer, not this shared scale); secondary = `surface` +
+  `hairline` border; ghost = `azureTint` bg + `onAzureTint` text; pressed/active = `surfacePressed`.
+  Min target 44×44pt. Disabled = `textTertiary` on `subtle`.
 - **Cards / list rows** — `surface` on `canvas`, `md` radius, `e1` at rest, `1px hairline` where a
-  border reads cleaner than a shadow. Lift to `e2` only when interactive/hovered.
+  border reads cleaner than a shadow. Lift to `e2` only when interactive/hovered; press state =
+  `surfacePressed`.
 - **Inputs** — `surface`, `hairline` border, `sm` radius, `focus` ring on focus, `danger` border +
   `caption` helper on error.
-- **Badges / status pills** — `pill` radius, `caption` type, status color on its tint (e.g.
-  `success` on `successTint`), **plus a glyph or label** so it's never color-only.
+- **Badges / status pills** — `pill` radius, `caption` type, the matching `onXTint` foreground on its
+  tint (e.g. `onSuccessTint` text on `successTint` bg), **plus a glyph or label** so it's never
+  color-only.
 - **Sheets / modals** — `surface`, `xl`–`2xl` radius (top corners on mobile sheets), `e3`, present
-  with `emphasized` easing over `sheet` duration; backdrop is a low-opacity scrim, not a blur wall.
+  with `emphasized` easing over `sheet` duration; backdrop is `scrim`, not a blur wall.
 - **Maps / live tracking** — the vehicle, the stop, and the ETA range are the bright elements; the
-  basemap is desaturated. Live = `primary`; show last-fix age honestly.
+  basemap is desaturated. Live = `azure`; show last-fix age honestly.
+- **Skeletons** — `skeleton` base with a `skeletonHighlight` shimmer sweep, matching the real layout.
 
 ---
 
@@ -275,7 +312,7 @@ import { tokens, light, dark, space, radius, fontSize, shadow, motion, tailwindP
 
 - **Web (Tailwind)** — adopt the preset later:
   `presets: [require('@blue-bee/design-tokens').tailwindPreset]`, then use `bg-surface`,
-  `text-text-primary`, `rounded-md`, `shadow-e1`, `text-title2`, etc.
+  `text-text`, `bg-azure`, `rounded-md`, `shadow-e1`, `text-title2`, etc.
 - **Expo apps** — import the raw constants into the StyleSheet/theme layer and a Reanimated config
   (use `motion.spring` for gestures, `motion.durations` + `easing` for timed transitions).
 

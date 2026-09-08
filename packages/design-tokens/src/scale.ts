@@ -26,7 +26,7 @@ export type SpaceToken = keyof typeof space;
 /** Corner radii (px). `pill` is effectively fully-round. */
 export const radius = {
   xs: 6,
-  sm: 8,
+  sm: 10,
   md: 12,
   lg: 16,
   xl: 20,
@@ -57,5 +57,8 @@ export const fontSize = {
   subhead: { size: 15, lineHeight: 20, weight: 500, tracking: 0 },
   footnote: { size: 13, lineHeight: 18, weight: 400, tracking: 0 },
   caption: { size: 12, lineHeight: 16, weight: 500, tracking: 0.01 },
+  /** Matches driver/owner's production `typography.overline` (fontSize 12/lineHeight 16/fontWeight
+   * '700'/letterSpacing 0.7), field names converted to this file's `TypeStyle` shape. */
+  overline: { size: 12, lineHeight: 16, weight: 700, tracking: 0.7 },
 } as const satisfies Record<string, TypeStyle>;
 export type FontSizeToken = keyof typeof fontSize;

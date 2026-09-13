@@ -121,16 +121,6 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
@@ -147,7 +137,7 @@
       [
         "expo-notifications",
         {
-          "color": "#0B5FFF"
+          "color": "#1E50C8"
         }
       ],
       "expo-secure-store",
@@ -156,15 +146,15 @@
     "extra": {
       "apiBaseUrl": "http://localhost:3000",
       "eas": {
-        "projectId": "32b3f490-99a7-4faf-87d9-d6ecb24f9d28"
+        "projectId": "08ab5d89-d527-4907-bbc8-aa76c9cdb5d9"
       }
     },
-    "owner": "gautam1337",
+    "owner": "sherwyn_joel",
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/32b3f490-99a7-4faf-87d9-d6ecb24f9d28"
+      "url": "https://u.expo.dev/08ab5d89-d527-4907-bbc8-aa76c9cdb5d9"
     }
   }
 }

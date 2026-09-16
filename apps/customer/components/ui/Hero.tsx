@@ -23,7 +23,8 @@ export function Hero({ children, padding = 20, style, testID }: HeroProps): Reac
       testID={testID}
       style={[styles.wrap, { backgroundColor: colors.azureTint, borderRadius: radius.card, padding }, style]}
     >
-      {/* decorative depth — a royal-blue glow bottom-left and a lavender glow top-right */}
+      {/* decorative depth — a brand-honey glow top-right and a brand-azure glow bottom-left. Both hues
+          come from the Royal palette (honey #DDA82E, azure #1E50C8) — never an off-palette color. */}
       <View pointerEvents="none" style={[styles.blob, styles.blobA]} />
       <View pointerEvents="none" style={[styles.blob, styles.blobB]} />
       <View style={styles.content}>{children}</View>
@@ -35,6 +36,6 @@ const styles = StyleSheet.create({
   wrap: { overflow: 'hidden' },
   content: { position: 'relative' },
   blob: { position: 'absolute', borderRadius: 999 },
-  blobA: { width: 220, height: 220, right: -70, top: -90, backgroundColor: 'rgba(139,124,246,0.16)' },
+  blobA: { width: 220, height: 220, right: -70, top: -90, backgroundColor: 'rgba(221,168,46,0.12)' },
   blobB: { width: 180, height: 180, left: -60, bottom: -80, backgroundColor: 'rgba(30,80,200,0.10)' },
 });

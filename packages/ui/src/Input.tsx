@@ -29,6 +29,8 @@ export interface InputProps extends TextInputProps {
   containerStyle?: ViewStyle;
   /** Large, glove-friendly figures (OTP / weight entry) — driver/owner's capability. */
   big?: boolean;
+  /** A trailing unit/affix (e.g. "kg", "sqft") rendered inside the field after the input. */
+  suffix?: string;
 }
 
 export function Input({
@@ -38,6 +40,7 @@ export function Input({
   icon,
   containerStyle,
   big,
+  suffix,
   style,
   onFocus,
   onBlur,
@@ -86,6 +89,11 @@ export function Input({
             style,
           ]}
         />
+        {suffix ? (
+          <Text variant="subhead" weight="600" color="secondary" style={styles.suffix}>
+            {suffix}
+          </Text>
+        ) : null}
       </View>
       {error ? (
         <Text variant="footnote" color="danger" style={styles.helper}>
@@ -106,6 +114,7 @@ const styles = StyleSheet.create({
   label: { marginBottom: 8 },
   field: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 },
   icon: { marginRight: 10 },
+  suffix: { marginLeft: 8 },
   input: { flex: 1, paddingVertical: 13 },
   big: bigFigures,
   helper: { marginTop: 6 },

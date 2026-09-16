@@ -79,7 +79,7 @@ export function PricingScreen(): React.ReactElement {
     () => (
       <View style={[styles.headerRow, { paddingTop: insets.top + 12, paddingHorizontal: space.xl }]}>
         <View style={{ flex: 1 }}>
-          <Text variant="display" weight="700">
+          <Text variant="title1" weight="700">
             Pricing
           </Text>
           <Text variant="subhead" color="secondary" style={{ marginTop: 4 }}>

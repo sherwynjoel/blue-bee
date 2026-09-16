@@ -21,6 +21,7 @@ import {
   Sheet,
   SkeletonCard,
   Text,
+  TrustStrip,
   fireHaptic,
   type IconTone,
 } from '../../components/ui';
@@ -184,15 +185,6 @@ export function DashboardScreen(): React.ReactElement {
                 <View style={styles.blockHead}>
                   <IconBadge icon={isReferCard ? 'gift' : 'bell'} tone="azure" size={56} circle style={{ marginRight: 14 }} />
                   <View style={{ flex: 1 }}>
-                    {/* The eyebrow + reward line are FUNDED-reward-gated, never shown from block text alone. */}
-                    {hasReward && isReferCard ? (
-                      <View style={styles.eyebrowRow}>
-                        <Feather name="star" size={12} color={colors.honey} />
-                        <Text variant="caption" weight="700" color="honey" style={{ marginLeft: 4, letterSpacing: 0.5 }}>
-                          EARN FREE CREDITS
-                        </Text>
-                      </View>
-                    ) : null}
                     <Text variant="headline" weight="700">
                       {b.title}
                     </Text>
@@ -389,14 +381,14 @@ export function DashboardScreen(): React.ReactElement {
 
       {/* ─── Trust strip — static value-prop chrome (no numbers, no per-user claims). ─── */}
       <View style={{ paddingHorizontal: 20, marginTop: space.lg }}>
-        <Card>
-          <View style={styles.trustRow}>
-            <TrustItem icon="truck" tone="azure" label="Free Pickup" caption="On all orders" />
-            <TrustItem icon="check-circle" tone="success" label="Quality Clean" caption="Always guaranteed" />
-            <TrustItem icon="clock" tone="honey" label="On-time Delivery" caption="Right to your door" />
-            <TrustItem icon="shield" tone="neutral" label="Secure & Safe" caption="Your items, safe with us" />
-          </View>
-        </Card>
+        <TrustStrip
+          items={[
+            { icon: 'truck', tone: 'azure', label: 'Free Pickup', caption: 'On all orders' },
+            { icon: 'check-circle', tone: 'success', label: 'Quality Clean', caption: 'Always guaranteed' },
+            { icon: 'clock', tone: 'honey', label: 'On-time Delivery', caption: 'Right to your door' },
+            { icon: 'shield', tone: 'neutral', label: 'Secure & Safe', caption: 'Your items, safe with us' },
+          ]}
+        />
       </View>
 
       <Sheet visible={customizeOpen} onClose={() => setCustomizeOpen(false)} title="Customize quick actions" testID="home-customize-sheet">
@@ -447,21 +439,6 @@ function QuickAction({
   );
 }
 
-/** A trust-strip column — icon chip, bold label, caption. Purely static value-prop chrome. */
-function TrustItem({ icon, tone, label, caption }: { icon: React.ComponentProps<typeof Feather>['name']; tone: IconTone; label: string; caption: string }): React.ReactElement {
-  return (
-    <View style={styles.trustCol}>
-      <IconBadge icon={icon} tone={tone} size={30} />
-      <Text variant="caption" weight="700" center style={{ marginTop: 8 }}>
-        {label}
-      </Text>
-      <Text variant="caption" color="tertiary" center style={{ marginTop: 1 }}>
-        {caption}
-      </Text>
-    </View>
-  );
-}
-
 /** Maps the customer-facing status tone (from `customerStatus`) onto the Badge/IconBadge palette. */
 const TONE_MAP: Record<CustomerTone, IconTone> = {
   active: 'azure',
@@ -491,7 +468,6 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   blockHead: { flexDirection: 'row', alignItems: 'flex-start' },
-  eyebrowRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   seeAll: { flexDirection: 'row', alignItems: 'center' },
   customizePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7 },
@@ -502,6 +478,4 @@ const styles = StyleSheet.create({
   editPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 7 },
   acctSplit: { flexDirection: 'row', paddingVertical: 14, paddingHorizontal: 16, borderTopWidth: StyleSheet.hairlineWidth },
   acctCol: { flex: 1 },
-  trustRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  trustCol: { flex: 1, alignItems: 'center', paddingHorizontal: 2 },
 });

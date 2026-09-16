@@ -1,5 +1,6 @@
-import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Alert, Animated, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, type NavigationProp } from '@react-navigation/native';
 import { ApiError } from '@blue-bee/api-client';
@@ -10,7 +11,7 @@ import type { RootStackParamList } from '../navigation';
 import { orderRef, rangeText, shortDate, shortTime } from '../format';
 import { isRateable } from '../orders/rating';
 import { StarRating } from '../components/StarRating';
-import { useTheme, usePressScale, useEntrance } from '../../theme';
+import { useTheme, usePressScale } from '../../theme';
 import {
   Badge,
   type BadgeTone,
@@ -23,6 +24,7 @@ import {
   SkeletonCard,
   StatTile,
   Text,
+  TrustStrip,
 } from '../../components/ui';
 import { buildCustomerTimeline, customerStatus, type CustomerTimeline, type CustomerTone } from '../orders/timeline';
 
@@ -116,22 +118,15 @@ function priceParts(order: OrderSummary): { amount: string; suffix: string } {
 export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootStackParamList> }): React.ReactElement {
   const { client } = useSession();
   const { colors, space, elevation } = useTheme();
+  // The tab header is hidden (the screen owns its header), so the top safe-area inset is applied here.
+  const insets = useSafeAreaInsets();
+  const listPad = { paddingTop: insets.top + 12 };
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const trackingY = useRef(0);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <Pressable testID="settings" onPress={() => navigation.navigate('Settings')} hitSlop={12} accessibilityLabel="Settings">
-          <Feather name="settings" size={22} color={colors.azure} />
-        </Pressable>
-      ),
-    });
-  }, [navigation, colors.azure]);
 
   const load = useCallback(async (): Promise<void> => {
     setError(null);
@@ -206,7 +201,7 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.canvas }]} testID="orders-loading">
-        <View style={styles.list}>
+        <View style={[styles.list, listPad]}>
           {headTitle}
           <SkeletonCard />
           <SkeletonCard />
@@ -219,7 +214,7 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
   if (error) {
     return (
       <View style={[styles.container, { backgroundColor: colors.canvas }]}>
-        <View style={styles.list}>
+        <View style={[styles.list, listPad]}>
           {headTitle}
           <Card style={styles.errorCard}>
             <Feather name="wifi-off" size={26} color={colors.textTertiary} />
@@ -241,7 +236,7 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
       <ScrollView
         testID="orders-list"
         ref={scrollRef}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, listPad]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.azure} colors={[colors.azure]} />}
       >
@@ -272,7 +267,6 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
                 <React.Fragment key={order.id}>
                   <CompactOrderRow
                     order={order}
-                    index={i}
                     onPress={() => navigation.navigate('OrderDetail', { orderId: order.id })}
                     onRate={() => navigation.navigate('Rate', { orderId: order.id })}
                   />
@@ -340,42 +334,22 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
               </Hero>
             </View>
 
-            {trackedOrders.map((order, i) => (
-              <TrackingCard key={order.id} order={order} index={i} onPress={() => navigation.navigate('OrderDetail', { orderId: order.id })} />
+            {trackedOrders.map((order) => (
+              <TrackingCard key={order.id} order={order} onPress={() => navigation.navigate('OrderDetail', { orderId: order.id })} />
             ))}
 
             {/* Trust strip — "Real-time Tracking" is real (scrolls up to the section above); the rest
                 have no backing screen yet, so they're honest, tappable "coming soon" affordances rather
                 than fabricated claims. */}
-            <Card style={styles.trustCard}>
-              <View style={styles.trustRow}>
-                <TrustItem testID="trust-tracking" icon="radio" tone="honey" title="Real-time Tracking" subtitle="Live updates" onPress={scrollToTracking} />
-                <TrustItem
-                  testID="trust-secure"
-                  icon="shield"
-                  tone="azure"
-                  title="Secure & Safe"
-                  subtitle="Your orders are protected"
-                  onPress={() => showComingSoon('Secure & Safe')}
-                />
-                <TrustItem
-                  testID="trust-support"
-                  icon="headphones"
-                  tone="success"
-                  title="24/7 Support"
-                  subtitle="We’re here to help"
-                  onPress={() => showComingSoon('24/7 Support')}
-                />
-                <TrustItem
-                  testID="trust-returns"
-                  icon="star"
-                  tone="warning"
-                  title="Easy Returns"
-                  subtitle="Hassle-free returns"
-                  onPress={() => showComingSoon('Easy Returns')}
-                />
-              </View>
-            </Card>
+            <TrustStrip
+              style={styles.trustCard}
+              items={[
+                { testID: 'trust-tracking', icon: 'radio', tone: 'honey', label: 'Real-time Tracking', caption: 'Live updates', onPress: scrollToTracking },
+                { testID: 'trust-secure', icon: 'shield', tone: 'azure', label: 'Secure & Safe', caption: 'Your orders are protected', onPress: () => showComingSoon('Secure & Safe') },
+                { testID: 'trust-support', icon: 'headphones', tone: 'success', label: '24/7 Support', caption: 'We’re here to help', onPress: () => showComingSoon('24/7 Support') },
+                { testID: 'trust-returns', icon: 'star', tone: 'warning', label: 'Easy Returns', caption: 'Hassle-free returns', onPress: () => showComingSoon('Easy Returns') },
+              ]}
+            />
 
             <Button testID="book-cta" label="Book a pickup" icon="plus" onPress={() => navigation.navigate('Services')} style={{ marginTop: 4 }} />
           </>
@@ -390,24 +364,21 @@ export function OrdersScreen({ navigation }: { navigation: NavigationProp<RootSt
  *  testIDs/wiring (`rate-${id}`, `card-rating-${id}`) from the previous per-card layout. */
 function CompactOrderRow({
   order,
-  index,
   onPress,
   onRate,
 }: {
   order: OrderSummary;
-  index: number;
   onPress: () => void;
   onRate: () => void;
 }): React.ReactElement {
   const { colors } = useTheme();
   const press = usePressScale(true);
-  const entrance = useEntrance(index);
   const view = customerStatus(order.status);
   const tone = toTone(view.tone);
   const { amount, suffix } = priceParts(order);
 
   return (
-    <Animated.View style={{ opacity: entrance.opacity, transform: entrance.transform }}>
+    <View>
       <Pressable
         testID={`order-row-${order.id}`}
         onPress={onPress}
@@ -475,7 +446,7 @@ function CompactOrderRow({
           </Pressable>
         )
       ) : null}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -483,18 +454,16 @@ function CompactOrderRow({
  * A per-order "real-time tracking" card — colored left border (the customer's current-stage tone) +
  * the 4-node horizontal timeline, matching the render's tracking section.
  */
-function TrackingCard({ order, index, onPress }: { order: OrderSummary; index: number; onPress: () => void }): React.ReactElement {
+function TrackingCard({ order, onPress }: { order: OrderSummary; onPress: () => void }): React.ReactElement {
   const { colors } = useTheme();
   const press = usePressScale(true);
-  const entrance = useEntrance(index);
   const view = customerStatus(order.status);
   const tone = toTone(view.tone);
   const timeline = buildCustomerTimeline(order.status);
   const { amount, suffix } = priceParts(order);
-  const borderColor = toneHex(tone, colors);
 
   return (
-    <Animated.View style={{ opacity: entrance.opacity, transform: entrance.transform }}>
+    <View>
       <Pressable
         testID={`order-tracking-${order.id}`}
         onPress={onPress}
@@ -504,7 +473,7 @@ function TrackingCard({ order, index, onPress }: { order: OrderSummary; index: n
         accessibilityLabel={`Track order ${orderRef(order.id)}`}
       >
         <Animated.View style={{ transform: press.transform }}>
-          <Card style={[styles.trackingCard, { borderLeftWidth: 4, borderLeftColor: borderColor }]}>
+          <Card style={styles.trackingCard}>
             <View style={styles.trackingTop}>
               <IconBadge icon={stageIcon(view.tone)} tone={tone} size={36} />
               <View style={styles.trackingMeta}>
@@ -534,7 +503,7 @@ function TrackingCard({ order, index, onPress }: { order: OrderSummary; index: n
           </Card>
         </Animated.View>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -586,37 +555,9 @@ function TrackingTimeline({ timeline, tone, testID }: { timeline: CustomerTimeli
 /** One trust-strip chip — a colored icon chip + bold title + muted subtitle. Real destinations where
  *  they exist (Real-time Tracking scrolls to the live section above); an honest "coming soon" tap
  *  everywhere else — never a fabricated claim with no feature behind it. */
-function TrustItem({
-  icon,
-  tone,
-  title,
-  subtitle,
-  onPress,
-  testID,
-}: {
-  icon: FeatherName;
-  tone: IconTone;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-  testID?: string;
-}): React.ReactElement {
-  return (
-    <Pressable testID={testID} onPress={onPress} accessibilityRole="button" accessibilityLabel={title} hitSlop={4} style={styles.trustItem}>
-      <IconBadge icon={icon} tone={tone} size={34} />
-      <Text variant="caption" weight="700" style={{ marginTop: 6 }} numberOfLines={1}>
-        {title}
-      </Text>
-      <Text variant="caption" color="secondary" numberOfLines={2} style={{ marginTop: 1 }}>
-        {subtitle}
-      </Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  list: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32, flexGrow: 1 },
+  list: { paddingHorizontal: 20, paddingBottom: 32, flexGrow: 1 },
 
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 },
   headerTexts: { flex: 1, paddingRight: 12 },
@@ -677,6 +618,4 @@ const styles = StyleSheet.create({
   trackerConnector: { flex: 0.5, height: 2, borderRadius: 1, marginTop: 9 },
 
   trustCard: { marginTop: 4 },
-  trustRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  trustItem: { width: '50%', paddingVertical: 8, paddingRight: 8 },
 });

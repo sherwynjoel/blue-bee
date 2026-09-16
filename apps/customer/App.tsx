@@ -181,11 +181,13 @@ function MainTabs(): React.ReactElement {
       <Tab.Screen name="Home" component={DashboardScreen} options={{ headerShown: false }} />
       {/* Services (catalogue grid). HomeScreen owns its own header, so the tab header is hidden. */}
       <Tab.Screen name="Services" component={HomeScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Orders" component={OrdersTab} options={{ title: 'My orders' }} />
-      {/* Profile tab — route name stays 'Settings' (frozen), titled/labelled "Profile". */}
-      <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Profile' }} />
+      {/* Orders/Profile/Refer own their in-screen headers (title + actions) like Home/Services/Pricing —
+          the native tab header would double the title, so every dock tab hides it consistently. */}
+      <Tab.Screen name="Orders" component={OrdersTab} options={{ headerShown: false }} />
+      {/* Profile tab — route name stays 'Settings' (frozen), labelled "Profile" in the dock. */}
+      <Tab.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
       {/* [Inc-34] Refer tab — invite friends (reward deferred; no reward copy). Labelled "Invite" in the dock. */}
-      <Tab.Screen name="Refer" component={ReferScreen} options={{ title: 'Refer' }} />
+      <Tab.Screen name="Refer" component={ReferScreen} options={{ headerShown: false }} />
       {/* [Royal] Pricing is now a first-class dock tab (was a pushed route). Owns its own header. */}
       <Tab.Screen name="Pricing" component={PricingScreen} options={{ headerShown: false }} />
     </Tab.Navigator>

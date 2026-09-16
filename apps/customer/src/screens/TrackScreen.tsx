@@ -9,7 +9,7 @@ import { TrackMap } from '../components/TrackMap';
 import { useVehicleTracking } from '../tracking/useVehicleTracking';
 import { etaText, shortTime } from '../format';
 import { useTheme } from '../../theme';
-import { Badge, Button, Card, Glass, Hero, IconBadge, Text, type BadgeTone } from '../../components/ui';
+import { Badge, Button, Card, Glass, Hero, IconBadge, SkeletonCard, Text, type BadgeTone } from '../../components/ui';
 
 type Route = RouteProp<RootStackParamList, 'Track'>;
 
@@ -63,12 +63,11 @@ export function TrackScreen({ route }: { route: Route }): React.ReactElement {
     return (
       <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
         {preMapHeader}
-        <Card style={styles.stateCard}>
-          <ActivityIndicator testID="track-loading" size="large" color={colors.azure} />
-          <Text variant="subhead" color="secondary" center style={{ marginTop: 12 }}>
-            Finding your driver…
-          </Text>
-        </Card>
+        {/* Skeletons, not a spinner — the same loading language every other screen speaks. */}
+        <View testID="track-loading" style={{ paddingHorizontal: 20, marginTop: 8, gap: 14 }}>
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
       </View>
     );
   }

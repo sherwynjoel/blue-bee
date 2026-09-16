@@ -30,7 +30,8 @@ export interface ButtonProps {
 const SIZE: Record<ButtonSize, { minHeight: number; paddingH: number; gap: number; icon: number }> = {
   lg: { minHeight: 54, paddingH: 20, gap: 8, icon: 19 },
   md: { minHeight: 46, paddingH: 16, gap: 7, icon: 17 },
-  sm: { minHeight: 36, paddingH: 12, gap: 6, icon: 15 },
+  // sm stays visually compact via type/padding but never dips under the 44pt platform minimum target.
+  sm: { minHeight: 44, paddingH: 12, gap: 6, icon: 15 },
 };
 
 /**

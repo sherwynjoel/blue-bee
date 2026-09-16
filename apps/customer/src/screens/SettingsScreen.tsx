@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ApiError } from '@blue-bee/api-client';
 import type { UpdateProfileInput } from '@blue-bee/shared';
@@ -48,6 +49,8 @@ type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 export function SettingsScreen(): React.ReactElement {
   const { me, client, logout, reloadMe } = useSession();
   const { colors, space, radius, elevation } = useTheme();
+  // Tab header is hidden (every dock tab owns its header) — apply the top safe-area inset here.
+  const insets = useSafeAreaInsets();
   // Profile is a TAB screen (no `navigation` prop), so reach the root stack through the hook.
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
@@ -267,7 +270,7 @@ export function SettingsScreen(): React.ReactElement {
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1, backgroundColor: colors.canvas }}
-        contentContainerStyle={styles.container}
+        contentContainerStyle={[styles.container, { paddingTop: insets.top + 12 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Header — title + subtitle, bell/gear (both open the matching Coming-soon affordance). ── */}
@@ -286,6 +289,7 @@ export function SettingsScreen(): React.ReactElement {
               accessibilityRole="button"
               accessibilityLabel="Notifications"
               onPress={() => openComingSoon('Notifications')}
+              hitSlop={6}
               style={[styles.headerIconBtn, elevation.e1, { backgroundColor: colors.surface, borderRadius: radius.input, borderColor: colors.hairline }]}
             >
               <Feather name="bell" size={19} color={colors.text} />
@@ -295,6 +299,7 @@ export function SettingsScreen(): React.ReactElement {
               accessibilityRole="button"
               accessibilityLabel="Preferences"
               onPress={() => openComingSoon('Preferences')}
+              hitSlop={6}
               style={[styles.headerIconBtn, elevation.e1, { backgroundColor: colors.surface, borderRadius: radius.input, borderColor: colors.hairline, marginLeft: 10 }]}
             >
               <Feather name="settings" size={19} color={colors.text} />
@@ -583,7 +588,7 @@ const styles = StyleSheet.create({
 
   header: { flexDirection: 'row', alignItems: 'flex-start' },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
+  headerIconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
 
   identityRow: { flexDirection: 'row', alignItems: 'center' },
   avatarWrap: { position: 'relative' },

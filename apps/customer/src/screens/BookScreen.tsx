@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import {
   ItemKind,
@@ -17,7 +17,7 @@ import type { RootStackParamList } from '../navigation';
 import { buildBookDto, newIdempotencyKey, slotToWindow, type DraftItem } from '../orders/booking';
 import { money, rangeText } from '../format';
 import { useTheme } from '../../theme';
-import { Badge, Button, Card, EmptyState, IconBadge, Stepper, Text } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, IconBadge, Input, SkeletonCard, Stepper, Text, TrustStrip } from '../../components/ui';
 import { CorporatePricingNote } from '../components/CorporatePricing';
 import { DrycleanPicker } from '../components/DrycleanPicker';
 import { PickupSlotPicker } from '../components/PickupSlotPicker';
@@ -66,6 +66,8 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
   const [sites, setSites] = useState<CustomerSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by "Try again" on a failed blocking load — re-runs the load effect below.
+  const [loadNonce, setLoadNonce] = useState(0);
   // [Inc-16] Server truth: if the user holds an active corporate membership, their booking prices on that
   // account. The badge is informational; pricing itself is resolved server-side at booking (never here).
   const [corpAccountName, setCorpAccountName] = useState<string | null>(null);
@@ -170,7 +172,13 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
         // degrade silently — no membership badge
       }
     })();
-  }, [client, loadSites, card?.preselectSiteId, garmentMode, card?.cardId]);
+  }, [client, loadSites, card?.preselectSiteId, garmentMode, card?.cardId, loadNonce]);
+
+  const retryLoad = useCallback(() => {
+    setLoadError(null);
+    setLoading(true);
+    setLoadNonce((n) => n + 1);
+  }, []);
 
   // [Inc-26] Re-read the address picker whenever Book regains focus (they may have just added an address).
   const firstFocus = useRef(true);
@@ -292,22 +300,29 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
     );
   }
 
+  // Loading + error mirror the app-wide pattern (skeletons while loading, a retry card on failure) —
+  // the same language Home/Dashboard/Orders/Refer/Track speak, so Book never feels like a different app.
   if (loading)
     return (
-      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
-        <ActivityIndicator testID="book-loading" size="large" color={colors.azure} />
-        <Text variant="subhead" color="secondary" style={{ marginTop: 12 }}>
-          Loading booking options…
-        </Text>
+      <View testID="book-loading" style={[styles.content, { backgroundColor: colors.canvas, flex: 1 }]}>
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
       </View>
     );
   if (loadError)
     return (
-      <View style={[styles.center, { backgroundColor: colors.canvas }]}>
-        <Feather name="alert-circle" size={28} color={colors.danger} />
-        <Text variant="headline" weight="600" center style={{ marginTop: 12 }}>
-          {loadError}
-        </Text>
+      <View style={[styles.content, { backgroundColor: colors.canvas, flex: 1 }]}>
+        <Card style={styles.stateCard}>
+          <Feather name="alert-circle" size={26} color={colors.textTertiary} />
+          <Text variant="headline" weight="600" center style={{ marginTop: 12 }}>
+            Couldn’t load booking options
+          </Text>
+          <Text variant="subhead" color="secondary" center style={{ marginTop: 4 }}>
+            {loadError}
+          </Text>
+          <Button testID="book-retry" label="Try again" icon="refresh-cw" variant="outline" onPress={retryLoad} fullWidth={false} style={{ marginTop: 16 }} />
+        </Card>
       </View>
     );
 
@@ -318,7 +333,7 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <Stepper steps={['Schedule', 'Payment', 'Review']} current={bookStep} style={{ marginBottom: 4 }} />
+      <Stepper steps={['Items', 'Schedule', 'Review']} current={bookStep} style={{ marginBottom: 4 }} />
 
       {corpAccountName ? <CorporatePricingNote accountName={corpAccountName} /> : null}
 
@@ -381,20 +396,15 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
           <Text variant="subhead" weight="600" style={styles.sectionLabel}>
             {measureLabel(card?.unit)}
           </Text>
-          <View style={[styles.measureField, { backgroundColor: colors.surface, borderColor: colors.hairline, borderRadius: 12 }]}>
-            <TextInput
-              testID="measure-input"
-              value={measure}
-              onChangeText={setMeasure}
-              placeholder={measurePlaceholder(card?.unit)}
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="decimal-pad"
-              style={{ flex: 1, color: colors.text, fontSize: 17, paddingVertical: 13 }}
-            />
-            <Text variant="subhead" weight="600" color="secondary">
-              {unitSuffix(card?.unit)}
-            </Text>
-          </View>
+          {/* The shared Input (focus ring, unit suffix) — not a hand-rolled field; one field language app-wide. */}
+          <Input
+            testID="measure-input"
+            value={measure}
+            onChangeText={setMeasure}
+            placeholder={measurePlaceholder(card?.unit)}
+            keyboardType="decimal-pad"
+            suffix={unitSuffix(card?.unit)}
+          />
 
           {/* The estimate appears the moment a measure is typed — no "Add" tap. It is explicitly ROUGH: the
               binding quote is computed server-side from the weight/measure the driver captures at pickup. */}
@@ -561,17 +571,7 @@ export function BookScreen({ navigation, route }: NativeStackScreenProps<RootSta
         </View>
       ) : null}
 
-      <View style={styles.trustStrip}>
-        <IconBadge icon="shield" tone="success" size={36} />
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text variant="subhead" weight="700">
-            Safe. Reliable. On time.
-          </Text>
-          <Text variant="footnote" color="secondary" style={{ marginTop: 2 }}>
-            Your clothes are in good hands.
-          </Text>
-        </View>
-      </View>
+      <TrustStrip items={[{ icon: 'shield', tone: 'success', label: 'Safe. Reliable. On time.', caption: 'Your clothes are in good hands.' }]} />
     </ScrollView>
   );
 }
@@ -666,9 +666,9 @@ function estimateRange(amount: number): { low: string; high: string } {
 const styles = StyleSheet.create({
   content: { padding: 20, gap: 14, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  stateCard: { alignItems: 'center', paddingVertical: 28 },
   help: { marginBottom: 4 },
   sectionLabel: { marginTop: 14, marginBottom: 10 },
-  measureField: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, borderWidth: StyleSheet.hairlineWidth, minHeight: 52, gap: 8 },
   estimateBox: { borderRadius: 12, padding: 14, marginTop: 16 },
   estimateTop: { flexDirection: 'row', alignItems: 'center' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
@@ -689,5 +689,4 @@ const styles = StyleSheet.create({
   },
   errorBox: { borderRadius: 12, padding: 12, marginTop: 12 },
   outOfAreaBox: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 12, borderWidth: 1, padding: 12, marginTop: 12 },
-  trustStrip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, paddingTop: 4 },
 });

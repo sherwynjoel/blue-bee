@@ -9,7 +9,7 @@ import { useSession } from '../session/SessionProvider';
 import type { RootStackParamList } from '../navigation';
 import { money } from '../format';
 import { useTheme } from '../../theme';
-import { Button, Card, EmptyState, IconBadge, SkeletonCard, Text, fireHaptic } from '../../components/ui';
+import { Button, Card, EmptyState, IconBadge, SkeletonCard, Text, TrustStrip, fireHaptic } from '../../components/ui';
 
 /**
  * Home — the service grid (PRD §7A). A full-width BAR list of the org's service categories, driven
@@ -94,15 +94,10 @@ export function HomeScreen(): React.ReactElement {
 
   const header = (
     <View style={[styles.headerWrap, { paddingTop: insets.top + 12 }]}>
-      <Text variant="display" weight="700">
+      <Text variant="title1" weight="700">
         Our Services
       </Text>
-      {/* [Royal] Decorative onboarding-style progress mark — pure chrome, no data behind it. */}
-      <View style={styles.progressRow} accessible={false} importantForAccessibility="no">
-        <View style={[styles.progressBar, { backgroundColor: colors.azure }]} />
-        <View style={[styles.progressDot, { backgroundColor: colors.azureTint }]} />
-      </View>
-      <Text variant="subhead" color="secondary" style={{ marginTop: 10 }}>
+      <Text variant="subhead" color="secondary" style={{ marginTop: 4 }}>
         {firstName ? `Hi ${firstName} \u{1F44B} — pick a service to get started.` : 'Pick a service to get started.'}
       </Text>
       {/* [Inc-36] The Inc-33 "Book a pickup" button is GONE. Every bar below carries a backing service, so a
@@ -179,17 +174,10 @@ export function HomeScreen(): React.ReactElement {
         </View>
       ) : (
         <>
-          {/* [Royal] A decorative section eyebrow above the list — purely a heading treatment (dotted rules +
-              a sparkle mark either side), not a claim about grouping/taxonomy the catalog doesn't send. */}
-          <View style={styles.eyebrowRow}>
-            <View style={[styles.eyebrowLine, { borderColor: colors.azureTint }]} />
-            <Feather name="star" size={12} color={colors.azure} style={{ marginHorizontal: 8 }} />
-            <Text variant="subhead" weight="700">
-              All services
-            </Text>
-            <Feather name="star" size={12} color={colors.azure} style={{ marginHorizontal: 8 }} />
-            <View style={[styles.eyebrowLine, { borderColor: colors.azureTint }]} />
-          </View>
+          {/* A plain section heading — the same language every other list section speaks. */}
+          <Text variant="subhead" weight="700" style={styles.sectionHeading}>
+            All services
+          </Text>
           <View style={styles.list}>
             {categories.map((cat) => (
               <ServiceBar
@@ -220,29 +208,16 @@ export function HomeScreen(): React.ReactElement {
               />
             ))}
           </View>
-          {/* [Royal] A static brand trust strip matching the render's closing banner. Copy is a fixed brand
+          {/* [Royal] The shared trust strip (same motif as Home/Orders/Book). Copy is a fixed brand
               tagline (no invented counts/ratings) — softened from the render's "100%" figure since that
               specific number has no backing data source. */}
-          <View style={[styles.trustCard, { backgroundColor: colors.azureTint, borderColor: colors.hairline, borderRadius: 16 }]}>
-            <View style={styles.trustHalf}>
-              <IconBadge icon="shield" tone="azure" size={40} circle />
-              <View style={styles.trustText}>
-                <Text variant="subhead" weight="700">
-                  Trusted. Clean. Reliable.
-                </Text>
-                <Text variant="caption" color="secondary" style={{ marginTop: 2 }}>
-                  Quality service, on time, every time.
-                </Text>
-              </View>
-            </View>
-            <View style={[styles.trustDivider, { backgroundColor: colors.hairline }]} />
-            <View style={styles.trustHalf}>
-              <Feather name="check-circle" size={22} color={colors.azure} />
-              <Text variant="subhead" weight="700" style={{ marginLeft: 10, flex: 1 }}>
-                Satisfaction Guaranteed
-              </Text>
-            </View>
-          </View>
+          <TrustStrip
+            style={styles.trustCard}
+            items={[
+              { icon: 'shield', tone: 'azure', label: 'Trusted. Clean. Reliable.', caption: 'Quality service, on time, every time.' },
+              { icon: 'check-circle', tone: 'azure', label: 'Satisfaction Guaranteed' },
+            ]}
+          />
         </>
       )}
     </ScrollView>
@@ -397,12 +372,13 @@ function toneOnTint(colors: ReturnType<typeof useTheme>['colors'], tone: Tone): 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   headerWrap: { paddingHorizontal: 20, paddingBottom: 12 },
-  progressRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  progressBar: { width: 64, height: 4, borderRadius: 2 },
-  progressDot: { width: 6, height: 6, borderRadius: 3, marginLeft: 6 },
+  
+  
+  
   pricingLink: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
-  eyebrowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, marginTop: 8, marginBottom: 16 },
-  eyebrowLine: { flex: 1, borderTopWidth: 1.5, borderStyle: 'dotted' },
+  sectionHeading: { marginHorizontal: 20, marginTop: 20, marginBottom: 4 },
+  
+  
   list: { paddingHorizontal: 20, gap: 12 },
   bar: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, padding: 14 },
   barBody: { flex: 1, marginHorizontal: 14 },
@@ -410,8 +386,5 @@ const styles = StyleSheet.create({
   ctaCol: { alignItems: 'flex-end', justifyContent: 'center', paddingLeft: 14, minWidth: 96 },
   ctaRow: { flexDirection: 'row', alignItems: 'center' },
   stateCard: { marginHorizontal: 20, alignItems: 'center', paddingVertical: 28 },
-  trustCard: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, marginHorizontal: 20, marginTop: 20, padding: 16 },
-  trustHalf: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  trustText: { flex: 1, marginLeft: 12 },
-  trustDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
+  trustCard: { marginHorizontal: 20, marginTop: 20 },
 });

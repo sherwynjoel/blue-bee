@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Share, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { ApiError } from '@blue-bee/api-client';
 import type { ReferralView, ReferralsView } from '@blue-bee/shared';
@@ -22,6 +23,8 @@ import { Button, Card, EmptyState, Hero, IconBadge, SkeletonCard, Text, fireHapt
 export function ReferScreen(): React.ReactElement {
   const { client } = useSession();
   const { colors, space } = useTheme();
+  // Tab header is hidden (every dock tab owns its header) — apply the top safe-area inset here.
+  const insets = useSafeAreaInsets();
 
   const [referral, setReferral] = useState<ReferralView | null>(null);
   const [referrals, setReferrals] = useState<ReferralsView | null>(null);
@@ -77,7 +80,7 @@ export function ReferScreen(): React.ReactElement {
   if (loading) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.canvas }]} testID="refer-loading">
-        <View style={{ padding: 20 }}>
+        <View style={{ padding: 20, paddingTop: insets.top + 12 }}>
           <Hero testID="refer-hero">{heroHead}</Hero>
           <View style={{ marginTop: space.lg, gap: 16 }}>
             <SkeletonCard />
@@ -91,7 +94,7 @@ export function ReferScreen(): React.ReactElement {
   if (error || !referral || !referrals) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
-        <View style={{ padding: 20 }}>
+        <View style={{ padding: 20, paddingTop: insets.top + 12 }}>
           <Hero testID="refer-hero">{heroHead}</Hero>
         </View>
         <Card style={styles.stateCard}>
@@ -111,7 +114,7 @@ export function ReferScreen(): React.ReactElement {
   return (
     <ScrollView
       style={{ backgroundColor: colors.canvas }}
-      contentContainerStyle={{ padding: 20, paddingBottom: space.huge }}
+      contentContainerStyle={{ padding: 20, paddingTop: insets.top + 12, paddingBottom: space.huge }}
       showsVerticalScrollIndicator={false}
     >
       {/* Invite hero — code + share. No reward stated or implied. */}

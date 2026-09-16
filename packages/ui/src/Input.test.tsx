@@ -61,4 +61,11 @@ describe('Input (packages/ui)', () => {
     expect(flat.fontSize).toBe(26);
     expect(flat.letterSpacing).toBe(6);
   });
+
+  it('renders a trailing unit suffix when `suffix` is set, and none without it', () => {
+    const withSuffix = render(<Input value="4" onChangeText={() => undefined} suffix="kg" />);
+    expect(withSuffix.getByText('kg')).toBeTruthy();
+    const without = render(<Input value="4" onChangeText={() => undefined} />);
+    expect(without.queryByText('kg')).toBeNull();
+  });
 });

@@ -33,6 +33,8 @@ export { IconBadge } from './IconBadge';
 export type { IconBadgeProps, IconTone } from './IconBadge';
 export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
+export { TrustStrip } from './TrustStrip';
+export type { TrustStripItem, TrustStripProps } from './TrustStrip';
 export { Stepper } from './Stepper';
 export type { StepperProps } from './Stepper';
 export { Hero } from './Hero';

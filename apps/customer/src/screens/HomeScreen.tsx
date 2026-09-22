@@ -309,7 +309,6 @@ function ServiceBar({
   // A legacy/unknown icon key falls back to the neutral glyph rather than crashing the list.
   const look = (category.icon && isCatalogIconKey(category.icon) ? CATEGORY_ICONS[category.icon] : null) ?? { icon: 'grid' as const, tint: 'azure' as const };
   const footer = priceFooter(category, currency);
-  const onTint = toneOnTint(colors, look.tint);
 
   return (
     <Pressable
@@ -336,10 +335,15 @@ function ServiceBar({
         <View style={[styles.vDivider, { backgroundColor: colors.hairline }]} />
         <View style={styles.ctaCol}>
           <View style={styles.ctaRow}>
-            <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color={look.tint} tabular={!footer.quote}>
+            {/* The CTA is always azure — the action colour. `look.tint` is DECORATIVE (it tints the
+                icon chip so categories are scannable), and colouring the action with it meant the
+                same "Get a quote" rendered in five different hues down one list, including `danger`
+                red for Rug Cleaning and `warning` amber for Ironing. Red means a destructive or
+                failed action everywhere else in this app, so one colour was carrying two meanings. */}
+            <Text testID={`home-price-${category.id}`} variant="subhead" weight="700" color="azure" tabular={!footer.quote}>
               {footer.primary}
             </Text>
-            <Feather name="chevron-right" size={16} color={onTint} style={{ marginLeft: 2 }} />
+            <Feather name="chevron-right" size={16} color={colors.azure} style={{ marginLeft: 2 }} />
           </View>
           {footer.sub ? (
             <Text variant="caption" color="tertiary" style={{ marginTop: 2 }}>
@@ -350,23 +354,6 @@ function ServiceBar({
       </View>
     </Pressable>
   );
-}
-
-/** The legible on-tint foreground for a tone (dark shade of the hue in light mode, bright in dark mode) —
- *  mirrors the same tokens `IconBadge`/`Badge` resolve to, used here for the CTA chevron. */
-function toneOnTint(colors: ReturnType<typeof useTheme>['colors'], tone: Tone): string {
-  switch (tone) {
-    case 'azure':
-      return colors.onAzureTint;
-    case 'honey':
-      return colors.onHoneyTint;
-    case 'success':
-      return colors.onSuccessTint;
-    case 'warning':
-      return colors.onWarningTint;
-    case 'danger':
-      return colors.onDangerTint;
-  }
 }
 
 const styles = StyleSheet.create({

@@ -46,7 +46,7 @@ function vehicle(over: Partial<VehicleView> = {}): VehicleView {
 }
 
 function driver(over: Partial<DriverView> = {}): DriverView {
-  return { id: 'd1', userId: 'u1', license: 'DL-1', defaultVehicleId: null, createdAt: 'c', ...over };
+  return { id: 'd1', userId: 'u1', name: 'Andre Cole', license: 'DL-1', defaultVehicleId: null, createdAt: 'c', ...over };
 }
 
 function shift(over: Partial<ShiftView> = {}): ShiftView {
@@ -70,6 +70,22 @@ describe('DispatchBoard', () => {
     expect(screen.getByText('Planned')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument(); // stop count
     expect(mockClient.listRoutes).toHaveBeenCalledWith({ limit: 50 });
+  });
+
+  it('labels a driver row by name, not by a UUID prefix', async () => {
+    mockClient.listDrivers.mockResolvedValue([driver({ id: 'd3000000-0000-4000-8000-000000000001', name: 'Andre Cole', license: null })]);
+    render(<DispatchBoard />);
+    await waitFor(() => expect(screen.getByText(/Andre Cole/)).toBeInTheDocument());
+    // The bug: the row read "d3000000 · no license on file", so a dispatcher assigning a shift
+    // could not tell three drivers apart.
+    expect(screen.queryByText(/^d3000000 ·/)).not.toBeInTheDocument();
+    expect(screen.getByText('Andre Cole · no license on file')).toBeInTheDocument();
+  });
+
+  it('falls back to a readable label when a driver has no linked name', async () => {
+    mockClient.listDrivers.mockResolvedValue([driver({ id: 'd3000000-0000-4000-8000-000000000001', name: null, license: 'DL-9' })]);
+    render(<DispatchBoard />);
+    await waitFor(() => expect(screen.getByText('Driver d3000000 · DL-9')).toBeInTheDocument());
   });
 
   it('a role WITH dispatch capability (DISPATCHER) sees the create-route/vehicle/shift controls', async () => {

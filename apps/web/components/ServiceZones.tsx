@@ -255,7 +255,10 @@ function ZoneRow({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(zone.name);
   return (
-    <li className="flex items-center justify-between gap-2 py-2.5" data-testid={`zone-row-${zone.id}`}>
+    // Stacked, not side-by-side: this list lives in a ~350px sidebar card and the control group is
+    // 285px of that, so a single row left the name 0px wide and the zone rendered as a bare "• off".
+    // Name and status get their own line; the controls wrap underneath.
+    <li className="flex flex-col gap-1.5 py-2.5" data-testid={`zone-row-${zone.id}`}>
       <span className="flex min-w-0 items-center gap-2">
         <MapPin className={zone.active ? 'h-4 w-4 shrink-0 text-primary' : 'h-4 w-4 shrink-0 text-tertiary'} strokeWidth={2} aria-hidden="true" />
         {editing ? (
@@ -264,11 +267,14 @@ function ZoneRow({
             <Button size="sm" onClick={() => { onRename(name.trim()); setEditing(false); }} disabled={!name.trim()}>Save</Button>
           </span>
         ) : (
-          <span className="truncate text-subhead font-medium text-ink">{zone.name}</span>
+          // min-w-0 + flex-1: as a flex sibling of the shrink-0 button group this span had no
+          // shrink floor of its own, so in the narrow zones panel it collapsed to zero width and
+          // the row rendered as a bare "• off" with no zone name at all.
+          <span className="min-w-0 flex-1 truncate text-subhead font-medium text-ink">{zone.name}</span>
         )}
         <StatusPill tone={zone.active ? 'green' : 'neutral'}>{zone.active ? 'active' : 'off'}</StatusPill>
       </span>
-      <span className="flex shrink-0 items-center gap-1">
+      <span className="flex flex-wrap items-center justify-end gap-1">
         <Button size="sm" variant="ghost" onClick={onMoveUp} disabled={first} aria-label={`Move ${zone.name} up`}>
           <ChevronUp className="h-4 w-4" strokeWidth={2} />
         </Button>

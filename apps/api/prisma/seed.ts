@@ -11,7 +11,8 @@
  * No fabricated capacity, counts, or certifications (honesty firewall, CLAUDE.md).
  */
 import { PrismaClient, Prisma } from '@prisma/client';
-import { seedDrycleanCatalog } from './seed-catalog';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { seedDrycleanCatalog, s3, solidPng } from './seed-catalog';
 import {
   AccountType,
   BillingMode,
@@ -52,6 +53,33 @@ import {
 } from '@blue-bee/shared';
 
 const prisma = new PrismaClient();
+
+// ── Demo evidence objects ───────────────────────────────────────────────────────────────────────
+// Photo and POD-signature rows used to carry a fabricated `https://demo.local/…` URL. Nothing serves
+// that host, so the console rendered a broken <img> wherever the product promises evidence — intake
+// condition shots, the damage claim, the proof of delivery. A row asserting a photo that does not
+// exist is exactly the fake fixture the honesty firewall forbids. Each demo photo now gets REAL
+// bytes written to the object store over the same AWS-SDK path the app uses, and a `storageKey`, so
+// `MediaSigner.signedGet` mints a working signed URL for it just as it does for an operator upload.
+// Tints are per evidence kind purely so the demo images are distinguishable at a glance.
+const SEED_PHOTO_TINT: Record<string, [number, number, number]> = {
+  intake: [66, 84, 120],
+  before: [92, 76, 60],
+  after: [70, 108, 88],
+  pod: [58, 92, 128],
+  claim: [140, 64, 64],
+  signature: [40, 44, 52],
+};
+
+async function seedPhotoObject(orgId: string, folder: string, name: string): Promise<string> {
+  const { client, bucket } = s3();
+  const key = `org/${orgId}/${folder}/${name}.png`;
+  const [r, g, b] = SEED_PHOTO_TINT[folder] ?? [80, 80, 80];
+  await client.send(
+    new PutObjectCommand({ Bucket: bucket, Key: key, Body: solidPng(r, g, b), ContentType: 'image/png' }),
+  );
+  return key;
+}
 
 // Fixed demo UUIDs so the seed is idempotent.
 const ID = {
@@ -317,7 +345,8 @@ async function seedDemoOrder(): Promise<void> {
               orgId: ID.org,
               itemId: ID.item,
               kind: PhotoKind.INTAKE,
-              url: 'https://demo.local/intake/bb-demo-rug-0001-front.jpg',
+              storageKey: await seedPhotoObject(ID.org, 'intake', 'bb-demo-rug-0001-front'),
+              contentType: 'image/png',
               takenAt: at(i),
               createdBy: ID.owner,
             },
@@ -1097,9 +1126,17 @@ async function seedResidentialSpecialty(): Promise<void> {
     { i: 8, account: B, site: BS, serviceId: RUG, status: OrderStatus.INVOICED, itemStatus: ItemStatus.DELIVERED, kind: ItemKind.RUG, tagCode: 'BB-RES-B-RUG-8', itemDesc: 'Wool kilim 4x6', measure: 24, rate: 6.5, subtotal: 156, createdAt: '2026-05-20T10:00:00.000Z', custody: [CustodyStage.PICKED_UP, CustodyStage.INTAKE, CustodyStage.INSPECTED, CustodyStage.DUSTING, CustodyStage.WASH, CustodyStage.DRY, CustodyStage.FINISH, CustodyStage.QC, CustodyStage.READY, CustodyStage.OUT_FOR_DELIVERY, CustodyStage.DELIVERED], photos: [PhotoKind.INTAKE, PhotoKind.BEFORE, PhotoKind.AFTER, PhotoKind.POD], inspection: { codes: [], preexisting: false, notes: 'Demo — delivered; invoice past due (overdue example).' }, quote: QuoteStatus.APPROVED },
   ];
 
+  // The demo timeline above is written as fixed dates so the ORDER and SPACING of the story stay
+  // readable in source. Left as-is they also age: by September a June-pinned demo sat outside every
+  // default operational window, and Analytics — a rolling 30-day range — reported "—" for every
+  // metric while holding 21 real orders. Shift the whole block so the newest order always lands a
+  // day ago; relative gaps between orders are preserved exactly, so "overdue" stays overdue.
+  const demoNewest = Math.max(...CUST.map((o) => new Date(o.createdAt).getTime()));
+  const demoShiftMs = Date.now() - 24 * 3_600_000 - demoNewest;
+
   for (const o of CUST) {
     const oid = rid(100 + o.i);
-    const base = new Date(o.createdAt);
+    const base = new Date(new Date(o.createdAt).getTime() + demoShiftMs);
     const m = cad(o.subtotal);
     const at = (h: number) => new Date(base.getTime() + h * 3_600_000);
     await prisma.order.create({
@@ -1115,7 +1152,22 @@ async function seedResidentialSpecialty(): Promise<void> {
     if (o.custody.length) {
       await prisma.custodyEvent.createMany({ data: o.custody.map((stage, k) => ({ orgId: ID.org, itemId: rid(300 + o.i), stage, actorId: ID.owner, deviceId: 'demo-seed', occurredAt: at(k + 1), createdBy: ID.owner })) });
     }
-    await prisma.photo.createMany({ data: o.photos.map((kind, k) => ({ id: rid(700 + o.i * 10 + k), orgId: ID.org, itemId: rid(300 + o.i), orderId: oid, kind, url: `https://demo.local/${kind.toLowerCase()}/${o.tagCode.toLowerCase()}-${k}.jpg`, takenAt: at(k + 1), createdBy: ID.owner })), skipDuplicates: true });
+    await prisma.photo.createMany({
+      data: await Promise.all(
+        o.photos.map(async (kind, k) => ({
+          id: rid(700 + o.i * 10 + k),
+          orgId: ID.org,
+          itemId: rid(300 + o.i),
+          orderId: oid,
+          kind,
+          storageKey: await seedPhotoObject(ID.org, kind.toLowerCase(), `${o.tagCode.toLowerCase()}-${k}`),
+          contentType: 'image/png',
+          takenAt: at(k + 1),
+          createdBy: ID.owner,
+        })),
+      ),
+      skipDuplicates: true,
+    });
     if (o.inspection) {
       await prisma.inspection.create({ data: { id: rid(500 + o.i), orgId: ID.org, itemId: rid(300 + o.i), conditionCodes: o.inspection.codes, notes: o.inspection.notes, preexistingDamage: o.inspection.preexisting, ackBy: ID.owner, ackAt: at(2), createdBy: ID.owner } });
     }
@@ -1351,8 +1403,8 @@ async function seedLiveFleet(): Promise<void> {
   await prisma.routeStop.create({ data: { id: fid(63), orgId: ID.org, routeId: fid(51), seq: 3, accountId: CONDO_ACCOUNT, siteId: cid(11), orderId: cid(104), kind: RouteStopKind.DELIVERY, stopKind: RouteStopHandoff.CONCIERGE, status: RouteStopStatus.PENDING, createdBy: ID.owner } });
 
   // A real POD on the completed delivery stop (driver POD-capture flow) + a POD photo.
-  await prisma.proofOfDelivery.create({ data: { id: fid(81), orgId: ID.org, routeStopId: fid(61), signatureUrl: 'https://demo.local/pod/res-0007-signature.png', capturedBy: fid(1), capturedAt: ago(28), createdBy: ID.owner } });
-  await prisma.photo.create({ data: { id: fid(82), orgId: ID.org, orderId: rid(107), podId: fid(81), kind: PhotoKind.POD, url: 'https://demo.local/pod/res-0007-doorstep.jpg', takenAt: ago(28), createdBy: ID.owner } });
+  await prisma.proofOfDelivery.create({ data: { id: fid(81), orgId: ID.org, routeStopId: fid(61), signatureKey: await seedPhotoObject(ID.org, 'signature', 'res-0007-signature'), capturedBy: fid(1), capturedAt: ago(28), createdBy: ID.owner } });
+  await prisma.photo.create({ data: { id: fid(82), orgId: ID.org, orderId: rid(107), podId: fid(81), kind: PhotoKind.POD, storageKey: await seedPhotoObject(ID.org, 'pod', 'res-0007-doorstep'), contentType: 'image/png', takenAt: ago(28), createdBy: ID.owner } });
 
   // Route 2 — PUBLISHED concierge pickup run for vehicle 2 (a second moving vehicle on the map).
   await prisma.route.create({ data: { id: fid(52), orgId: ID.org, date: today, driverId: fid(22), vehicleId: fid(32), status: RouteStatus.PUBLISHED, optimized: true, createdAt: startedAt, createdBy: ID.owner } });

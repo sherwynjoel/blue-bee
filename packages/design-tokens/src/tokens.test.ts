@@ -102,11 +102,97 @@ describe('canonical color scale — Royal Dry Cleaning brand, azure/honey naming
       'azure', 'azureTint', 'honey', 'honeyTint',
       'success', 'successTint', 'warning', 'warningTint', 'danger', 'dangerTint',
       'onAzure', 'onHoney', 'onAzureTint', 'onSuccessTint', 'onWarningTint', 'onDangerTint', 'onHoneyTint',
+      'successSolid', 'onSuccess', 'dangerSolid', 'onDanger',
       'scrim', 'skeleton', 'skeletonHighlight',
     ];
     for (const field of requiredFields) {
       expect(light).toHaveProperty(field);
       expect(dark).toHaveProperty(field);
     }
+  });
+});
+
+/**
+ * The values above are only correct if they are LEGIBLE. This computes WCAG 2.1 contrast from the
+ * token values themselves and fails if any pair the UI actually draws drops below its threshold —
+ * 4.5:1 for text, which is what a 17px semibold button label needs. Four of these pairs shipped
+ * failing before this suite existed (white on `danger` was 3.91:1); the point of the test is that
+ * the next person to nudge a hex finds out immediately instead of at an accessibility audit.
+ */
+describe('token contrast (WCAG 2.1 AA)', () => {
+  const channels = (c: string): [number, number, number, number] => {
+    const rgba = /rgba?\(([^)]+)\)/.exec(c);
+    if (rgba?.[1]) {
+      const p = rgba[1].split(',').map((x) => parseFloat(x.trim()));
+      return [p[0] ?? 0, p[1] ?? 0, p[2] ?? 0, p[3] ?? 1];
+    }
+    const h = c.replace('#', '');
+    return [
+      parseInt(h.slice(0, 2), 16),
+      parseInt(h.slice(2, 4), 16),
+      parseInt(h.slice(4, 6), 16),
+      1,
+    ];
+  };
+
+  /** Flatten `fg` (which may be translucent) onto the opaque `bg`. */
+  const flatten = (fg: string, bg: string): [number, number, number] => {
+    const [r, g, b, a] = channels(fg);
+    const [bgR, bgG, bgB] = channels(bg);
+    return [r * a + bgR * (1 - a), g * a + bgG * (1 - a), b * a + bgB * (1 - a)];
+  };
+
+  const channel = (v: number): number => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+
+  const luminance = ([r, g, b]: [number, number, number]): number =>
+    0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+
+  const contrast = (fg: string, bg: string, base: string): number => {
+    const bgFlat = flatten(bg, base);
+    const fgFlat = flatten(fg, `rgb(${bgFlat.join(',')})`);
+    const a = luminance(fgFlat);
+    const b = luminance(bgFlat);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  };
+
+  it.each([
+    ['black on white is the known 21:1 anchor', '#000000', '#FFFFFF', '#FFFFFF', 21],
+    ['#767676 on white is the known 4.54:1 anchor', '#767676', '#FFFFFF', '#FFFFFF', 4.5],
+  ])('%s', (_name, fg, bg, base, min) => {
+    expect(contrast(fg, bg, base)).toBeGreaterThanOrEqual(min - 0.01);
+  });
+
+  const textPairs = (): Array<[string, string, string, string]> => {
+    const out: Array<[string, string, string, string]> = [];
+    for (const [scheme, c] of [['light', light], ['dark', dark]] as const) {
+      const base = c.canvas;
+      for (const ground of ['canvas', 'surface', 'subtle'] as const) {
+        for (const ink of ['text', 'textSecondary', 'textTertiary'] as const) {
+          out.push([`${scheme} ${ink} on ${ground}`, c[ink], c[ground], base]);
+        }
+      }
+      out.push(
+        [`${scheme} onAzure on azure`, c.onAzure, c.azure, base],
+        [`${scheme} onHoney on honey`, c.onHoney, c.honey, base],
+        [`${scheme} onSuccess on successSolid`, c.onSuccess, c.successSolid, base],
+        [`${scheme} onDanger on dangerSolid`, c.onDanger, c.dangerSolid, base],
+        [`${scheme} azure label on surface`, c.azure, c.surface, base],
+        [`${scheme} successSolid label on surface`, c.successSolid, c.surface, base],
+        [`${scheme} dangerSolid label on surface`, c.dangerSolid, c.surface, base],
+        [`${scheme} onAzureTint on azureTint`, c.onAzureTint, c.azureTint, c.surface],
+        [`${scheme} onSuccessTint on successTint`, c.onSuccessTint, c.successTint, c.surface],
+        [`${scheme} onWarningTint on warningTint`, c.onWarningTint, c.warningTint, c.surface],
+        [`${scheme} onDangerTint on dangerTint`, c.onDangerTint, c.dangerTint, c.surface],
+        [`${scheme} onHoneyTint on honeyTint`, c.onHoneyTint, c.honeyTint, c.surface],
+      );
+    }
+    return out;
+  };
+
+  it.each(textPairs())('%s meets 4.5:1', (_name, fg, bg, base) => {
+    expect(contrast(fg, bg, base)).toBeGreaterThanOrEqual(4.5);
   });
 });

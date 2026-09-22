@@ -4,7 +4,7 @@ import type { DriverStopAction } from '@blue-bee/shared';
 import { useSession } from '../session/SessionProvider';
 import { ApiError } from '../api/problem';
 import { ACTION_LABEL, availableActions, isTerminal, reasonsFor, requiresReason } from '../stops/actions';
-import { stopStatusMeta } from '../stops/status-ui';
+import { stopStatusMeta, humanize } from '../stops/status-ui';
 import { Badge, Button, Card, Text, haptics, useTheme } from '@blue-bee/ui';
 import { EmptyState, Field, Screen, Sheet, SheetOption, useToast, type FeatherName } from '../components/kit';
 import type { StopProps } from '../navigation';
@@ -101,7 +101,7 @@ export function StopScreen({ route, navigation }: StopProps): React.ReactElement
             </Text>
           ) : null}
           <Field label="Stop #" value={String(stop.seq)} mono />
-          <Field label="Kind" value={stop.kind} />
+          <Field label="Kind" value={humanize(stop.kind)} />
           {stop.timeWindow ? (
             <Field
               label="Window"

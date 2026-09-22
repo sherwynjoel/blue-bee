@@ -63,8 +63,17 @@ export function Button({
   const dims = SIZE[size];
   const isDisabled = disabled || busy;
 
+  // The AA-safe full-strength hue for the current scheme — deep in light, bright in dark. Used for
+  // outline/ghost LABELS as well as solid fills: `success`/`danger` proper are mark colours, and
+  // `danger` as a label on surface is 3.91:1 (the outline "Decline" button shipped that way).
   const toneColor =
-    tone === 'azure' ? colors.azure : tone === 'success' ? colors.success : tone === 'danger' ? colors.danger : colors.text;
+    tone === 'azure'
+      ? colors.azure
+      : tone === 'success'
+        ? colors.successSolid
+        : tone === 'danger'
+          ? colors.dangerSolid
+          : colors.text;
 
   let bg = 'transparent';
   let fg = toneColor;
@@ -72,8 +81,19 @@ export function Button({
   let borderWidth = 0;
 
   if (variant === 'solid') {
-    bg = tone === 'neutral' ? colors.subtle : toneColor;
-    fg = tone === 'neutral' ? colors.text : tone === 'azure' ? colors.onAzure : '#FFFFFF';
+    // A filled button needs the tone's SOLID pair, not its mark colour: the bright `success`/`danger`
+    // values are tuned for dots and borders and fail AA under a label (white on light `danger` is
+    // 3.91:1). `successSolid`/`dangerSolid` + their `on*` inks hold 4.5:1 in both schemes.
+    const solid =
+      tone === 'azure'
+        ? { bg: colors.azure, fg: colors.onAzure }
+        : tone === 'success'
+          ? { bg: colors.successSolid, fg: colors.onSuccess }
+          : tone === 'danger'
+            ? { bg: colors.dangerSolid, fg: colors.onDanger }
+            : { bg: colors.subtle, fg: colors.text };
+    bg = solid.bg;
+    fg = solid.fg;
     if (tone === 'neutral') {
       borderColor = colors.hairline;
       borderWidth = StyleSheet.hairlineWidth;

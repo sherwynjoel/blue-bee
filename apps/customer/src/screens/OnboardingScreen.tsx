@@ -88,7 +88,9 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.Reac
           <View key={i} style={{ width, paddingHorizontal: 24, paddingTop: 12 }}>
             <View style={[styles.artCard, { width: artW, height: artH, backgroundColor: '#EAF2FC' }]}>
               {pane.kind === 'logo' ? (
-                <Image source={require('../../assets/brand/royal-logo.png')} style={{ width: '78%', height: '78%' }} resizeMode="contain" />
+                // Transparent variant — the original has no alpha channel and would draw a white
+                // square on this card's #EAF2FC tint.
+                <Image source={require('../../assets/brand/royal-logo-transparent.png')} style={{ width: '78%', height: '78%' }} resizeMode="contain" />
               ) : (
                 <Image source={pane.art} style={{ width: '92%', height: '92%' }} resizeMode="contain" />
               )}

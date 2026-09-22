@@ -1,7 +1,8 @@
 import React from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet, Text as RNText, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import MapView, { Marker, type Region } from 'react-native-maps';
+import { googleMapsAvailable } from './maps-available';
 import type { VehiclePosition } from '../tracking/tracking-controller';
 import { useTheme, usePulse } from '../../theme';
 import { DARK_MAP_STYLE } from './mapStyle';
@@ -20,6 +21,18 @@ export function TrackMap({ vehicle, arrived }: { vehicle: VehiclePosition | null
   const region: Region | undefined = vehicle
     ? { latitude: vehicle.lat, longitude: vehicle.lng, latitudeDelta: 0.04, longitudeDelta: 0.04 }
     : undefined;
+
+  // Without a Google Maps Android key, mounting MapView throws "API key not found" and takes the
+  // whole Track screen down rather than showing a blank map. See maps-available.ts.
+  if (!googleMapsAvailable()) {
+    return (
+      <View style={[styles.wrap, styles.mapFallback, { backgroundColor: colors.subtle, borderColor: colors.hairline }]}>
+        <RNText style={{ color: colors.textTertiary, fontSize: 13, textAlign: 'center' }}>
+          Live map unavailable — no Google Maps key in this build
+        </RNText>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.wrap}>
@@ -67,6 +80,7 @@ function VehicleMarker({ heading, color, onColor }: { heading: number | null; co
 
 const styles = StyleSheet.create({
   wrap: { ...StyleSheet.absoluteFillObject },
+  mapFallback: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, paddingHorizontal: 24 },
   map: { ...StyleSheet.absoluteFillObject },
   marker: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center' },
   halo: { position: 'absolute', width: 28, height: 28, borderRadius: 14 },

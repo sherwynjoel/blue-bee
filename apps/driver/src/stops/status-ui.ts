@@ -2,8 +2,8 @@ import { RouteStopStatus } from '@blue-bee/shared';
 import type { Tone } from '@blue-bee/ui';
 import type { FeatherName } from '../components/kit';
 
-/** Title-case a SCREAMING_SNAKE status for display. */
-function humanize(s: string): string {
+/** Title-case a SCREAMING_SNAKE enum for display — never show a raw enum to a driver. */
+export function humanize(s: string): string {
   return s
     .toLowerCase()
     .replace(/_/g, ' ')

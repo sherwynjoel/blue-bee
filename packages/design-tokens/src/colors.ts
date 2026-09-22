@@ -50,6 +50,17 @@ export interface ColorScale {
   onAzure: string;
   onHoney: string;
 
+  /**
+   * Solid-button fill + its label, for the success/danger tones. The bright `success`/`danger`
+   * values above are MARK colours (dots, icons, borders) and fail AA under a button label — white
+   * on light-mode `danger` measures 3.91:1 against the 4.5:1 a 17px semibold label needs. Use these
+   * for any filled control; in dark mode the pair inverts to dark ink on the bright fill.
+   */
+  successSolid: string;
+  onSuccess: string;
+  dangerSolid: string;
+  onDanger: string;
+
   /** Legible foregrounds for text on the matching pale TINT (see file doc comment above). */
   onAzureTint: string;
   onSuccessTint: string;
@@ -72,8 +83,8 @@ export const light: ColorScale = {
   hairline: '#E4E9F2',
 
   text: '#0A2540',
-  textSecondary: '#5A6B82',
-  textTertiary: '#8A99AE',
+  textSecondary: '#4A5A70',
+  textTertiary: '#5A6B82',
 
   azure: '#1E50C8',
   azureTint: '#E7ECFB',
@@ -89,6 +100,11 @@ export const light: ColorScale = {
 
   onAzure: '#FFFFFF',
   onHoney: '#3D2C00',
+
+  successSolid: '#0E7A45',
+  onSuccess: '#FFFFFF',
+  dangerSolid: '#C62F2F',
+  onDanger: '#FFFFFF',
 
   onAzureTint: '#1E50C8',
   onSuccessTint: '#0A7C46',
@@ -110,7 +126,7 @@ export const dark: ColorScale = {
 
   text: '#EAF0F8',
   textSecondary: '#9DB0C9',
-  textTertiary: '#6B7C96',
+  textTertiary: '#7A8CA8',
 
   azure: '#5B87F5',
   azureTint: 'rgba(91,135,245,0.18)',
@@ -124,10 +140,17 @@ export const dark: ColorScale = {
   danger: '#FF6168',
   dangerTint: 'rgba(255,97,104,0.16)',
 
-  onAzure: '#FFFFFF',
+  // A filled control in dark mode carries DARK ink: white on `azure` #5B87F5 is only 3.37:1.
+  onAzure: '#0A0E1A',
   onHoney: '#241A00',
 
-  onAzureTint: '#5B87F5',
+  successSolid: '#2DD583',
+  onSuccess: '#04150C',
+  dangerSolid: '#FF6168',
+  onDanger: '#1A0203',
+
+  // The bright `azure` on its own 18% tint is 3.96:1 — the tint needs a lighter ink than the hue.
+  onAzureTint: '#A9BEFF',
   onSuccessTint: '#2DD583',
   onWarningTint: '#FFC34D',
   onDangerTint: '#FF6168',

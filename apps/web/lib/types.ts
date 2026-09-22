@@ -165,6 +165,8 @@ export interface VehicleView {
 export interface DriverView {
   id: string;
   userId: string;
+  /** Display name from the linked User — the console labels driver rows with this, not the UUID. */
+  name: string | null;
   license: string | null;
   defaultVehicleId: string | null;
   createdAt: string;

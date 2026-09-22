@@ -1,8 +1,9 @@
 import React from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { light } from '@blue-bee/design-tokens';
 import { Button, type ButtonTone, type ButtonVariant } from './Button';
 
 beforeEach(() => {
@@ -63,6 +64,36 @@ describe('Button (packages/ui)', () => {
   it('renders no icons when neither is set', () => {
     const { UNSAFE_queryAllByType } = render(<Button label="Plain" />);
     expect(UNSAFE_queryAllByType(Feather)).toHaveLength(0);
+  });
+
+  /**
+   * Regression lock for the destructive-button contrast bug: solid `danger` used to paint the bright
+   * mark colour with a hard-coded white label (3.91:1, under the 4.5:1 its 17px semibold label needs)
+   * on Delete account / Confirm delete in all three apps. It must use the tone's solid pair.
+   */
+  describe('solid tones use the contrast-safe pair, not the mark colour', () => {
+    /** First non-transparent backgroundColor in the rendered tree — the button's fill. */
+    const backgroundOf = (node: unknown): string | undefined => {
+      if (!node || typeof node !== 'object') return undefined;
+      const el = node as { props?: { style?: unknown }; children?: unknown[] };
+      const flat = StyleSheet.flatten(el.props?.style as never) as { backgroundColor?: string } | undefined;
+      if (flat?.backgroundColor && flat.backgroundColor !== 'transparent') return flat.backgroundColor;
+      for (const child of el.children ?? []) {
+        const found = backgroundOf(child);
+        if (found) return found;
+      }
+      return undefined;
+    };
+
+    it.each([
+      ['danger', light.dangerSolid, light.danger],
+      ['success', light.successSolid, light.success],
+    ] as const)('tone=%s fills with the solid value', (tone, expected, markColour) => {
+      const tree = render(<Button label="Delete account" tone={tone} variant="solid" />).toJSON();
+      const bg = backgroundOf(tree);
+      expect(bg).toBe(expected);
+      expect(bg).not.toBe(markColour);
+    });
   });
 
   const tones: ButtonTone[] = ['azure', 'success', 'danger', 'neutral'];

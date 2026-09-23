@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import type { DriverStopView } from '@blue-bee/shared';
 import { toneColors, useTheme } from '@blue-bee/ui';
 import { stopStatusMeta } from '../stops/status-ui';
+import { googleMapsAvailable } from './maps-available';
 
 /**
  * A basic route map: the day's stops as branded, status-coloured numbered markers (PRD §4.4 "my route
@@ -16,7 +17,9 @@ export function RouteMap({ stops }: { stops: DriverStopView[] }): React.ReactEle
   const t = useTheme();
   const located = stops.filter((s): s is DriverStopView & { lat: number; lng: number } => s.lat != null && s.lng != null);
 
-  if (located.length === 0) {
+  // No Google Maps key in this build → render the placeholder instead of mounting MapView, which
+  // would throw "API key not found" and take the whole route screen down. See maps-available.ts.
+  if (located.length === 0 || !googleMapsAvailable()) {
     return (
       <View
         style={{
@@ -32,7 +35,9 @@ export function RouteMap({ stops }: { stops: DriverStopView[] }): React.ReactEle
         }}
       >
         <Feather name="map" size={26} color={t.colors.textTertiary} />
-        <RNText style={{ color: t.colors.textTertiary, fontSize: 13 }}>No mapped stops yet</RNText>
+        <RNText style={{ color: t.colors.textTertiary, fontSize: 13 }}>
+          {located.length === 0 ? 'No mapped stops yet' : 'Map unavailable — no Google Maps key in this build'}
+        </RNText>
       </View>
     );
   }

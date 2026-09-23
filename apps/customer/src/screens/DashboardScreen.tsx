@@ -429,10 +429,14 @@ function QuickAction({
       style={styles.qaCol}
     >
       <IconBadge icon={icon} tone={tone} size={38} />
-      <Text variant="subhead" weight="700" style={{ marginTop: 10 }} numberOfLines={1}>
+      {/* Two lines, not one. Four columns share the card width, so at one line the two-word labels
+          ellipsised on a 393dp phone — "Price Estimate" rendered as "Pric…", "Invite Friends" as
+          "Invit…", "Place a new order" as "Place a ne…". `minHeight` reserves both label lines so
+          the captions still sit on a common baseline across the four columns. */}
+      <Text variant="subhead" weight="700" style={{ marginTop: 10, minHeight: 40 }} numberOfLines={2}>
         {label}
       </Text>
-      <Text variant="caption" color="tertiary" style={{ marginTop: 2 }} numberOfLines={1}>
+      <Text variant="caption" color="tertiary" style={{ marginTop: 2 }} numberOfLines={2}>
         {caption}
       </Text>
     </Pressable>

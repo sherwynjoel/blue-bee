@@ -9,8 +9,11 @@ import { getProviderIdToken, OAuthUnavailableError } from '../auth/oauth-native'
 import { useTheme } from '../../theme';
 import { Card, Hero, Button, Input, Text } from '../../components/ui';
 
+// The transparent variant: the original royal-logo.png is PNG colorType 2 (RGB, no alpha) and so
+// carries an opaque white background, which renders as a hard white square on the tinted Hero.
+// app.json's splash still points at the original, which sits on white and wants the opaque asset.
 // eslint-disable-next-line @typescript-eslint/no-var-requires -- static asset require, matches App.tsx/OnboardingScreen.tsx
-const ROYAL_LOGO = require('../../assets/brand/royal-logo.png');
+const ROYAL_LOGO = require('../../assets/brand/royal-logo-transparent.png');
 
 type Mode = 'phone' | 'code' | 'email' | 'register' | 'forgot';
 

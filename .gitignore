@@ -28,6 +28,13 @@ ios/build/
 android/.gradle/
 android/app/build/
 *.keystore
+
+# Generated native projects. The three Expo apps are managed (continuous native generation): no
+# android/ or ios/ is committed, and `expo run:android` / `expo prebuild` regenerates them from
+# app.json on demand. Without these, a single local `expo run:android` drops several hundred
+# untracked files into the tree.
+apps/*/android/
+apps/*/ios/
 *.jks
 
 # Logs

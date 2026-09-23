@@ -419,8 +419,11 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   stateCard: { marginHorizontal: 20, marginTop: 20, alignItems: 'center', paddingVertical: 28 },
-  trustRow: { flexDirection: 'row', gap: 10 },
-  trustCard: { flex: 1 },
+  // 2×2, not 1×4. Four `flex: 1` tiles inside a 393dp screen leave ~55dp of text each, which is
+  // narrower than the words they carry — "Quality" rendered as "Qualit/y", "No Hidden" as "No Hi/dden"
+  // and the "Guaranteed" caption ellipsised. Wrapping at ~47% gives each tile roughly 160dp.
+  trustRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  trustCard: { flexGrow: 1, flexBasis: '47%' },
   banner: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   bannerIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   bannerCta: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, gap: 4 },

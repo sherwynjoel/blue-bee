@@ -127,7 +127,7 @@ const SERVICE_CARDS: ServiceCard[] = [
 ];
 
 // ── local MinIO defaults (overridable by env; the founder never runs the demo seed against prod) ──
-function s3(): { client: S3Client; bucket: string } {
+export function s3(): { client: S3Client; bucket: string } {
   const endpoint = process.env.S3_ENDPOINT ?? 'http://localhost:9000';
   const bucket = process.env.S3_BUCKET ?? 'bluebee-media';
   const client = new S3Client({
@@ -165,7 +165,7 @@ function pngChunk(type: string, data: Buffer): Buffer {
   crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
   return Buffer.concat([len, typeBuf, data, crc]);
 }
-function solidPng(r: number, g: number, b: number, size = 64): Buffer {
+export function solidPng(r: number, g: number, b: number, size = 64): Buffer {
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);

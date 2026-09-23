@@ -211,7 +211,7 @@ function FleetResources({ canWrite }: { canWrite: boolean }): React.ReactElement
         <ResourceList
           state={drivers}
           icon={<IdCard className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
-          render={(d) => `${d.id.slice(0, 8)} · ${d.license ?? 'no license on file'}`}
+          render={(d) => `${d.name ?? `Driver ${d.id.slice(0, 8)}`} · ${d.license ?? 'no license on file'}`}
           empty="No drivers."
         />
       </Card>

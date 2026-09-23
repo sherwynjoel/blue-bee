@@ -1,3 +1,4 @@
+import { humanize } from '../stops/status-ui';
 import React, { useState } from 'react';
 import { RefreshControl, View } from 'react-native';
 import { ShiftStatus } from '@blue-bee/shared';
@@ -104,7 +105,7 @@ export function HomeScreen({ navigation }: HomeProps): React.ReactElement {
           {route ? (
             <>
               <Text variant="subhead" color={t.colors.textSecondary} style={{ marginBottom: t.space.md }}>
-                {route.stops.length} stop{route.stops.length === 1 ? '' : 's'} · {route.status}
+                {route.stops.length} stop{route.stops.length === 1 ? '' : 's'} · {humanize(route.status)}
               </Text>
               <Button testID="open-route" label="View route & stops" onPress={() => navigation.navigate('Route')} icon="map" iconRight="arrow-right" size="md" fullWidth />
             </>

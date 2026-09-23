@@ -4,6 +4,7 @@ import MapView, { Marker, PROVIDER_DEFAULT, type Region } from 'react-native-map
 import { Feather } from '@expo/vector-icons';
 import type { FleetVehicle } from '../fleet/fleet-controller';
 import { useTheme } from '@blue-bee/ui';
+import { googleMapsAvailable } from './maps-available';
 
 /**
  * The org fleet on a real `react-native-maps` map (PRD §7C C1). Each positioned vehicle is a branded
@@ -24,7 +25,11 @@ export function FleetMap({
     (v): v is FleetVehicle & { lat: number; lng: number } => v.hasPosition && v.lat != null && v.lng != null,
   );
 
-  if (located.length === 0) {
+  // A missing Google Maps Android key makes MapView throw "API key not found", taking the whole
+  // fleet screen down instead of showing a blank map. See maps-available.ts.
+  const mapsOff = !googleMapsAvailable();
+
+  if (located.length === 0 || mapsOff) {
     return (
       <View
         testID="fleet-map-empty"
@@ -42,7 +47,9 @@ export function FleetMap({
         }}
       >
         <Feather name="truck" size={26} color={t.colors.textTertiary} />
-        <RNText style={{ color: t.colors.textTertiary, textAlign: 'center', fontSize: 13 }}>No vehicles are reporting a position yet.</RNText>
+        <RNText style={{ color: t.colors.textTertiary, textAlign: 'center', fontSize: 13 }}>
+          {mapsOff ? 'Map unavailable — no Google Maps key in this build' : 'No vehicles are reporting a position yet.'}
+        </RNText>
       </View>
     );
   }

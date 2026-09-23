@@ -77,8 +77,17 @@ export class DriverService {
     }
   }
 
-  list(principal: RequestPrincipal) {
-    return this.access.scopedFor(principal).driver.findMany({ orderBy: { createdAt: 'desc' } });
+  /**
+   * Includes the driver's display name. Without it the console had nothing to label a row with and
+   * fell back to a UUID prefix ("d3000000 · no license on file"), so a dispatcher could not tell
+   * three drivers apart when assigning a shift.
+   */
+  async list(principal: RequestPrincipal) {
+    const rows = await this.access.scopedFor(principal).driver.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { name: true } } },
+    });
+    return rows.map(({ user, ...driver }) => ({ ...driver, name: user.name }));
   }
 
   get(principal: RequestPrincipal, id: string) {

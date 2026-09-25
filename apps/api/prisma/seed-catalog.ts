@@ -19,7 +19,7 @@
  * Idempotent: deterministic ids; a re-run upserts the same rows (and re-PUTs the same keys in dev).
  */
 import { deflateSync } from 'node:zlib';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { CreateBucketCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { PrismaClient, RoleType, ServiceUnit, ServiceVertical, type PricingModel, type PricingUnit } from '@prisma/client';
 import { backingServiceUnit, isWeightPricingUnit, type PricingUnit as SharedPricingUnit } from '@blue-bee/shared';
 
@@ -127,7 +127,8 @@ const SERVICE_CARDS: ServiceCard[] = [
 ];
 
 // ── local MinIO defaults (overridable by env; the founder never runs the demo seed against prod) ──
-export function s3(): { client: S3Client; bucket: string } {
+let bucketReady: Promise<void> | undefined;
+export async function s3(): Promise<{ client: S3Client; bucket: string }> {
   const endpoint = process.env.S3_ENDPOINT ?? 'http://localhost:9000';
   const bucket = process.env.S3_BUCKET ?? 'bluebee-media';
   const client = new S3Client({
@@ -139,6 +140,21 @@ export function s3(): { client: S3Client; bucket: string } {
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'minioadmin',
     },
   });
+  // A fresh MinIO has no buckets. The API creates this one on boot, but on a clean clone the seed runs
+  // first and every PUT would fail with NoSuchBucket — so create it here, once. Same gate as the API
+  // (config/media.config.ts): MEDIA_ENSURE_BUCKET, defaulting to "only with a custom S3_ENDPOINT", so it
+  // is never attempted against production S3 (pre-provisioned bucket, IAM without bucket permissions).
+  const flag = process.env.MEDIA_ENSURE_BUCKET?.trim().toLowerCase();
+  const ensure = flag ? ['true', '1', 'yes'].includes(flag) : Boolean(process.env.S3_ENDPOINT);
+  if (ensure) {
+    bucketReady ??= client.send(new HeadBucketCommand({ Bucket: bucket })).then(
+      () => undefined,
+      async () => {
+        await client.send(new CreateBucketCommand({ Bucket: bucket }));
+      },
+    );
+    await bucketReady;
+  }
   return { client, bucket };
 }
 
@@ -284,7 +300,7 @@ export async function seedDrycleanCatalog(prisma: PrismaClient, opts: SeedCatalo
     });
     if (!withSamples) continue; // prod: structure only — the founder adds real items + real prices in /catalog
 
-    const { client, bucket } = s3();
+    const { client, bucket } = await s3();
     for (let i = 0; i < c.items.length; i += 1) {
       const it = c.items[i];
       // Deterministic catalog media key (mirrors MediaService.newKey's org/{org}/catalog/… layout).

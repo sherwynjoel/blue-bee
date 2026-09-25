@@ -72,7 +72,7 @@ const SEED_PHOTO_TINT: Record<string, [number, number, number]> = {
 };
 
 async function seedPhotoObject(orgId: string, folder: string, name: string): Promise<string> {
-  const { client, bucket } = s3();
+  const { client, bucket } = await s3();
   const key = `org/${orgId}/${folder}/${name}.png`;
   const [r, g, b] = SEED_PHOTO_TINT[folder] ?? [80, 80, 80];
   await client.send(

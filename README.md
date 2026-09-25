@@ -26,9 +26,11 @@ React Native + Expo (mobile) · Next.js (web) · NestJS modular monolith (API) �
 | `docs` | PRD, visual blueprint, market index |
 
 ## Quick start
-1. Node 20 (`nvm use`), then `npm install`.
-2. `npm run infra:up` — local Postgres (PostGIS + Timescale) + Redis via Docker.
-3. Follow `START-HERE.md` to scaffold Phase 1.
+1. Node 20 (`nvm use`) and Docker Desktop running; Android Studio for the mobile apps.
+2. `npm install`, then `npm run setup` (once: env file, Docker services, database, demo data).
+3. `npm run dev:all` — API, console + business portal (http://localhost:3001) and the three apps on an Android emulator.
+
+Full guide, logins and troubleshooting: **`docs/LOCAL-DEV.md`**.
 
 ## Docs
 - **`docs/laundry-platform-PRD.md`** — full build spec (v1.0). **Start here.**

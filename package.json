@@ -12,6 +12,8 @@
   },
   "packageManager": "npm@10.8.2",
   "scripts": {
+    "setup": "node scripts/dev.mjs setup",
+    "dev:all": "node scripts/dev.mjs",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",

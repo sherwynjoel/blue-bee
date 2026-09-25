@@ -14,14 +14,14 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "db:seed:catalog": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' prisma/seed-catalog-structure.ts",
-    "db:seed:demo": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' prisma/seed-demo-orders.ts",
-    "db:bootstrap": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' prisma/bootstrap.ts",
-    "s3-proof": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/s3-golive-proof.ts",
+    "db:seed:catalog": "ts-node --compiler-options \"{\\\"module\\\":\\\"commonjs\\\",\\\"moduleResolution\\\":\\\"node\\\"}\" prisma/seed-catalog-structure.ts",
+    "db:seed:demo": "ts-node --compiler-options \"{\\\"module\\\":\\\"commonjs\\\",\\\"moduleResolution\\\":\\\"node\\\"}\" prisma/seed-demo-orders.ts",
+    "db:bootstrap": "ts-node --compiler-options \"{\\\"module\\\":\\\"commonjs\\\",\\\"moduleResolution\\\":\\\"node\\\"}\" prisma/bootstrap.ts",
+    "s3-proof": "ts-node --compiler-options \"{\\\"module\\\":\\\"commonjs\\\",\\\"moduleResolution\\\":\\\"node\\\"}\" scripts/s3-golive-proof.ts",
     "db:studio": "prisma studio",
     "test": "jest --config jest.config.js",
     "test:e2e": "jest --config jest-e2e.config.js --runInBand",
-    "db:operator": "ts-node --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/make-local-operator.ts"
+    "db:operator": "ts-node --compiler-options \"{\\\"module\\\":\\\"commonjs\\\",\\\"moduleResolution\\\":\\\"node\\\"}\" scripts/make-local-operator.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

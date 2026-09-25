@@ -140,15 +140,21 @@ export async function s3(): Promise<{ client: S3Client; bucket: string }> {
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'minioadmin',
     },
   });
-  // A fresh MinIO has no buckets. The API creates this one on boot (MEDIA_ENSURE_BUCKET), but on a clean
-  // clone the seed runs first and every PUT would fail with NoSuchBucket — so create it here, once.
-  bucketReady ??= client.send(new HeadBucketCommand({ Bucket: bucket })).then(
-    () => undefined,
-    async () => {
-      await client.send(new CreateBucketCommand({ Bucket: bucket }));
-    },
-  );
-  await bucketReady;
+  // A fresh MinIO has no buckets. The API creates this one on boot, but on a clean clone the seed runs
+  // first and every PUT would fail with NoSuchBucket — so create it here, once. Same gate as the API
+  // (config/media.config.ts): MEDIA_ENSURE_BUCKET, defaulting to "only with a custom S3_ENDPOINT", so it
+  // is never attempted against production S3 (pre-provisioned bucket, IAM without bucket permissions).
+  const flag = process.env.MEDIA_ENSURE_BUCKET?.trim().toLowerCase();
+  const ensure = flag ? ['true', '1', 'yes'].includes(flag) : Boolean(process.env.S3_ENDPOINT);
+  if (ensure) {
+    bucketReady ??= client.send(new HeadBucketCommand({ Bucket: bucket })).then(
+      () => undefined,
+      async () => {
+        await client.send(new CreateBucketCommand({ Bucket: bucket }));
+      },
+    );
+    await bucketReady;
+  }
   return { client, bucket };
 }
 

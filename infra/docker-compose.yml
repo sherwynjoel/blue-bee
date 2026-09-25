@@ -16,7 +16,9 @@ services:
       POSTGRES_PASSWORD: bluebee
       POSTGRES_DB: bluebee
     ports:
-      - "5432:5432"
+      # Host port overridable: `npm run setup` picks a free one when a local Postgres already owns
+      # 5432 (common on Windows) and `npm run dev:all` passes it back in via POSTGRES_PORT.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - bluebee_pg:/var/lib/postgresql/data
     healthcheck:
